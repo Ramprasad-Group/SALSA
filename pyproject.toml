@@ -1,7 +1,30 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "plextract"
-version = "2024.5.27"
-description = "Extract line chart data from images."
-dependencies = [ 
-   "modal"
+version = "0.0.1"
+description = "Plot/legend OCR & extraction pipeline"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{name="Your Name"}]
+dependencies = [
+  # put your runtime Python deps here (NOT torch/cuda)
+  "opencv-python>=4.7",
+  "numpy>=1.24,<2",
+  "pandas>=2.0,<3",
+  # ...minimal runtime deps...
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["plextract*"]  # include your package and subpackages
+
+# Optional CLI
+#[project.scripts]
+#plextract = "plextract.cli:main"

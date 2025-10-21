@@ -1,0 +1,13 @@
+Metadata-Version: 2.1
+Name: plextract
+Version: 0.0.1
+Summary: Plot/legend OCR & extraction pipeline
+Author: Your Name
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: opencv-python>=4.7
+Requires-Dist: numpy<2,>=1.24
+Requires-Dist: pandas<3,>=2.0
+
+# Extract Line Chart Data
+wrapper for LineFormer, ChartDete, and improvement over the code from https://github.com/tdsone/extract-line-chart-data

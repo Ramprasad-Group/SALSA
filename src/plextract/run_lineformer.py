@@ -29,8 +29,8 @@ from huggingface_hub import snapshot_download
 import sys
 import os
 
-# Get the directory two levels up
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+# Directory where LineFormer can be found
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.insert(0, parent_dir)
 
 from LineFormer.infer import load_model, get_dataseries

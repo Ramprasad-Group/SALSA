@@ -383,7 +383,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    run_pipeline(input_dir='/home/wschertzer3/AEM_OCR/input', workdir='/home/wschertzer3/AEM_OCR/')
+    run_pipeline(input_dir='/home/wschertzer3/AEM_OCR/src/input', workdir='/home/wschertzer3/AEM_OCR/src/')
     # print("\n=== ChartDete predictions ===")
     # print(preds)
     print('=====Pipeline Finished Running=====')

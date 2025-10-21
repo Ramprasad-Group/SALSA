@@ -1,0 +1,6 @@
+[submodule "extern/ChartDete"]
+	path = extern/ChartDete
+	url = https://github.com/pengyu965/ChartDete/
+[submodule "extern/LineFormer"]
+	path = extern/LineFormer
+	url = https://github.com/TheJaeLal/LineFormer
