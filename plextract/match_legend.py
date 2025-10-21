@@ -1,10 +1,10 @@
 # match_legend.py
+import os
+import glob, re
 import cv2, json, math, numpy as np
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 from scipy.optimize import linear_sum_assignment
-
-import cv2, numpy as np, math
 
 def dominant_hsv(img_or_pixels):
     """
@@ -66,6 +66,53 @@ def dominant_hsv(img_or_pixels):
     hist = np.bincount(Hf.astype(np.int32), minlength=180)
     mode = int(np.argmax(hist))  # 0..179
     return float(mode * 2), float(Sf.mean()), float(Vf.mean())
+
+def hsv_from_mask(img_bgr: np.ndarray, mask_bin: np.ndarray,
+                  k_dilate: int = 1, min_keep: int = 50) -> Tuple[Tuple[float,float,float], float]:
+    """
+    Return (H,S,V) using only high-chroma pixels near the mask, plus a confidence [0..1].
+    """
+    mask = (mask_bin > 0).astype(np.uint8)
+    if k_dilate > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k_dilate+1, 2*k_dilate+1))
+        mask = cv2.dilate(mask, k, iterations=1)
+
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
+        return (0.0, 0.0, 0.0), 0.0
+
+    # sample 3x3 around each mask pixel; pick the pixel with max saturation
+    H, W = img_bgr.shape[:2]
+    picks = []
+    for y, x in zip(ys, xs):
+        y0, y1 = max(0, y-1), min(H, y+2)
+        x0, x1 = max(0, x-1), min(W, x+2)
+        patch = img_bgr[y0:y1, x0:x1]
+        hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+        # flatten and take the pixel with maximum S
+        idx = np.argmax(hsv[...,1].reshape(-1))
+        hh = hsv[...,0].reshape(-1)[idx]
+        ss = hsv[...,1].reshape(-1)[idx]
+        vv = hsv[...,2].reshape(-1)[idx]
+        picks.append((hh, ss, vv))
+
+    if len(picks) < min_keep:
+        # try a bit more dilation if too few samples
+        return hsv_from_mask(img_bgr, cv2.dilate(mask, np.ones((3,3),np.uint8), 1), 0, 0)
+
+    arr = np.asarray(picks, dtype=np.float32)
+    # keep only reasonably colored pixels
+    keep = (arr[:,2] > 40) & (arr[:,1] > 30)
+    conf = float(np.mean(keep))  # fraction of colored pixels
+    arr2 = arr[keep] if np.any(keep) else arr
+
+    # dominant hue (mode over 0..179), mean S,V
+    hist = np.bincount(arr2[:,0].astype(np.int32), minlength=180)
+    mode = int(np.argmax(hist))
+    Hdeg = float(mode * 2)
+    Smean = float(arr2[:,1].mean()) if len(arr2) else float(arr[:,1].mean())
+    Vmean = float(arr2[:,2].mean()) if len(arr2) else float(arr[:,2].mean())
+    return (Hdeg, Smean, Vmean), conf
 
 def detect_marker_shape(img: np.ndarray) -> str:
     """Return one of {'circle','square','triangle','star','line','unknown'}."""
@@ -135,49 +182,122 @@ def style_cost(a: str, b: str) -> float:
     if a == "unknown" or b == "unknown": return 0.2
     return 0.0 if a == b else 0.8
 
-def build_cost_matrix(legend_desc: List[Dict[str,Any]], series_desc: List[Dict[str,Any]]) -> np.ndarray:
-    M = np.zeros((len(legend_desc), len(series_desc)), dtype=np.float32)
-    for i, L in enumerate(legend_desc):
-        for j, S in enumerate(series_desc):
-            c = color_distance(L["hsv"], S["hsv"]) \
-                + 0.5*shape_cost(L["marker"], S["marker"]) \
-                + 0.4*style_cost(L["linestyle"], S["linestyle"])
-            M[i,j] = c
-    return M
+# def build_cost_matrix(legend_desc: List[Dict[str,Any]], series_desc: List[Dict[str,Any]]) -> np.ndarray:
+#     M = np.zeros((len(legend_desc), len(series_desc)), dtype=np.float32)
+#     for i, L in enumerate(legend_desc):
+#         for j, S in enumerate(series_desc):
+#             c = color_distance(L["hsv"], S["hsv"]) \
+#                 + 0.5*shape_cost(L["marker"], S["marker"]) \
+#                 + 0.4*style_cost(L["linestyle"], S["linestyle"])
+#             M[i,j] = c
+#     return M
 
 def hungarian_match(cost: np.ndarray) -> List[Tuple[int,int,float]]:
     ri, cj = linear_sum_assignment(cost)
     return [(int(i), int(j), float(cost[i,j])) for i,j in zip(ri,cj)]
 
+def _norm_diag(image_wh: Tuple[int,int]) -> float:
+    W, H = image_wh
+    return max(1.0, math.hypot(W, H))
+
+def build_cost_matrix_with_fallback(
+    image_shape: Tuple[int,int],
+    legend_desc: List[Dict[str,Any]],
+    series_desc: List[Dict[str,Any]],
+    alpha_dist: float = 0.70,
+    beta_color: float = 0.20,
+    gamma_style: float = 0.10
+) -> np.ndarray:
+    """
+    If legend entry is a real legend patch -> use your color/shape/style costs (as before).
+    If legend entry is a mark_label (no patch) -> prioritize proximity to series centroid,
+    optionally blending color/style if available.
+    """
+    H, W = image_shape[:2]
+    dnorm = _norm_diag((W, H))
+    M = np.zeros((len(legend_desc), len(series_desc)), dtype=np.float32)
+
+    for i, L in enumerate(legend_desc):
+        L_is_mark = (L.get("source") == "mark_label")
+        Lbbox = L.get("label_bbox")
+        Lhsv = L.get("hsv", (0., 0., 0.))
+        for j, S in enumerate(series_desc):
+            sc = float(S.get("color_conf", 0.0))
+            # color weight between 0.3 and 0.9 depending on confidence
+            w_color = 0.3 + 0.6*sc
+            if not L_is_mark:
+                c = w_color*color_distance(Lhsv, S["hsv"]) \
+                    + 0.15*shape_cost(L["marker"], S["marker"]) \
+                    + 0.15*style_cost(L["linestyle"], S["linestyle"])
+                M[i, j] = c
+            else:
+                # Fallback: distance from label center to series centroid
+                if Lbbox and "centroid" in S:
+                    x1, y1, x2, y2, *_ = Lbbox
+                    lc = (0.5 * (x1 + x2), 0.5 * (y1 + y2))
+                    sc = S["centroid"]
+                    dist = math.hypot(lc[0] - sc[0], lc[1] - sc[1]) / dnorm  # 0..~1
+                else:
+                    dist = 1.0  # worst if we somehow lack geometry
+
+                # Blend in weak color/style when available (they can help)
+                ccol = color_distance(Lhsv, S["hsv"])
+                csty = style_cost(L.get("linestyle", "unknown"), S.get("linestyle", "unknown"))
+
+                # M[i, j] = float(alpha_dist * dist + beta_color * ccol + gamma_style * csty)
+                M[i, j] = float(alpha_dist * dist + 0.5*w_color*ccol + gamma_style*csty)
+    return M
 
 def legend_descriptors_from_json(image_path: str, legend_json_path: str) -> List[Dict[str,Any]]:
-    entries = []
+    entries: List[Dict[str,Any]] = []
+
+    if not os.path.exists(legend_json_path):
+        return []
+
     with open(legend_json_path, "r") as f:
         ents = json.load(f)
+
     for ent in ents:
-        patch = cv2.imread(ent["patch_path"])
-        if patch is None: continue
-        hsv = dominant_hsv(patch)
-        marker = detect_marker_shape(patch)
-        # Many legends also hint line style as a small line segment; try to detect dashed vs solid:
+        src = (ent.get("source") or "legend").strip()
+        patch_path = ent.get("patch_path")
+        label_path = ent.get("label_path")
+        label_bbox = ent.get("label_bbox")  # [x1,y1,x2,y2,score] or None
+
+        hsv = (0.0, 0.0, 0.0)
+        marker = "unknown"
         line_style = "unknown"
-        # Heuristic: look for long thin components inside patch
-        gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
-        # Run-length in central row
-        mid = edges.shape[0]//2
-        row = edges[mid,:] > 0
-        runs = np.diff(np.where(np.concatenate(([row[0]],
-                                                row[:-1] != row[1:],
-                                                [True])))[0])[::2]
-        if len(runs) >= 3 and np.median(runs) < 0.5* (np.max(runs)+1e-6):
-            line_style = "dashed"
-        elif row.sum() > edges.shape[1]*0.05:
-            line_style = "solid"
+
+        if patch_path and os.path.exists(patch_path):
+            patch = cv2.imread(patch_path)
+            if patch is not None:
+                hsv = dominant_hsv(patch)
+                marker = detect_marker_shape(patch)
+                # crude linestyle heuristic (as you had)
+                gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+                edges = cv2.Canny(gray, 50, 150)
+                mid = edges.shape[0] // 2
+                row = edges[mid, :] > 0
+                runs = np.diff(np.where(np.concatenate(([row[0]],
+                                                        row[:-1] != row[1:],
+                                                        [True])))[0])[::2]
+                if len(runs) >= 3 and np.median(runs) < 0.5 * (np.max(runs) + 1e-6):
+                    line_style = "dashed"
+                elif row.sum() > edges.shape[1] * 0.05:
+                    line_style = "solid"
+        else:
+            # Fallback: sample color from the label crop if present
+            if label_path and os.path.exists(label_path):
+                lab_crop = cv2.imread(label_path)
+                if lab_crop is not None:
+                    hsv = dominant_hsv(lab_crop)
+            # leave marker, line_style as "unknown"
 
         entries.append({
             "text": (ent.get("text") or "").strip(),
-            "patch_path": ent["patch_path"],
+            "patch_path": patch_path,
+            "label_path": label_path,
+            "label_bbox": label_bbox,     # for proximity fallback
+            "source": src,                # "legend" or "mark_label"
             "hsv": hsv,
             "marker": marker,
             "linestyle": line_style
@@ -189,76 +309,110 @@ def _mask_from_path(p: str) -> Optional[np.ndarray]:
     if m is None: return None
     return (m > 127).astype(np.uint8)
 
-def series_descriptors(image_path: str, plot_area: List[float], lineformer_dir: str, mark_boxes: List[List[float]]) -> List[Dict[str,Any]]:
+def series_descriptors(image_path: str,
+                       plot_area: List[float],
+                       lineformer_dir: str,
+                       mark_boxes: List[List[float]]) -> List[Dict[str,Any]]:
     """
-    - image_path: original figure
-    - plot_area: [x1,y1,x2,y2,score]
-    - lineformer_dir: folder with masks (mask_series_*.png or mask.png)
-    - mark_boxes: ChartDete 'mark_label' (optional)
+    Build descriptors for each extracted series.
+
+    Returns a list of dicts with at least:
+      - "index": stable int (matches series_i in coordinates.json)
+      - "mask_path": str
+      - "centroid": (x,y) in IMAGE coords
+      - "hsv": tuple
+      - "marker": str
+      - "linestyle": str
     """
+    entries: List[Dict[str,Any]] = []
+
+    # Load base image (for HSV sampling)
     img = cv2.imread(image_path)
-    H,W = img.shape[:2]
-    x1,y1,x2,y2,_ = plot_area if plot_area else [0,0,W,H,1.0]
-    roi = img[int(y1):int(y2), int(x1):int(x2)]
-    series = []
+    if img is None:
+        return entries
 
-    # Try per-series masks
-    lf_dir = Path(lineformer_dir)
-    cand = sorted(lf_dir.glob("mask_series_*.png"))
-    masks = []
-    if cand:
-        for p in cand:
-            m = _mask_from_path(str(p))
-            if m is not None:
-                masks.append((str(p), m))
-    else:
-        # Fallback single mask
-        m = _mask_from_path(str(lf_dir / "mask.png"))
-        if m is not None:
-            # Connected components to split
-            num, lab = cv2.connectedComponents(m)
-            for k in range(1, num):
-                mk = (lab == k).astype(np.uint8)
-                masks.append((f"{lf_dir}/mask_cc_{k}.png", mk))
+    # Load series catalog if present (written by convert_data_points)
+    catalog_path = os.path.join(lineformer_dir, "series_catalog.json")
+    catalog = []
+    if os.path.exists(catalog_path):
+        with open(catalog_path, "r") as f:
+            catalog = json.load(f)
 
-    # Compute marker hints from mark_boxes (shape + local color)
-    box_markers = []
-    for bb in mark_boxes:
-        if len(bb) < 5: continue
-        bx1,by1,bx2,by2,_ = bb
-        bx1i,by1i,bx2i,by2i = map(int, [bx1,by1,bx2,by2])
-        bx1i,by1i = max(bx1i,0), max(by1i,0)
-        bx2i,by2i = min(bx2i,W-1), min(by2i,H-1)
-        if bx2i>bx1i and by2i>by1i:
-            crop = img[by1i:by2i, bx1i:bx2i]
-            box_markers.append((bb, detect_marker_shape(crop), dominant_hsv(crop)))
+    # Discover masks (adjust patterns if yours differ)
+    mask_files = sorted(glob.glob(os.path.join(lineformer_dir, "*.png")))
+    # Prefer obvious mask names
+    mask_files = [p for p in mask_files if re.search(r"(mask|series|line)\D*\d+\.png$", os.path.basename(p))] or mask_files
 
-    # Build descriptors per series mask
-    for (mpath, m) in masks:
-        # restrict to plot area
-        sub = m[int(y1):int(y2), int(x1):int(x2)]
-        if sub.sum() < 50:
+    # Utility: extract an index from filename if possible
+    def _idx_from_name(p: str) -> Optional[int]:
+        m = re.search(r"(\d+)", os.path.basename(p))
+        return int(m.group(1)) if m else None
+
+    # Build a quick lookup from mask_path basename -> catalog item
+    by_basename = {os.path.basename(c.get("mask_path","")): c for c in catalog if c.get("mask_path")}
+
+    # # Plot area clip (optional)
+    x1=y1=x2=y2=None
+    if plot_area and len(plot_area)>=4:
+        x1,y1,x2,y2 = map(float, plot_area[:4])
+
+    for k, mpath in enumerate(mask_files):
+        m = cv2.imread(mpath, cv2.IMREAD_GRAYSCALE)
+        if m is None:
             continue
-        hsv = dominant_hsv(roi[sub.astype(bool)])
-        linestyle = estimate_linestyle_along_mask(roi, sub)
-        # optional marker inference: pick nearest mark box to series centroid
-        ys, xs = np.where(sub>0)
-        cx, cy = int(x1)+int(xs.mean()), int(y1)+int(ys.mean())
-        nearest_marker = ("unknown", (0.,0.,0.))
-        if box_markers:
-            d2, best = 1e18, None
-            for bb, shape, mhsv in box_markers:
-                bx1,by1,bx2,by2,_ = bb
-                mx, my = 0.5*(bx1+bx2), 0.5*(by1+by2)
-                dd = (mx-cx)**2 + (my-cy)**2
-                if dd < d2:
-                    d2, best = dd, (shape, mhsv)
-            if best: nearest_marker = best
 
-        series.append({
+        # centroid
+        ys, xs = np.where(m > 127)
+        if len(xs) == 0:
+            continue
+        cx, cy = xs.mean(), ys.mean()
+        centroid = (float(cx), float(cy))
+
+        # clip pixels to plot area if available (makes HSV more reliable)
+        if x1 is not None:
+            xs_clip = (xs >= x1) & (xs <= x2)
+            ys_clip = (ys >= y1) & (ys <= y2)
+            keep = xs_clip & ys_clip
+            if np.count_nonzero(keep) >= 10:
+                xs2, ys2 = xs[keep], ys[keep]
+            else:
+                xs2, ys2 = xs, ys
+        else:
+            xs2, ys2 = xs, ys
+
+        pixels = img[ys2, xs2] if len(xs2) else img[ys, xs]
+
+        mask_bin = (m > 127).astype(np.uint8)
+        hsv, color_conf = hsv_from_mask(img, mask_bin, k_dilate=1)
+        
+        # linestyle
+        linestyle = estimate_linestyle_along_mask(img, (m>127).astype(np.uint8))
+
+        # marker is hard from polyline-only masks; leave unknown (color/line help a lot)
+        marker = "unknown"
+
+        # choose index
+        base = os.path.basename(mpath)
+        idx = None
+        if base in by_basename and "series_index" in by_basename[base]:
+            idx = int(by_basename[base]["series_index"])
+        if idx is None:
+            idx = _idx_from_name(base)
+        if idx is None:
+            print('---last resort index generator---')
+            idx = k  # last-resort stable order
+
+        entries.append({
+            "index": int(idx),
             "mask_path": mpath,
+            "centroid": centroid,
             "hsv": hsv,
+            "marker": marker,
             "linestyle": linestyle,
-            "marker": nearest_marker[0]  # might be 'unknown'
+            "hsv": hsv,
+            "color_conf": float(color_conf)
         })
-    return series
+
+    # Sort by index to keep things deterministic
+    entries.sort(key=lambda d: d["index"])
+    return entries

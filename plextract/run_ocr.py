@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Local OCR wrapper using microsoft/trocr-base-handwritten (no Modal).
+Local OCR wrapper using microsoft/trocr-base-printed (no Modal).
+trying microsoft/trocr-large-printed
 
 Dependencies:
   pip install transformers pillow torch
@@ -25,7 +26,7 @@ def _auto_device() -> torch.device:
 
 
 class OCRModel:
-    def __init__(self, model_id: str = "microsoft/trocr-base-printed", device: str | None = None):
+    def __init__(self, model_id: str = "microsoft/trocr-large-printed", device: str | None = None):
         """
         Parameters
         ----------

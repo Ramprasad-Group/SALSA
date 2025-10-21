@@ -50,7 +50,7 @@ from huggingface_hub import snapshot_download
 # Ensure the ChartDete fork (which contains the custom LGF head) is imported FIRST.
 # ChartDete is a sibling of plextract: <repo-root>/ChartDete and <repo-root>/plextract
 # --------------------------------------------------------------------------------------
-chartdete_root = '/home/wschertzer3/extract-line-chart-data/plextract/ChartDete'
+chartdete_root = '/home/wschertzer3/ChartDete'
 
 # Put ChartDete ahead of site-packages so its forked mmdet is used
 sys.path.insert(0, str(chartdete_root))
@@ -281,6 +281,27 @@ class ChartDete:
                             cv2.imwrite(str(path), crop[0])
                             label_coordinates[str(path)] = box
                             yi += 1
+                
+                # 5.4) X and Y Titles
+                xti = 0
+                for box in results_labelled.get("x_title", []):
+                    if len(box) >= 5 and box[4] >= self.conf_thr:
+                        path = results_base_folder / f"cropped_xtitle_{xti}.jpg"
+                        crop = self._crop_bounding_boxes(image, [box], self.conf_thr)
+                        if crop:
+                            cv2.imwrite(str(path), crop[0])
+                            label_coordinates[str(path)] = box
+                            xti += 1
+
+                yti = 0
+                for box in results_labelled.get("y_title", []):
+                    if len(box) >= 5 and box[4] >= self.conf_thr:
+                        path = results_base_folder / f"cropped_ytitle_{yti}.jpg"
+                        crop = self._crop_bounding_boxes(image, [box], self.conf_thr)
+                        if crop:
+                            cv2.imwrite(str(path), crop[0])
+                            label_coordinates[str(path)] = box
+                            yti += 1
 
                 # 5.5) Legend / Mark-Label Processing
                 legend_entries = []
@@ -313,23 +334,14 @@ class ChartDete:
                     key=lambda el: el[4] if len(el) > 4 else -1,
                     reverse=True,
                 )
-                print('---legend_area_boxes---', legend_area_boxes)
-
                 paired = []              # (patch_bbox, label_bbox)
                 used_label_idx = set()
                 have_pairs = False
 
                 if legend_area_boxes:
                     la = legend_area_boxes[0]  # best legend area
-                    print('---la---', la)
-
-                    # You can switch these back to _inside(la, b) if your detector
-                    # reliably finds legend_area.
                     patches = [b for b in results_labelled.get("legend_patch", []) if len(b) >= 5 and b[4] >= 0.75]
                     labels  = [b for b in results_labelled.get("legend_label", []) if len(b) >= 5 and b[4] >= 0.75]
-
-                    print('---patches---', patches)
-                    print('---labels---', labels)
 
                     # Greedy NN pairing
                     for pi, pb in enumerate(patches):
@@ -364,8 +376,14 @@ class ChartDete:
                         })
 
                     have_pairs = len(paired) > 0
-
+                else:
+                    print('---does not contain legend area---')
+                    
                 # ===== Fallback to mark_label when no legend pairs/patches/labels =====
+
+                # print(paired, have_pairs, '----test------')
+                # quit()
+                # quit()
                 if not legend_area_boxes or not have_pairs:
                     # Try direct on-plot mark labels
                     mark_labels = [b for b in results_labelled.get("mark_label", []) if len(b) >= 5 and b[4] >= 0.5]
@@ -377,7 +395,7 @@ class ChartDete:
                         if mark_labels_in_plot:
                             mark_labels = mark_labels_in_plot
 
-                    print('---fallback mark_labels---', mark_labels)
+                    print('---fallback mark_labels exist---')
 
                     for mi, mb in enumerate(mark_labels):
                         lcrop = _safe_crop(image, mb)

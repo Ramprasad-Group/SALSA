@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Tuple, Dict, Any
 import matplotlib.pyplot as plt
 from PIL import Image
+import glob, re, numpy as np, cv2
+
+
+base_input_dir = os.environ.get("PLEXTRACT_BASE_INPUT")
+base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
 
 def _xy_from_coord(c: Any) -> Tuple[float, float]:
     """
@@ -27,6 +32,8 @@ def plot_axis_points_on_image(
     axis_label_texts: Dict[str, str],
     image_path: str = None,
 ):
+    base_input_dir = os.environ.get("PLEXTRACT_BASE_INPUT")
+    base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
     """
     Draw:
       - the plot area rectangle
@@ -34,15 +41,16 @@ def plot_axis_points_on_image(
       - text annotations with the OCR'd numeric values
     Saves an overlay PNG alongside ChartDete outputs.
     """
-    base_dir = f"/home/wschertzer3/extract-line-chart-data/data/{run_id}"
     # Try to auto-locate the original figure if not provided
     if image_path is None:
         # Common locations in your pipeline; adjust if your input path differs
         candidates = [
-            f"{base_dir}/input/{img}",
-            f"{base_dir}/output/{img}/predictions.jpg",  # sometimes saved by detectors
-            f"{base_dir}/output/{img}/{img}",            # fallback
+            f"{base_input_dir}/{img}",
+            f"{base_output_dir}/{img}/predictions.jpg",  # sometimes saved by detectors
+            f"{base_output_dir}/{img}/{img}",            # fallback
         ]
+        # print('---candidates---', candidates)
+        # quit()
         for p in candidates:
             if os.path.exists(p):
                 image_path = p
@@ -51,7 +59,7 @@ def plot_axis_points_on_image(
             raise FileNotFoundError("Could not locate base image; pass image_path explicitly.")
 
     # Where to save the overlay
-    out_dir = f"{base_dir}/output/{img}/chartdete"
+    out_dir = f"{base_output_dir}/{img}/chartdete"
     os.makedirs(out_dir, exist_ok=True)
     out_png = f"{out_dir}/axis_debug_overlay.png"
 
@@ -104,7 +112,6 @@ def plot_axis_points_on_image(
     fig.savefig(out_png)
     plt.close(fig)
     print(f"[overlay] Wrote: {out_png}")
-
 
 def sort_and_check_labels(label_coordinates: dict, axis_label_texts: dict, img_key: str):
     print("\tNow starting to sort and check labels...")
@@ -182,9 +189,11 @@ def calc_conversion(coord_val_map: dict, plot_area: list):
     return {"x": xpix2val, "y": ypix2val}
 
 def convert_data_points(conversions, run_id: str, img: str, label_coordinates: dict):
+    base_input_dir = os.environ.get("PLEXTRACT_BASE_INPUT")
+    base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
     print("Converting data points now...")
 
-    with open(f"/home/wschertzer3/extract-line-chart-data/data/{run_id}/output/{img}/lineformer/coordinates.json", "r") as f:
+    with open(f"{base_output_dir}/{img}/lineformer/coordinates.json", "r") as f:
         all_lineseries = json.load(f)
 
     x1, y1, x2, y2 = label_coordinates["plot_area"][:4]
@@ -219,12 +228,47 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
             })
         converted_lineseries[f"series_{series_index}"] = converted_points
 
-    dest_folder = f"/home/wschertzer3/extract-line-chart-data/data/{run_id}/output/{img}/converted_datapoints"
+    dest_folder = f"{base_output_dir}/{img}/converted_datapoints"
     os.makedirs(dest_folder, exist_ok=True)
     with open(f"{dest_folder}/data.json", "w") as json_file:
         json.dump(converted_lineseries, json_file, indent=4)
 
-    import matplotlib.pyplot as plt
+    # === NEW: write a series catalog that maps series_i -> mask_path (and centroid) ===
+    catalog_path = f"{base_output_dir}/{img}/lineformer/series_catalog.json"
+    catalog = []
+
+    # Look for masks written by LineFormer (e.g., mask_0.png, mask_1.png, ...)
+    # If your filenames differ, adjust the glob/pattern accordingly.
+
+    mask_files = sorted(glob.glob(f"{base_output_dir}/{img}/lineformer/*.png"))
+
+    # Try to map masks to indices by number in filename; fallback to natural order
+    def _extract_idx(p):
+        m = re.search(r"(\d+)", os.path.basename(p))
+        return int(m.group(1)) if m else None
+
+    by_idx = { _extract_idx(p): p for p in mask_files if _extract_idx(p) is not None }
+
+    for si, points in enumerate(all_lineseries):
+        # pick a mask path for si
+        mask_path = by_idx.get(si, by_idx.get(si))  # si if present; else arbitrary
+        centroid = None
+        if mask_path and os.path.exists(mask_path):
+            m = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            if m is not None:
+                ys, xs = np.where(m > 127)
+                if len(xs):
+                    centroid = [float(xs.mean()), float(ys.mean())]
+        catalog.append({
+            "series_index": si,
+            "mask_path": mask_path,
+            "centroid": centroid
+        })
+
+    with open(catalog_path, "w") as f:
+        json.dump(catalog, f, indent=2)
+    print(f"[lineformer] Wrote series catalog: {catalog_path}")
+
     plt.figure(figsize=(10, 6))
     for series_name, points in converted_lineseries.items():
         x_vals = [p["x"] for p in points]
@@ -235,14 +279,17 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
 
 def correct_coordinates(run_id: str, img: str):
 
+    base_input_dir = os.environ.get("PLEXTRACT_BASE_INPUT")
+    base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
+
     print("\tCorrecting coordinates for:", run_id, img)
 
     with open(
-        f"/home/wschertzer3/extract-line-chart-data/data/{run_id}/output/{img}/chartdete/label_coordinates.json", "r"
+        f"{base_output_dir}/{img}/chartdete/label_coordinates.json", "r"
     ) as f:
         label_coordinates = json.load(f)
 
-    with open(f"/home/wschertzer3/extract-line-chart-data/data/{run_id}/output/{img}/axis_label_texts.json", "r") as f:
+    with open(f"{base_output_dir}/{img}/chartdete/axis_label_texts.json", "r") as f:
         axis_label_texts = json.load(f)
 
     try:
