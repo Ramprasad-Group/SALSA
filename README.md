@@ -56,7 +56,24 @@ Once the setup is complete, you can use the tool as follows:
     The extracted data will be saved in an output directory, typically `src/output`.
 
 ## Project Structure
-(This is a hypothesized structure, adjust as needed based on your actual project layout) ├── extern # Directory for holding external github repositories used here └── ChartDete # external github repo used to analye elements of a chart └── LineFormer # external github repo used to draw lines over the series on a line chart ├── src/ │ ├── input/ # Directory for placing input line chart images │ ├── output/ # Directory where extracted data will be saved │ ├── plextract/ # Main application logic for extraction │ │ └── main.py # Entry point for running the extraction └── helpers for main.py ├── results/ │ ├── scripts/ │ └── setup.sh # Script to handle additional setup tasks ├── environment.yml # Conda environment definition ├── pyproject.toml ├── .gitmodules # Git submodule configuration └── README.md # This README file
+```bash
+├── extern # Directory for holding external github repositories used here
+    └── ChartDete # external github repo used to analye elements of a chart
+    └── LineFormer # external github repo used to draw lines over the series on a line chart
+├── src/
+│ ├── input/ # Directory for placing input line chart images
+│ ├── output/ # Directory where extracted data will be saved
+│ ├── plextract/ # Main application logic for extraction
+│ │ └── main.py # Entry point for running the extraction
+    └── helpers for main.py
+  ├── results/
+│ ├── scripts/
+│   └── setup.sh # Script to handle additional setup tasks
+├── environment.yml # Conda environment definition
+├── pyproject.toml
+├── .gitmodules # Git submodule configuration
+└── README.md # This README file
+```
 
 ## Contributing
 
