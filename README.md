@@ -1,9 +1,5 @@
 # Extract Line Chart Data and Metadata
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Submodules](https://img.shields.io/badge/submodules-included-brightgreen.svg)](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
-
 A wrapper for LineFormer and ChartDete, offering an improved approach over the original code from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data) for extracting data from line charts.
 
 ---
