@@ -1,4 +1,4 @@
-# Extract Line Chart Data
+# Extract Line Chart Data and Metadata
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -60,3 +60,32 @@ Once the setup is complete, you can use the tool as follows:
     The extracted data will be saved in an output directory, typically `src/output`.
 
 ## Project Structure
+(This is a hypothesized structure, adjust as needed based on your actual project layout)
+├── extern # Directory for holding external github repositories used here
+    └── ChartDete # external github repo used to analye elements of a chart
+    └── LineFormer # external github repo used to draw lines over the series on a line chart
+├── src/
+│ ├── input/ # Directory for placing input line chart images
+│ ├── output/ # Directory where extracted data will be saved
+│ ├── plextract/ # Main application logic for extraction
+│ │ └── main.py # Entry point for running the extraction
+    └── helpers for main.py
+  ├── results/
+│ ├── scripts/
+│   └── setup.sh # Script to handle additional setup tasks
+├── environment.yml # Conda environment definition
+├── pyproject.toml
+├── .gitmodules # Git submodule configuration
+└── README.md # This README file
+
+## Contributing
+
+Contributions are welcome! If you find a bug or have an idea for an enhancement, please open an issue or submit a pull request.
+
+## License
+
+## Acknowledgements
+
+-   Inspired by and built upon the work from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
+-   Utilizes [LineFormer](link_to_lineformer_if_available) and [ChartDete](link_to_chartdete_if_available) for core functionalities.
+-   This work was supported as part of the UNCAGE-ME, an Energy Frontier Research Center funded by the U.S. Department of Energy Office of Science, Basic Energy Sciences at the Georgia Institute of Technology under award # DE-SC0012577.
