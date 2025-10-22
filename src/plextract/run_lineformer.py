@@ -30,7 +30,7 @@ import sys
 import os
 
 # Directory where LineFormer can be found
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../extern"))
 sys.path.insert(0, parent_dir)
 
 from LineFormer.infer import load_model, get_dataseries
@@ -140,7 +140,7 @@ class LineFormer:
                 raise FileNotFoundError(f"Could not read image at {img_path}")
 
             # Get dataseries (list of polylines/points); to_clean=False to match original behavior
-            line_dataseries, inst_masks = get_dataseries(bgr, to_clean=False)
+            line_dataseries, inst_masks = get_dataseries(bgr, return_masks=True, to_clean=False)
 
             # Visualization: overlay extracted line keypoints
             vis = draw_lines(bgr.copy(), points_to_array(line_dataseries))

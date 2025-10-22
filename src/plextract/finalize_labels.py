@@ -246,7 +246,6 @@ def export_labeled_dataset_and_plot(run_id: str, img: str):
             y_raw = float(p["y"])
 
             # Convert if units are known
-            print("====TEST====", x_raw, x_unit_raw, x_dim, unknown_units)
             # Convert only if we have a dimension + normalized unit
             x_conv, x_unit_out, _ = _convert_value(x_raw, x_unit_norm, x_dim, unknown_units) if x_dim else (x_raw, None, x_unit_raw)
             y_conv, y_unit_out, _ = _convert_value(y_raw, y_unit_norm, y_dim, unknown_units) if y_dim else (y_raw, None, y_unit_raw)

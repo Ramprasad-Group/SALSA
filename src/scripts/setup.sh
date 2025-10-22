@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Install subdirectories as editable so they can be locally modified
+python -m pip install -e extern/ChartDete
+python -m pip install -e extern/LineFormer
+
+python src/scripts/patch_config.py extern/ChartDete/configs/cascade_rcnn_swin-t_fpn_LGF_VCE_PCE_coco_focalsmoothloss.py
+
+python src/scripts/patch_lineformer.py
+
 # Choose CUDA tag that matches your environment
 # For Torch 1.13.1 + pytorch-cuda 11.7, use cu117
 CUDA_TAG="${CUDA_TAG:-cu117}"
@@ -36,4 +44,4 @@ python -m pip install -U -f "$BASE_URL" ${MMCV_PIN}
 # Install mmdet (2.x)
 python -m pip install -U ${MMDET_PIN}
 
-echo "OpenMMLab installation complete."
+echo "Setup complete."

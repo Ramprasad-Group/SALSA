@@ -1,8 +1,8 @@
 name: AEM_OCR
 channels:
-  - conda-forge
   - pytorch
   - nvidia
+  - conda-forge
 
 dependencies:
   - python=3.8
