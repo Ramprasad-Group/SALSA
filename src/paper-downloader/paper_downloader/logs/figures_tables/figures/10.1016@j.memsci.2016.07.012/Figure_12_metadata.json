@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 12",
+  "clean_label": "Figure_12",
+  "caption": "The changes of σ after /σ before  of PPO-COC 5 H 10 -Im and PPO-CH 2 -Im membranes as a function of immersion time in 1 M KOH solution at 60 °C.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738816309243-gr12.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2016.07.012",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_12.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012",
+  "extraction_timestamp": "2025-11-10T18:28:25.306560",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

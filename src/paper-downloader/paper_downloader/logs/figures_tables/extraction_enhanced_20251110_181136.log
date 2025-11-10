@@ -444,3 +444,225 @@
 2025-11-10 18:26:10 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 2025-11-10 18:26:23 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 2025-11-10 18:26:28 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:26:33 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:26:40 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:26:46 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:26:46 - INFO - LLM found 11 tables
+2025-11-10 18:26:46 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_1.csv
+2025-11-10 18:26:46 - INFO - Saved Table 2 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_2.csv
+2025-11-10 18:26:46 - INFO - Saved Table 3 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_3.csv
+2025-11-10 18:26:46 - WARNING - No data found for Table 3
+2025-11-10 18:26:46 - WARNING - No data found for Table 3
+2025-11-10 18:26:46 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_1.csv
+2025-11-10 18:26:46 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_1.csv
+2025-11-10 18:26:46 - INFO - Saved Table 2 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_2.csv
+2025-11-10 18:26:46 - INFO - Saved Table 2 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_2.csv
+2025-11-10 18:26:46 - INFO - Saved Table 3 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_3.csv
+2025-11-10 18:26:46 - INFO - Saved Table 3 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C6TA05090E/Table_3.csv
+2025-11-10 18:26:46 - INFO - Saved 9 table CSV and metadata files
+2025-11-10 18:26:46 - INFO - Extracted 9 figures and 11 tables
+2025-11-10 18:26:46 - INFO - Processing 10.1039/C7TA09409D (Publisher: RSC)
+2025-11-10 18:26:46 - INFO - Found html file: /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/rsc/10.1039@C7TA09409D.html
+2025-11-10 18:26:47 - INFO - Downloaded Figure_1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_1.gif
+2025-11-10 18:26:48 - INFO - Downloaded Figure_2 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_2.gif
+2025-11-10 18:26:50 - INFO - Downloaded Figure_21 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_21.gif
+2025-11-10 18:26:51 - INFO - Downloaded Figure_3 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_3.gif
+2025-11-10 18:26:52 - INFO - Downloaded Figure_4 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_4.gif
+2025-11-10 18:26:53 - INFO - Downloaded Figure_5 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_5.gif
+2025-11-10 18:26:55 - INFO - Downloaded Figure_6 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_6.gif
+2025-11-10 18:26:56 - INFO - Downloaded Figure_7 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_7.gif
+2025-11-10 18:26:57 - INFO - Downloaded Figure_8 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_8.gif
+2025-11-10 18:26:58 - INFO - Downloaded Figure_9 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_9.gif
+2025-11-10 18:26:59 - INFO - Downloaded Figure_10 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_10.gif
+2025-11-10 18:27:00 - INFO - Downloaded Figure_11 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_11.gif
+2025-11-10 18:27:01 - INFO - Downloaded Figure_121 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_121.gif
+2025-11-10 18:27:02 - INFO - Downloaded Figure_13 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_13.gif
+2025-11-10 18:27:03 - INFO - Downloaded Figure_14 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@C7TA09409D/Figure_14.gif
+2025-11-10 18:27:03 - INFO - Found 15 figures in /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/rsc/10.1039@C7TA09409D.html
+2025-11-10 18:27:03 - INFO - Extracting tables with LLM from /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/rsc/10.1039@C7TA09409D.html
+2025-11-10 18:27:12 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:15 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:17 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:27 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:37 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:37 - INFO - LLM found 5 tables
+2025-11-10 18:27:37 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C7TA09409D/Table_1.csv
+2025-11-10 18:27:37 - WARNING - No data found for Table 1
+2025-11-10 18:27:37 - WARNING - No data found for Table 1
+2025-11-10 18:27:37 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C7TA09409D/Table_1.csv
+2025-11-10 18:27:37 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C7TA09409D/Table_1.csv
+2025-11-10 18:27:37 - INFO - Saved 3 table CSV and metadata files
+2025-11-10 18:27:37 - INFO - Extracted 15 figures and 5 tables
+2025-11-10 18:27:37 - INFO - Processing 10.1039/D0PY00757A (Publisher: RSC)
+2025-11-10 18:27:37 - INFO - Found html file: /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/rsc/10.1039@D0PY00757A.html
+2025-11-10 18:27:38 - INFO - Downloaded Figure_1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@D0PY00757A/Figure_1.gif
+2025-11-10 18:27:40 - INFO - Downloaded Figure_3 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1039@D0PY00757A/Figure_3.gif
+2025-11-10 18:27:40 - INFO - Found 2 figures in /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/rsc/10.1039@D0PY00757A.html
+2025-11-10 18:27:40 - INFO - Extracting tables with LLM from /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/rsc/10.1039@D0PY00757A.html
+2025-11-10 18:27:48 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:49 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:27:52 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:00 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:10 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:10 - INFO - LLM found 5 tables
+2025-11-10 18:28:10 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@D0PY00757A/Table_1.csv
+2025-11-10 18:28:10 - WARNING - No data found for Table 1
+2025-11-10 18:28:10 - WARNING - No data found for Table 1
+2025-11-10 18:28:10 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@D0PY00757A/Table_1.csv
+2025-11-10 18:28:10 - INFO - Saved Table 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@D0PY00757A/Table_1.csv
+2025-11-10 18:28:10 - INFO - Saved 3 table CSV and metadata files
+2025-11-10 18:28:10 - INFO - Extracted 2 figures and 5 tables
+2025-11-10 18:28:10 - INFO - Processing 10.1016/j.memsci.2016.07.012 (Publisher: ELSEVIER)
+2025-11-10 18:28:10 - INFO - Found xml file: /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/elsevier/10.1016@j.memsci.2016.07.012.xml
+2025-11-10 18:28:11 - INFO - Downloaded Fig. 1 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_1.jpg
+2025-11-10 18:28:12 - INFO - Downloaded Fig. 2 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_2.jpg
+2025-11-10 18:28:14 - INFO - Downloaded Fig. 3 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_3.jpg
+2025-11-10 18:28:15 - INFO - Downloaded Fig. 4 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_4.jpg
+2025-11-10 18:28:16 - INFO - Downloaded Fig. 5 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_5.jpg
+2025-11-10 18:28:18 - INFO - Downloaded Fig. 6 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_6.jpg
+2025-11-10 18:28:19 - INFO - Downloaded Fig. 7 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_7.jpg
+2025-11-10 18:28:20 - INFO - Downloaded Fig. 8 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_8.jpg
+2025-11-10 18:28:21 - INFO - Downloaded Fig. 9 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_9.jpg
+2025-11-10 18:28:23 - INFO - Downloaded Fig. 10 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_10.jpg
+2025-11-10 18:28:23 - INFO - Downloaded Fig. 11 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_11.jpg
+2025-11-10 18:28:25 - INFO - Downloaded Fig. 12 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_12.jpg
+2025-11-10 18:28:26 - INFO - Downloaded Fig. 13 -> /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.012/Figure_13.jpg
+2025-11-10 18:28:26 - INFO - Found 13 figures in /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/elsevier/10.1016@j.memsci.2016.07.012.xml
+2025-11-10 18:28:26 - INFO - Extracting tables with LLM from /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/elsevier/10.1016@j.memsci.2016.07.012.xml
+2025-11-10 18:28:26 - WARNING - No table elements found
+2025-11-10 18:28:26 - INFO - LLM found 0 tables
+2025-11-10 18:28:26 - WARNING - No tables found by LLM
+2025-11-10 18:28:26 - INFO - Extracted 13 figures and 0 tables
+2025-11-10 18:28:26 - INFO - ============================================================
+2025-11-10 18:28:26 - INFO - ENHANCED EXTRACTION SUMMARY
+2025-11-10 18:28:26 - INFO - ============================================================
+2025-11-10 18:28:26 - INFO - Total papers in database: 19
+2025-11-10 18:28:26 - INFO - DOI offset applied: 0
+2025-11-10 18:28:26 - INFO - Successful extractions: 19
+2025-11-10 18:28:26 - INFO - Failed extractions: 0
+2025-11-10 18:28:26 - INFO - Total figures extracted: 207
+2025-11-10 18:28:26 - INFO - Total tables extracted: 93
+2025-11-10 18:28:26 - INFO - Output directory: /home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables
+2025-11-10 18:28:26 - INFO - Figures extraction: Enabled
+2025-11-10 18:28:26 - INFO - Tables extraction: Enabled (LLM)
+2025-11-10 18:28:26 - INFO - 
+Publisher Statistics:
+2025-11-10 18:28:26 - INFO - ----------------------------------------
+2025-11-10 18:28:26 - INFO - ELSEVIER:
+2025-11-10 18:28:26 - INFO -   Papers processed: 13
+2025-11-10 18:28:26 - INFO -   Successful: 13 (100.0%)
+2025-11-10 18:28:26 - INFO -   Figures: 152
+2025-11-10 18:28:26 - INFO -   Tables: 30
+2025-11-10 18:28:26 - INFO - 
+2025-11-10 18:28:26 - INFO - RSC:
+2025-11-10 18:28:26 - INFO -   Papers processed: 6
+2025-11-10 18:28:26 - INFO -   Successful: 6 (100.0%)
+2025-11-10 18:28:26 - INFO -   Figures: 55
+2025-11-10 18:28:26 - INFO -   Tables: 63
+2025-11-10 18:28:26 - INFO - 
+2025-11-10 18:28:26 - INFO - ============================================================
+2025-11-10 18:28:27 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:27 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:28 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:29 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:29 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:30 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:31 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:31 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:32 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:32 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:33 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:33 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:34 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:35 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:35 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:36 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:36 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:37 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:37 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:38 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:38 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:39 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:39 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:40 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:41 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:41 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:42 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:42 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:43 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:43 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:44 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:44 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:45 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:46 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:46 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:47 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:48 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:48 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:49 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:49 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:50 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:50 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:50 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:51 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:52 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:52 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:53 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:53 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:54 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:55 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:55 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:56 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:56 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:57 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:58 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:58 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:59 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:28:59 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:00 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:00 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:01 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:02 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:03 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:03 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:04 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:05 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:06 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:07 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:08 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:08 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:08 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:09 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:09 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:10 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:10 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:11 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:11 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:12 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:13 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:14 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:14 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:15 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:15 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:16 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:16 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:17 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:17 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:18 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:18 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:19 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:19 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:21 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:21 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:22 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:22 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:23 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:23 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:24 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:24 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:25 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:25 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:42 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:42 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:44 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-11-10 18:29:44 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
