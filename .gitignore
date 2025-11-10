@@ -1,2 +1,2 @@
-/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs
-/home/wschertzer3/AEM_OCR/src/results
+/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/*
+/home/wschertzer3/AEM_OCR/src/results/*
