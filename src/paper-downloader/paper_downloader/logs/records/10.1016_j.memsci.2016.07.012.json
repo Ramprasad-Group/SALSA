@@ -1,0 +1,87 @@
+{
+  "DOI": "10.1016/j.memsci.2016.07.012",
+  "publisher": "Elsevier BV",
+  "journal": "Journal of Membrane Science",
+  "year": 2016,
+  "month": 11,
+  "day": 10,
+  "title": "Poly(2,6-dimethyl-1,4-phenylene oxide) containing imidazolium-terminated long side chains as hydroxide exchange membranes with improved conductivity",
+  "citations": 51,
+  "reference_list": [
+    "10.1016/j.progpolymsci.2011.04.004",
+    "10.1002/adfm.200901314",
+    "10.1039/C2CC34862D",
+    "10.1002/anie.200806299",
+    "10.1016/j.ijhydene.2012.11.055",
+    "10.1038/srep11668",
+    "10.1039/C4EE01303D",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1039/c3cs60053j",
+    "10.1002/cssc.201200057",
+    "10.1039/C4PY01671H",
+    "10.1016/j.ijhydene.2013.12.009",
+    "10.1021/ja403671u",
+    "10.1016/j.cjche.2016.03.003",
+    "10.1002/adma.201001164",
+    "10.1021/ma502448g",
+    "10.1016/j.jpowsour.2008.12.127",
+    "10.1021/am503870g",
+    "10.1039/c3cc49027k",
+    "10.1039/C3EE43275K",
+    "10.1021/acs.macromol.5b01302",
+    "10.1039/c3cc47897a",
+    "10.1039/C4TA01397B",
+    "10.1002/polb.23540",
+    "10.1016/j.ijhydene.2011.12.069",
+    "10.1016/j.memsci.2014.12.054",
+    "10.1039/C5TA02941D",
+    "10.1016/j.memsci.2014.01.068",
+    "10.1016/j.memsci.2011.01.027",
+    "10.1021/ma202159d",
+    "10.1002/polb.23149",
+    "10.1016/j.memsci.2014.03.026",
+    "10.1021/am500022c"
+  ],
+  "author_list": [
+    {
+      "given": "Li",
+      "family": "Gao"
+    },
+    {
+      "given": "Gaohong",
+      "family": "He"
+    },
+    {
+      "given": "Yu",
+      "family": "Pan"
+    },
+    {
+      "given": "Baolin",
+      "family": "Zhao"
+    },
+    {
+      "given": "Xiaowei",
+      "family": "Xu"
+    },
+    {
+      "given": "Yanjun",
+      "family": "Liu"
+    },
+    {
+      "given": "Runlian",
+      "family": "Deng"
+    },
+    {
+      "given": "Xiaoming",
+      "family": "Yan"
+    }
+  ],
+  "funder_list": [
+    "Major National Scientific Instrument Development Project",
+    "National Natural Science Foundation of China",
+    "Changjiang Scholars Program",
+    "State Key Laboratory of Fine Chemicals",
+    "State Key Laboratory of fine chemicals (Panjin) project"
+  ],
+  "issn": "0376-7388"
+}

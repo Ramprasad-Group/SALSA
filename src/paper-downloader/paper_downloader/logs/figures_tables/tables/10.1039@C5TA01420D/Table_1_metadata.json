@@ -1,0 +1,21 @@
+{
+  "label": "Table 1",
+  "caption": "Summary of the Ziegler\u2013Natta catalyst mediated copolymerization reaction between propylene, 11-bromo-1-undecene (M1) and crosslinkerp-(3-butenyl)styrene (M2)",
+  "notes": [
+    "General conditions: 0.4 g of TiCl3\u00b7AA, 5 mL of Et2AlCl, 100 mL of heptanes, and reaction temperature: 70 \u00b0C.",
+    "M1: 11-bromo-undecene and M2: p-(3-butenyl)styrene (BSt).",
+    "Comonomer content (mol%) in the co- and ter-polymers determined by 1H NMR at 110 \u00b0C in 1,1,2,2-tetrachloroethane-d2.",
+    "Weight-average molecular weights and polydispersity index were determined by GPC at 150 \u00b0C in 1,2,4-trichlorobenzene vs. narrow polystyrene standards.",
+    "Melting temperature and heat of fusion determined by DSC."
+  ],
+  "metadata": {
+    "row_count": 4,
+    "column_count": 12,
+    "has_merged_cells": true
+  },
+  "doi": "10.1039/C5TA01420D",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C5TA01420D/Table_1.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C5TA01420D",
+  "extraction_timestamp": "2025-11-10T18:23:58.212004",
+  "file_type": "table"
+}

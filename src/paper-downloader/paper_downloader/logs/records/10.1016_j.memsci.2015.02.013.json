@@ -1,0 +1,88 @@
+{
+  "DOI": "10.1016/j.memsci.2015.02.013",
+  "publisher": "Elsevier BV",
+  "journal": "Journal of Membrane Science",
+  "year": 2015,
+  "month": 5,
+  "day": 18,
+  "title": "Benzylmethyl-containing poly(arylene ether nitrile) as anion exchange membranes for alkaline fuel cells",
+  "citations": 66,
+  "reference_list": [
+    "10.1038/35104620",
+    "10.1016/j.apenergy.2010.09.030",
+    "10.1002/polb.20861",
+    "10.1016/j.ijhydene.2010.05.017",
+    "10.1016/j.jpowsour.2009.11.145",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1016/j.progpolymsci.2011.04.004",
+    "10.1016/j.ijhydene.2014.01.191",
+    "10.1016/j.memsci.2014.01.042",
+    "10.1039/c1jm10656b",
+    "10.1021/am301557w",
+    "10.1016/j.memsci.2012.11.016",
+    "10.1016/j.memsci.2008.09.037",
+    "10.1016/j.memsci.2013.04.059",
+    "10.1016/j.polymer.2014.04.003",
+    "10.1021/ma047572e",
+    "10.1016/j.memsci.2008.04.059",
+    "10.1021/ma400154t",
+    "10.1021/am500605e",
+    "10.1016/j.jpowsour.2009.06.085",
+    "10.1016/j.ijhydene.2011.04.131",
+    "10.1016/j.jpowsour.2010.02.036",
+    "10.1021/ma0623542",
+    "10.1021/ma802192y",
+    "10.1016/j.memsci.2004.06.026",
+    "10.1016/j.ijhydene.2013.01.197",
+    "10.1021/am5017599",
+    "10.1021/ma901538c",
+    "10.1021/ma202159d",
+    "10.1016/j.memsci.2010.02.068",
+    "10.1016/j.ssi.2013.03.019",
+    "10.1021/ma401620m",
+    "10.1016/j.ijhydene.2012.04.163",
+    "10.1016/j.ijhydene.2013.03.166",
+    "10.1021/ma901606z",
+    "10.1021/ja403671u",
+    "10.1021/ma9009017",
+    "10.1021/cm102957g",
+    "10.1021/am500022c",
+    "10.1016/j.jpowsour.2014.03.041"
+  ],
+  "author_list": [
+    {
+      "given": "Ao Nan",
+      "family": "Lai"
+    },
+    {
+      "given": "Li Sha",
+      "family": "Wang"
+    },
+    {
+      "given": "Chen Xiao",
+      "family": "Lin"
+    },
+    {
+      "given": "Yi Zhi",
+      "family": "Zhuo"
+    },
+    {
+      "given": "Qiu Gen",
+      "family": "Zhang"
+    },
+    {
+      "given": "Ai Mei",
+      "family": "Zhu"
+    },
+    {
+      "given": "Qing Lin",
+      "family": "Liu"
+    }
+  ],
+  "funder_list": [
+    "National Natural Science Foundation of China",
+    "Nature Science Foundation of Fujian Province of China",
+    "Priority Areas of Development in Doctoral Program of Higher Education"
+  ],
+  "issn": "0376-7388"
+}

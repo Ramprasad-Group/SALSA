@@ -1,0 +1,18 @@
+{
+  "label": "Table 1",
+  "caption": "Properties of the vinylic addition poly(norbornene) copolymers V-x.",
+  "notes": [
+    "The copolymerization reactions were run with Pd2(dba)3 (0.0075 mmol, 1.0 equiv.), PCy3 (0.030 mmol), Li[FABA] (0.030 mmol), and specific amounts of BrNB and VNB monomers in toluene (3.0 mL) at room temperature for 1 h under a N2 atmosphere.",
+    "The M_n and \u0110 were determined by GPC analysis."
+  ],
+  "metadata": {
+    "row_count": 3,
+    "column_count": 6,
+    "has_merged_cells": false
+  },
+  "doi": "10.1016/j.memsci.2023.121916",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2023.121916/Table_1.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2023.121916",
+  "extraction_timestamp": "2025-11-10T18:17:55.675649",
+  "file_type": "table"
+}

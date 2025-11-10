@@ -1,0 +1,18 @@
+{
+  "label": "Table 1",
+  "caption": "Reaction conditions and results of condensation polymerization",
+  "notes": [
+    "DABP, 5 mmol; DFBPS, 5 mmol; base, 10.5 mmol; solvent, 13 mL.",
+    "Polydispersity."
+  ],
+  "metadata": {
+    "row_count": 10,
+    "column_count": 6,
+    "has_merged_cells": false
+  },
+  "doi": "10.1016/j.memsci.2010.11.058",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_1.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+  "extraction_timestamp": "2025-11-10T18:13:12.370189",
+  "file_type": "table"
+}

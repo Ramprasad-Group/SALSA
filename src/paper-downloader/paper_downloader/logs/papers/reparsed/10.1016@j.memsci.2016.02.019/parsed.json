@@ -1,0 +1,222 @@
+{
+  "Journal": "Journal of Membrane Science",
+  "DOI": "10.1016/j.memsci.2016.02.019",
+  "Title": "Imidazolium-based organic–inorganic hybrid anion exchange membranes for fuel cell applications",
+  "Keywords": [
+    "Fuel cells",
+    "Ionic liquid",
+    "Anion exchange membrane",
+    "Alkaline stability",
+    "Hybrid membrane"
+  ],
+  "Sections": [
+    {
+      "type": "ce_section",
+      "name": "Introduction",
+      "content": [
+        "With the increasing demand for clean and efficient energy worldwide, fuel cell as an environmentally friendly power source and substitute for conventional fossil fuel processes, are attracting more and more attention [1]. Among several types of fuel cells, polymer electrolyte fuel cells using proton exchange membranes (PEMs) and alkaline anion exchange membranes (AEMs) as solid electrolytes, are being considered as renewable and portable energy devices due to their high energy conversion efficiency, environmental friendliness, and their flexibility for use in various kinds of electric vehicles . In the past decades, much effort has been devoted to developing PEMs for proton exchange membrane fuel cell (PEMFC) applications. Perfluorosulfonic acid membranes, represented by Nafion as the archetype, are most commonly used in PEMFCs due to their high proton conductivity and excellent chemical stability in acidic conditions. However, the exhaustible precious metal electrocatalysts required in PEMs (such as platinum) and the high cost of Nafion membranes are hindering the widespread commercialization of PEMFCs.",
+        "Replacing PEMs with AEMs is a solution to the problem of cost, in principle, because the use of abundant transition metal electrocatalysts (such as Ni, Co and Fe) is feasible in anion exchange membrane fuel cells (AEMFCs) with high pH AEMs as electrolytes . Furthermore, AEMFCs offer fuel flexibility, reduced fuel crossover, and enhanced reaction kinetics that may make these devices desirable in certain applications . Therefore, AEMs and AEMFC have attracted much attention in recent years. However, meeting the comprehensive requirements of high hydroxide anion conductivity, robust mechanical properties and good chemical stability in alkaline environment, not to mention robust device performance, is a key challenge for the application of AEMs in AEMFCs [9].",
+        "Recently, much research effort has been spent on developing high-performance AEM materials with quaternary ammonium cationic groups based on polysulfone [10], poly(arylene ether sulfone) , poly(arylene ether ketone) , poly(phenylene oxide) poly(fluorenyl ether ketone sulfone) and polypropylene [24]. It should be pointed out that the practical application of AEMs is strongly limited by their alkaline stability and mechanical properties. A growing effort is underway to develop AEM materials that simultaneously possess high hydroxide conductivity, good mechanical properties, and robust alkaline stability under the operating conditions of AEMFCs . However, most of these membranes were unstable in alkaline media especially at temperatures above 60 °C and at high KOH concentrations (above 1 M). Therefore, developing AEMs with high alkaline stability is still an urgent issue .",
+        "Most AEMs that have been reported were prepared by solution casting, and the treatment of hazardous organic solvents is a problem for large-scale production of membranes. Chemical cross-linking is a common but effective method for the preparation of AEMs, which could both suppress the water swelling and improve the mechanical strength of AEMs [40]. Beside quaternary ammonium cationic groups, guanidinium [41], phosphonium [42], benzimidazolium [43], metal-cation [44] and imidazolium based AEMs have been investigated. Imidazolium-based ionic liquids (ILs) are mostly room-temperature organic salts, have attracted much attention as electrolytes for various processes due to their excellent thermal stability, low volatility and high conductivity. The AEMs with imidazolium cations showed better stability in alkaline solution at elevated temperature compared with AEMs containing quaternary ammonium cationic groups [50]. However, the mechanical strength of AEMs must be enhanced.",
+        "In this paper, we propose a new type of cross-linked alkaline hybrid AEM based on imidazolium-based ILs, [VBIm][Br] (1-vinyl-3-butylimidazolium bromide) and [VPSIm][Cl] (1-vinyl-propyl-triethoxysilaneimidazolium chloride). In this investigation, [VPSIm][Cl] acts both as a monomer and cross-linker which resulted in the formation of an Si–O–Si inorganic network in the membranes. An Si–O–Si inorganic network phase was chosen because it can effectively resist water swelling of the AEMs, thus assuring good mechanical strength and lowering fuel crossover. Zhang [51] and Xu [52] have fabricated polysilsesquioxane-based AEMs and PPO/SiO_{2} hybrid AEMs with Si–O–Si inorganic network phase, respectively, and the membranes showed good alkaline stability and suitable for potential AEMFC applications. In the present work, it is expected that the cross-linked alkaline hybrid membrane will offer good mechanical strength, high hydroxide ion conductivity and excellent alkaline stability. The properties of the membranes, such as water uptake, swelling degree, ion exchange capability (IEC), hydroxide ion conductivity, thermal stability, mechanical properties and chemical stability in high pH solution were investigated."
+      ]
+    },
+    {
+      "type": "ce_section",
+      "name": "Experimental",
+      "content": [
+        {
+          "type": "ce_section",
+          "name": "Materials",
+          "content": [
+            "Styrene, acrylonitrile, N-vinylimidazole, N-butylbromide, ethylether, 3-chloropropyltriethoxysilane, pure para divinylbenzene (DVB), benzoin ethylether, ethyl acetate, tetraethyl orthosilicate (TEOS), potassium hydroxide, and sodium hydroxide were used as purchased. All of the vinyl monomers were made inhibitor-free by passing the liquid through a column filled with basic Al_{2}O_{3} to remove the polymerization inhibitor. Distilled deionized water was used for all experiments."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Synthesis of 1-vinyl-3-butylimidazolium bromide ([VBIm][br])",
+          "content": [
+            "[VBIm][Br] was synthesized as shown in Scheme 1. N-vinylimidazole (9.41 g, 0.1 mol) and an equivalent molar amount of n-butylbromide (13.7 g, 0.1 mol) were added into a 100 mL round bottomed flask equipped with a mechanical stirrer and a nitrogen inlet/outlet. The mixture was stirred at room temperature under nitrogen atmosphere for 48 h. The resultant viscous oil was washed with ethyl acetate three times, and dried in dynamic vacuum at 80 °C for 24 h before use. [VBIm][Br] was obtained as a yellow transparent viscous oil (17.10 g, 74% yield). ^{1}H NMR (400 MHz, DMSO) δ 9.47 (s, 1H, N–CH–N), 8.19 (s, 1H, N–CH=C), 7.93 (s, 1H, C=CH–N), 7.28 (dd, J=15.6, 8.7 Hz, 1H, N–CH=C), 5.95 (dd, J=15.6, 2.3 Hz, 1H, C=HCH), 5.43 (dd, J=8.7, 2.3 Hz, 1H, C=HCH), 4.20 (t, J=7.2 Hz, 2H, N–CH_{2}–C), 2.10 −1.65 (m, 2H, C–CH_{2}–C), 1.55–1.12 (m, 2H, C–CH_{2}–C), 0.92 (t, J=7.4 Hz, 3H, C–CH_{3})."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Synthesis of 1-vinyl-propyltriethoxysilane-imidazolium chloride ([VPSIm][cl])",
+          "content": [
+            "As shown in Scheme 1, [VPSIm][Cl] was synthesized similar to [VBIm][Br]. N-vinylimidazole (9.41 g, 0.1 mol), an equivalent molar amount of 3-chloropropyltriethoxysilane (24.80 g, 0.1 mol), and benzoquinone (0.171 g, 0.5 wt% of the monomer) were added to a 100 mL round bottomed flask equipped with a mechanical stirrer and a nitrogen inlet/outlet. The mixture was stirred at 65 °C under nitrogen atmosphere for 48 h. The resultant viscous oil was washed with ethylether three times and then dried under dynamic vacuum at 80 °C for 24 h before use. [VPSIm][Cl] was obtained as a yellow transparent viscous liquid (25.31 g, 76% yield).^{1}H NMR (400 MHz, DMSO): δ 9.64 (s, 1H, N–CH–N), 7.93 (s, 1H, N–CH=C), 7.59 (s, 1H, C=CH–N), 7.17 (dd, J=15.8, 8.9 Hz, 1H, N–CH–C), 5.48 (dd, J=15.9, 1.1 Hz, 1H, C=HCH), 4.85 (dd, J=8.9, 1.0 Hz, 1H, C=HCH), 4.16 (t, J=7.2 Hz, 2H, N–CH_{2}–C), 3.77–3.68 (m, 6H, O–CH_{2}–C), 1.96–1.77 (m, 2H, C–CH_{2}–C), 1.17–1.08 (m, 9H, C–CH_{3}), 0.59–0.49 (m, 2 H, C–CH_{2}–Si)."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Preparation of alkaline IL-based membranes",
+          "content": [
+            "A mixture of styrene/acrylonitrile (1:3 weight ratio), [VBIm][Br] (33.3 wt%), [VPSIm][Cl] (0–25 wt%), divinylbenzene (2 wt%, based on the weight of monomer), and 1 wt% of benzoin isobutyl ether was added into a glass bottle. The mixture was stirred and ultrasonicated to obtain a homogeneous solution. The resultant mixture was then cast into a glass mold and photo-cross-linked by irradiation with 250 nm UV light 30 min. The resultant IL-based membranes were immersed in TEOS at room temperature for 2 h, and then immersed in N_{2}-saturated 2 M KOH solution at 60 °C for 24 h. The converted membranes then were immersed in N_{2}-saturated deionized water and washed with deionized water until the pH of residual water was neutral."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Characterization",
+          "content": [
+            "^{1}H NMR spectra were recorded on a AVANCE III 400 MHz spectrometer. Fourier transform infrared (FT-IR) spectra of the polymers were recorded on a Nicolet Avatar 370 spectrometer in the range of 4000–400 cm^{−1.} Thermal analysis was carried out by Netzsch 209 F3 thermogravimetric analyzer (TGA), and samples were heated from 30 °C to 650 °C at a heating rate of 10 °C min^{−1} under nitrogen flow. The tensile properties of the membranes were measured using an Instron Model 5KN/WDT-5 device at 25 °C at a crosshead speed of 5 mm min^{−} ^{1}."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Hydroxide conductivity",
+          "content": [
+            "The resistance of the membrane samples was measured over the frequency range from 0.1 Hz to 1 MHz by four-point probe alternating current (AC) impedance spectroscopy, using an electrode system connected with an electrochemical workstation (Zahner IM6 EX). All the samples were fully hydrated in N_{2}-saturated deionized water for at least 24 h prior to the conductivity measurement. Conductivity measurements under fully hydrated conditions were conducted in a chamber filled with N_{2}-saturated deionized water. All the samples were equilibrated for at least 30 min at a given temperature. Repeated measurements were obtained at 10-min intervals, until no change in conductivity was observed. The ionic conductivity of a given membrane (σ, expressed in units of S cm^{−} ^{1}) was calculated from:where l is the distance between two stainless steel electrodes (cm), A the cross-sectional area of the membrane (cm^{2}) obtained from the membrane thickness multiplied by its width, and R the membrane resistance value from the AC impedance data (Ω)."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Water uptake and swelling degree",
+          "content": [
+            "The membrane samples were soaked in N_{2}-saturated deionized water at room temperature for 24 h. The hydrated polymer membranes were removed from the vessel and the excess water on the surface was eliminated by wiping with a tissue paper and the sample was weighed immediately (denoted by the variable W _{w}). The wet membrane was then dried under vacuum at a fixed temperature of 80 °C until a constant dry weight was obtained (W _{d}). The water uptake W was calculated with the following equation:where W _{d} and W _{w} are the mass of the dry and water-swollen samples, respectively.",
+            "The swelling degree (SW) was characterized by the linear expansion ratio, which was determined using the difference between wet and dry dimensions of a membrane sample (3 cm in length and 1 cm in width). The calculation was based on the following equation:where X _{wet} and X _{dry} are the lengths of the wet and dry membranes, respectively."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "ion exchange capacity (IEC)",
+          "content": [
+            "The IECs were determined via back titration. The AEMs were immersed in 100 mL of 0.01 M HCl standard solution for 24 h. The solutions were then titrated with a standardized NaOH solution using phenolphthalein as an indicator. The IEC value was calculated using the expression:where V _{0},_{NaOH} and V x,NaOH are the volume of the NaOH consumed in the titration without and with membranes, respectively, C _{NaOH} is the molar concentration of the NaOH, and M_{dry} is the mass of the dry membranes. Three replicates were conducted for each sample and averaged."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Membrane stability in alkaline solution",
+          "content": [
+            "The stability of the membranes in alkaline solution was examined by immersing the membrane samples in N_{2}-saturated 2 M KOH solution at 80 °C. The hydroxide ion conductivity of the treated membranes was measured at 30 °C at a certain time after the complete removal of residual KOH."
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ce_section",
+      "name": "Results and discussion",
+      "content": [
+        {
+          "type": "ce_section",
+          "name": "Preparation of alkaline hybrid anion exchange membranes",
+          "content": [
+            "The imidazolium-based organic–inorganic hybrid alkaline AEMs were synthesized as shown in Scheme 2. A homogeneous solution containing [VBIm][Br], styrene/acrylonitrile, [VPSIm][Cl] (5–25 wt %), and DVB was photo-cross-linked by irradiation with UV light. The resultant copolymer membranes were immersed in TEOS at room temperature for 2 h, the excess TEOS on the surface was eliminated by washing with water, and then immersed in N_{2}-saturated 1 M KOH solution at 60 °C for 24 h to convert the membrane from Br^{−} and Cl^{−} to OH^{−} form. The produced membranes are denoted as Membrane-x, the subscript x indicates the weight ratio of [VPSIm][Cl] in the membrane. All the membranes are transparent and flexible as shown in Fig. 1."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "FT-IR spectra",
+          "content": [
+            "The chemical structure of imidazolium-based organic–inorganic hybrid alkaline AEMs was confirmed by FT-IR spectroscopy measurements. Fig. 2 shows the FT-IR spectra of Membrane-x samples. For all the membrane samples, the broad absorption band at approximately 3348 and 2230 cm^{−1} can be attributed to the stretching vibrations of –OH and –C≡N groups, respectively. The absorption bands appearing at 2930 cm^{−1} are assigned to the stretching vibrations of methylene and methyl. The peaks at 1450–1600 cm^{−1} confirm the existence of the benzene ring. Absorption bands at 1582 cm^{−1} and 700 cm^{−1} arise from the vibrational mode of the imidazolium cations. The absorption bands at 1125 cm^{−1} were observed due to Si–O–Si stretching. The content of the Si–O–Si network increases with increasing [VPSIm][Cl] form Membrane-5 to Membrane-25. This trend was confirmed by a gradual increase in the intensity of Si–O–Si stretching absorption at 1125 cm^{−1}."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "IEC, water uptake and swelling degree",
+          "content": [
+            "The water uptake of AEMs is strongly related to their conductivity and mechanical properties. The absorbed water can facilitate the transport of ions to maintain high ionic conductivity of the materials. However, excessive water absorption may lead to the deterioration of the AEMs’ mechanical properties. An ideal AEM should exhibit proper water uptake, high conductivity, and excellent mechanical properties. Table 1 summarizes the water uptake, swelling degree, IEC values and conductivity of the AEMs. As listed in Table 1, the water uptake of the membranes decreased upon increasing content of [VPSIm][Cl] because of the formation of the Si–O–Si network in the hybrid membranes. The water uptake for Membrane-0 is approximately 206%, while Membrane-25 shows a much lower water uptake of 137%. Compared with the PSANx-[DAMIm][OH]y membranes in our previous paper [53], the hybrid membranes shows much higher water uptake resulted by the much more ionic liquid content in the hybrid membranes. Swelling degree is also an important parameter in determining the performance of the membranes. As expected, the swelling degree of the hybrid membranes decreased with an increasing [VPSIm][Cl] content, with values of 55%, 49%, 47%, 43%, 42% and 39%, respectively, as shown in Table 1. The IEC value determines, in part, the water uptake, swelling degree and conductivity of the AEMs. In the present work, AEMs with different IECs were prepared by adjusting the ratio of [VPSIm][Cl] in the membranes, and the IEC values of the hybrid AEMs obtained by titration are listed in Table 1. The ionizable groups of the composite membranes were provided by imidazolium-based ionic liquids and it is not surprising that the titrated IEC values of the membranes increased from 1.58 to 2.56 meq g^{−1} upon increasing the [VPSIm][Cl] content from 0 to 25 wt%. In general, the higher IEC values, the higher water uptake and swelling degree. However, in the present work, when the content of [VPSIm][Cl] increased from 0% to 25% in the membranes, the water uptake decreased from 206% to 137%, and swelling degree decreased from 55% to 39%. This phenomenon was observed because of the formation of the Si–O–Si inorganic network in the hybrid membranes which results in less water uptake."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Thermal analysis",
+          "content": [
+            "The thermal stability of the membrane samples was evaluated using TGA under a nitrogen flow at a heating rate of 10 °C min^{−1} from room temperature to 650 °C. Fig. 3 shows typical TGA curves of the hybrid membranes containing a range of [VPSIm][Cl] contents. All of the membranes showed a similar degradation tendency. Four consecutive mass loss steps can be seen in the TGA thermograms. The first weight loss stage of less than 7% occurred from room temperature to 200 °C, which was induced by the evaporation of absorbed water from the sample. The second weight loss stage appeared from 200 °C to 300 °C, and could be attributed to the thermal degradation of nitrile and phenyl groups on the side chain of copolymer. The third degradation from 300 to 400 is ascribed to the decomposition of copolymer's imidazole groups. The fourth weight loss stage occurred above 550 °C and was caused by the decomposition of the polymer's backbone. Compared with Membrane-0 without [VPSIm][Cl], the composite membranes absorbed less water, and had less weight loss above 400 °C due to the formation of the Si–O–Si inorganic network in the hybrid membranes. All the membranes exhibited weight losses of less than 7% below 200 °C, confirming the good thermal stability of the composite membranes, far beyond the range of AEMFC applications."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Mechanical properties",
+          "content": [
+            "The mechanical properties of the Membrane-0 and hybrid membranes were measured using a universal testing machine with a crosshead speed of 5 mm min^{−1} at room temperature. The measured tensile strength, tensile modulus and elongation at break values are collected in Table 2. The tensile strength of all the membranes was in the range of 11.7–28.0 MPa, with a tensile modulus of 256–959 MPa, and elongation at break values of 6.4–14.5%. Compared with Membrane-0 without [VPSIm][Cl], the hybrid membranes showed higher tensile strength and tensile modulus but lower elongation at break due to the formation of the Si–O–Si inorganic network in the hybrid membranes. When the content of [VPSIm][Cl] was increased from 5 wt% to 25 wt%, the tensile modulus and tensile strength of the membranes was increased from 393.6 MPa and 13.3 MPa to 959.3 MPa and 28.0 MPa, respectively, which significantly increased the membrane mechanical properties."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Conductivity",
+          "content": [
+            "The performance of a fuel cell usually depends on the AEM's conductivity. The effect of the [VPSIm][Cl] content on the ionic conductivity of AEMs was also studied in the present work, and the ion conductivities of hybrid membranes with various [VPSIm][Cl] contents were measured. Fig. 4 shows the temperature dependence of the conductivity of Membrane-0 and the hybrid membranes. As expected, the conductivity increased as the temperature increased for all AEMs. This phenomenon is mainly due to the faster migration of ions and higher diffusivity of water and ions with increasing temperature. Furthermore, the polymer matrix will be more flexible and more water will be absorbed by the AEMs at a higher temperature, which results in a more swollen membrane structure and wider ion-conducting channels, leading to a higher conductivity. It can be clearly seen that the conductivities of the hybrid AEMs increased with the introduction of [VPSIm][Cl] at first. For instance, the conductivity of Membrane-0 is 3.58×10^{−2} S cm^{−1} at 30 °C, while Membrane-5 showed a conductivity of 4.10×10^{−2} S cm^{−1} under the same conditions. This increase is because of more ionizable groups resulting from the introduction of [VPSIm][Cl] in the hybrid membrane. However, the excess introduction of [VPSIm][Cl] can result in a decrease of the conductivity. This is probably due to the formation of the Si–O–Si inorganic network in the hybrid membranes that can impede ion transport. Though the IEC values increase with increasing [VPSIm][Cl] content in the hybrid membranes, the formation of Si–O–Si inorganic network results in less water uptake and lower swelling degree which lead to a lower conductivity. Among all the samples, Membrane-5 shows the highest hydroxide ion conductivity of 9.05×10^{−2} S cm^{−1} at 90 °C which is a desirable value for operation of a membrane in an AEMFC.",
+            "The conductivity of AEMs can be used for the estimation of ion transport activation energy (E _{a}). Fig. 5 displays the plots of ln(σ) vs 1000/T (T is the absolute temperature) for the membranes, and the E _{a} of these hybrid membranes were calculated using the following equation:where b is the slope of the regressed linear ln(σ) vs 1000/T plots, and R is the gas constant (8.314 J (mol K)^{−1}). The E _{a} obtained from the slope of the line is also presented in Fig. 5, and ranged from 10.44 to 12.17 kJ mol^{−1}. It can be seen that the E _{a} values are strongly related to the IEC values. The content of ionizable groups increased with the increasing content [VPSIm][Cl] in the hybrid AEMs, while a reverse order was observed for the activation energy. This phenomenon also can be found in other ionic liqiud based AEMs reported by the previous papers . The E _{a} values of all the hybrid membranes were lower than that of Membrane-0 without [VPSIm][Cl], showing that proton transfer needs less energy in the hybrid membrane due to the more ionizable groups resulting from the addition of [VPSIm][Cl]."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Alkaline stability",
+          "content": [
+            "The chemical stability of alkaline anion exchange membranes is recognized as a key factor that affects their performance in devices, especially at high pH and elevated temperatures. The long-term stability of membranes was evaluated by immersing the membrane samples in 2 M KOH aqueous solution at 60 °C and 80 °C for various times. The changes in hydroxide ion conductivity of the tested membranes were measured after the free KOH on the surface of membranes was rinsed with water. Fig. 6 shows the conductivity of Membrane-0 without [VPSIm][Cl] and other hybrid membranes after treatment with 2 M KOH solution at 60 °C (A) and 80 °C (B). The Membrane-0 showed an initial conductivity of 3.58×10^{−2} S cm^{−1,} however, its conductivity decreased gradually with time, and the membrane was broken into pieces after 15 and 12 days for 60 °C and 80 °C respectively. Degradations of the hybrid membranes can be observed in high temperature, and propably follow the ring-opening degradation mechanism which proposed by Yan and Henkensmeier . It is worth noting that all the hybrid membranes retained approximately 80% of their initial conductivity after being treated in a 2 M KOH solution at 80 °C for 12 days and at 60 °C for 20 days. All the hybrid membranes retained their shape and flexibility during the alkaline stability test time in KOH solution. The IEC values of the membranes showed a similar trend as the conductivity before and after the test, and there was no obviously weight loss (less than 5 wt%) can be observed after being treated in a 2 M KOH solution at 60 °C for 20 days (Membrane-0 broke into pieces), which further confirms the excellent alkaline stability of the hybrid membranes at 60 °C, but it declined at 80 °C in 2 M KOH solution. Organic-inorganic hybrid AEMs with an Si–O–Si network are reasonably stable under alkaline condition as was observed in previous reports . Besides, it has been reported that an electrode containing a Si–O–Si inorganic network structure can function properly in alkaline condition [55], and the hydroxide ions can induce Si–O–Si rearrangement in the inorganic network structure, which ensures that the structure of polymer is not destroyed [56]. It is assumed that the alkaline stability of hybrid membranes was enhanced probably due to the robust structure formed in the hybrid membranes which protected the imidazolium cations against the hydroxide attack [57]."
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ce_section",
+      "name": "Conclusions",
+      "content": [
+        "A series of hybrid anion exchange membranes with different [VPSIm][Cl] contents were designed and prepared through irradiation with ultraviolet light. The resultant hybrid membranes had good thermal stability and mechanical properties. The water uptake and swelling degree of the hybrid membranes decreased with an increase in the [VPSIm][Cl] content due to the formation of an Si–O–Si inorganic network in the membranes. The conductivity of the hybrid membranes increased with the initial introduction of [VPSIm][Cl] due to the higher IEC values of the resulting materials, however, the conductivity decreased with a further excess addition of [VPSIm][Cl] due to the lower water uptake of the membranes with too much Si–O–Si network formation. All the membranes showed conductivity up to approximately 1×10^{−2} S cm^{−1}, and Membrane-5 showed a conductivity of 4.10×10^{−2} S cm^{−1} at 30 °C. Compared with Membrane-0 without [VPSIm][Cl], it is worth noting that the hybrid membranes showed a higher alkaline stability probably due to the reinforcing structure formed in the hybrid membranes which resulted from the Si–O–Si inorganic network."
+      ]
+    },
+    {
+      "type": "ce_bibliography",
+      "name": "References",
+      "content": [
+        "[1] M.Z. Jacobson W.G. Colella D.M. Golden Cleaning the air and improving health with hydrogen fuel-cell vehicles Science 308 2005 1901 1905",
+        "[2] V. Di Noto Negro E.J.Y. Sanchez C. Iojoiu Structure-relaxation interplay of a new nanostructured membrane based on tetraethylammonium trifluoromethanesulfonate ionic liquid and neutralized nafion 117 for high-temperature fuel cells J. Am. Chem. Soc. 132 2010 2183 2195",
+        "[3] G. He Z. Li J. Zhao S. Wang H. Wu M.D. Guiver Z. Jiang Nanostructured ion-exchange membranes for fuel cells: recent advances and perspectives Adv. Mater. 27 2015 5280 5295",
+        "[4] J.R. Varcoe R.C.T. Slade Prospects for alkaline anion-exchange membranes in low temperature Fuel Cells Fuel Cells 5 2005 187 200",
+        "[5] S. Lu J. Pan A. Huang L. Zhuang J. Lu Alkaline polymer electrolyte fuel cells completely free from noble metal catalysts Proc. Natl. Acad. Sci. USA 105 2008 20611 20614",
+        "[6] E.H. Yu X. Wang U. Krewer L. Li K. Scott Direct oxidation alkaline fuel cells: from materials to systems Energy Environ. Sci. 5 2012 5668 5680",
+        "[7] M.A. Hickner A.M. Herring E.B. Coughlin Anion exchange membranes: current status and moving forward J. Polym. Sci. Part B: Polym. Phys. 51 2013 1727 1735",
+        "[8] J. Sanabria-Chinchilla K. Asazawa T. Sakamoto K. Yamada H. Tanaka P. Strasser Noble metal-free hydrazine fuel cell catalysts: EPOC effect in competing chemical and electrochemical reaction pathways J. Am. Chem. Soc. 133 2011 5425 5431",
+        "[9] T.S. Olson S. Pylypenko P. Atanassov K. Asazawa K. Yamada H. Tanaka Anion-exchange membrane fuel cells: dual-site mechanism of oxygen reduction reaction in alkaline media on cobalt-polypyrrole electrocatalysts J. Phys. Chem. C 114 2010 5049 5059",
+        "[10] G.C. Abuin E.A. Franceschini P. Nonjola M.K. Mathe M. Modibedi H.R. Corti A high selectivity quaternized polysulfone membrane for alkaline direct methanol fuel cells J. Power Sources 279 2015 450 459",
+        "[11] Y. Wang J. Qiao R. Baker J. Zhang Alkaline polymer electrolyte membranes for fuel cell applications Chem. Soc. Rev. 42 2013 5768 5787",
+        "[12] X. Li Y. Yu Y. Meng Novel quaternized poly(arylene ether sulfone)/nano-ZrO2 composite anion exchange membranes for alkaline fuel cells ACS Appl. Mater. Interfaces 5 2013 1414 1422",
+        "[13] X. Li Y. Yu Q. Liu Y. Meng Synthesis and properties of anion conductive multiblock copolymers containing tetraphenyl methane moieties for fuel cell application J. Membr. Sci. 436 2013 202 212",
+        "[14] X. Li Q. Liu Y. Yu Y. Meng Quaternized poly(arylene ether) ionomers containing triphenyl methane groups for alkaline anion exchange membranes J. Mater. Chem. A 1 2013 4324 4335",
+        "[15] X. Li Y. Yu Q. Liu Y. Meng Synthesis and properties of anion conductive ionomers containing tetraphenyl methane moieties ACS Appl. Mater. Interfaces 4 2012 3627 3635",
+        "[16] C.H. Zhao Y. Gong Q.L. Liu Q. Zhang A. Zhu Self-crosslinked anion exchange membranes by bromination of benzylmethyl-containing poly(sulfone) s for direct methanol fuel cells Int. J. Hydrog. Energy 37 2012 11383 11393",
+        "[17] J. Zhou M. Ünlü I. Anestis-Richard P.A. Kohl Crosslinked, epoxy-based anion conductive membranes for alkaline membrane fuel cells J. Membr. Sci. 350 2010 286 292",
+        "[18] G.C. Abuin P. Nonjola E.A. Franceschini F.H. Izraelevitch M.K. Mathe H.R. Corti Characterization of an anionic-exchange membranes for direct methanol alkaline fuel cells Int. J. Hydrog. Energy 35 2010 5849 5854",
+        "[19] Z. Liu X.B. Li K.Z. Shen P.J. Feng Y.N. Zhang X. Xu W. Hu Z.H. Jiang B.J. Liu M.D. Guiver Naphthalene-based poly(arylene ether ketone) anion exchange membranes J. Mater. Chem. A 1 2013 6481 6488",
+        "[20] W. Ma C. Zhao H. Lin G. Zhang H. Na Poly(aryl ether ketone)s with bromomethyl groups: synthesis and quaternary amination J. Appl. Polym. Sci. 120 2011 3477 3483",
+        "[21] N.T. Rebeck Y. Li D.M. Knauss Poly(phenylene oxide) copolymer anion exchange membranes J. Polym. Sci. Part B: Polym. Phys. 51 2013 1770 1778",
+        "[22] X. Lin J.R. Varcoe S.D. Poynton X. Liang A.L. Ong J. Ran Y. Li T. Xu Alkaline polymer electrolytes containing pendant dimethylimidazolium groups for alkaline membrane fuel cells J. Mater. Chem. A 1 2013 7262 7269",
+        "[23] D. Chen M.A. Hickner Degradation of imidazolium-and quaternary ammonium-functionalized poly(fluorenyl ether ketone sulfone) anion exchange membranes ACS Appl. Mater. Interfaces 4 2012 5775 5781",
+        "[24] M. Zhang J. Liu Y. Wang L. An M.D. Guiver N. Li Highly stable anion exchange membranes based on quaternized polypropylene J. Mater. Chem. 3 2015 12284 12296",
+        "[25] G. Wang Y. Weng J. Zhao D. Chu D. Xie R. Chen Developing a novel alkaline anion exchange membrane derived from poly(ether‐imide) for improved ionic conductivity Polym. Adv. Technol. 21 2010 554 560",
+        "[26] H.Y. Hou G.Q. Sun R.H. He Z.M. Wu B.Y. Sun Alkali doped polybenzimidazole membrane for high performance alkaline direct ethanol fuel cell J. Power Sources 182 2008 95 99",
+        "[27] G.M. Wu S.J. Lin C.C. Yang Preparation and characterization of PVA/PAA membranes for solid polymer electrolytes J. Membr. Sci. 275 2006 127 133",
+        "[28] J. Han H. Peng J. Pan L. Wei G. Li C. Chen L. Xiao J. Lu L. Zhuang Highly stable alkaline polymer electrolyte based on a poly(ether ether ketone) backbone ACS Appl. Mater. Interfaces 5 2013 13405 13411",
+        "[29] Y. Wu J. Luo L. Yao C. Wu F. Mao T. Xu PVA/SiO2 anion exchange hybrid membranes from multisilicon copolymers with two types of molecular weights J. Membr. Sci. 399 2012 16 27",
+        "[30] C.C. Yang S.S. Chiu S.C. Kuo T. Liou Fabrication of anion-exchange composite membranes for alkaline direct methanol fuel cells J. Power Sources 199 2012 37 45",
+        "[31] J. Yan H.D. Moore M.R. Hibbs M.A. Hickner Synthesis and structure–property relationships of poly(sulfone) s for anion exchange membranes J. Polym. Sci. Part B: Polym. Phys. 51 2013 1790 1798",
+        "[32] M. Tanaka M. Koike K. Miyatake M. Watanabe Synthesis and properties of anion conductive ionomers containing fluorenyl groups for alkaline fuel cell applications Polym. Chem. 2 2011 99 106",
+        "[33] S. Gu R. Cai Y.S. Yan Self-crosslinking for dimensionally stable and solvent-resistant quaternary phosphonium based hydroxide exchange membranes Chem. Commun. 47 2011 2856 2858",
+        "[34] X.L. Lin L. Wu Y.B. Liu A.L. Ong S.D. Poynton J.R. Varcoe T.W. Xu Alkali resistant and conductive guanidinium-based anion-exchange membranes for alkaline polymer electrolyte fuel cells J. Power Sources 217 2012 373 380",
+        "[35] D. Stoica L. Ogier L. Akrour F. Alloin J.-F. Fauvarque Anionic membrane based on polyepichlorhydrin matrix for alkaline fuel cell: synthesis Electrochim. Acta 53 2007 1596 1603",
+        "[36] L. Wu T. Xu D. Wu X. Zheng Preparation and characterization of CPPO/BPPO blend membranes for potential application in alkaline direct methanol fuel cell J. Membr. Sci. 310 2008 577 585",
+        "[37] H. Herman R.C.T. Slade J.R. Varcoe The radiation-grafting of vinylbenzyl chloride onto poly(hexafluoropropylene-co-tetrafluoroethylene) films with subsequent conversion to alkaline anion-exchange membranes: optimisation of the experimental conditions and characterisation J. Membr. Sci. 218 2003 147 163",
+        "[38] E. Komkova D. Stamatialis H. Strathmann M. Wessling Anion-exchange membranes containing diamines: preparation and stability in alkaline solution J. Membr. Sci. 244 2004 25 34",
+        "[39] B. Lin H. Dong Y. Li Z. Si F. Gu F. Yan Alkaline stable C2-substituted imidazolium-based anion-exchange membranes Chem. Mater. 25 2013 1858 1867",
+        "[40] J.M. Yang H.Z. Wang C.C. Yang Modification and characterization of semi-crystalline poly(vinyl alcohol) with interpenetrating poly(acrylic acid) by UV radiation method for alkaline solid polymer electrolytes membrane J. Membr. Sci. 322 2008 74 80",
+        "[41] J. Wang S. Li S. Zhang Novel hydroxide-conducting polyelectrolyte composed of an poly(arylene ether sulfone) containing pendant quaternary guanidinium groups for alkaline fuel cell applications Macromolecules 43 2010 3890 3896",
+        "[42] S. Gu R. Cai T. Luo Z. Chen M. Sun Y. Liu G. He Y. Yan A soluble and highly conductive ionomer for high-performance hydroxide exchange membrane fuel cells Angew. Chem. Int. Ed. 48 2009 6499 6502",
+        "[43] O.D. Thomas K. Soo T.J. Peckham M.P. Kulkarni S. Holdcroft A stable hydroxide-conducting polymer J. Am. Chem. Soc. 134 2012 10753 10756",
+        "[44] Y. Zha M.L. Disabb-Miller Z.D. Johnson M.A. Hickner G.N. Tew Metal-cation-based anion exchange membranes J. Am. Chem. Soc. 134 2012 4493 4496",
+        "[45] B. Lin L. Qiu J. Lu F. Yan Cross-linked alkaline ionic liquid-based polymer electrolytes for alkaline fuel cell applications Chem. Mater. 22 2010 6718 6725",
+        "[46] K. Yoshimura H. Koshikawa T. Yamaki H. Shishitani K. Yamamoto S. Yamaguchi H. Tanaka Y. Maekawa Imidazolium cation based anion-conducting electrolyte membranes prepared by radiation induced grafting for direct hydrazine hydrate fuel cells J. Electrochem. Soc. 161 2014 889 F893",
+        "[47] N. Li Q. Zhang C. Wang Y.M. Lee M.D. Guiver Phenyltrimethylammonium functionalized polysulfoneanion exchange membranes Macromolecules 45 2012 2411 2419",
+        "[48] L. Heng S.L. Hu B. Lin Y. Hu Quaternized polybenzimidazoles with imidazolium cation moieties for anion exchange membrane fuel cells J. Membr. Sci. 460 2014 160 170",
+        "[49] J. Fang M. Lyu X. Wang Y. Wu J. Zhao Synthesis and performance of novel anion exchange membranes based on imidazolium ionic liquids for alkaline fuel cellapplications J. Power Sources 284 2015 517 523",
+        "[50] B. Qiu B. Lin L. Qiu F. Yan Alkaline imidazolium- and quaternary ammonium-functionalized anion exchange membranes for alkaline fuel cell applications J. Mater. Chem. 22 2012 1040 1045",
+        "[51] C. Qu H. Zhang F. Zhang B. Liu A high-performance anion exchange membrane based on bi-guanidinium bridged polysilsesquioxane for alkaline fuel cell application J. Mater. Chem. 22 2012 8203 8207",
+        "[52] Y.H. Wu C.M. Wu T.W. Xu X.C. Lin Y.X. Fu Novel silica/poly(2,6-dimethyl-1,4-phenylene oxide) hybrid anion-exchange membranes for alkaline fuel cells: effect of heat treatment J. Membr. Sci. 338 2009 51 60",
+        "[53] B. Lin F. Chu Y. Ren B. Jia N. Yuan H. Shang T. Feng Z. Zhu J. Ding Alkaline stable C2-substituted imidazolium-based cross-linked anion exchange membranes for alkaline fuel cell applications J. Power Sources 266 2014 186 192",
+        "[54] D. Henkensmeier H. Cho H.-J. Kim C.N. Kirchner J. Leppin A. Dyck J.H. Jang E. Cho S.-W. Nam T.-H. Lim Polybenzimidazolium hydroxides – structure, stability and degradation Polym. Degrad. Stab. 97 2012 264 272",
+        "[55] J. Chen T. Zhang C. Gao Y. Zhao Modifiying glassy carbon electrode with ferrocene-bridged polysilsesquioxanes J. Sol–Gel Sci. Technol. 55 2010 293 298",
+        "[56] G. Cerveau R.J.P. Corriu E. Framery Sol–gel chemistry: evidence of redistributionat silicon atom induced by NaOH as catalystduring ageing C. R. Acad. Sci. Ser. IIC: Chem. 4 2001 79 83",
+        "[57] F. Zhang H. Zhang C. Qu Imidazolium functionalized polysulfone anion exchange membrane for fuel cell application J. Mater. Chem. 21 2011 12744 12752"
+      ]
+    }
+  ],
+  "Abstract": "Imidazolium-based ionic liquids and imidazolium-based organic–inorganic hybrid alkaline anion exchange membranes (AEMs) are synthesized and investigated in the present work. The imidazolium-based hybrid AEMs are prepared via in situ cross-linking of styrene, acrylonitrile, 1-vinyl-propyl-triethoxysilaneimidazolium chloride ([VPSIm][Cl]) and 1-vinyl-3-butylimidazolium bromide ([VBIm][Br]), followed by anion exchange with hydroxide ions. The water uptake and swelling degree of the hybrid AEMs decrease with increasing [VPSIm][Cl] content due to the formation of an Si–O–Si inorganic network in the membranes. The resulting organic–inorganic hybrid AEMs show good thermal stability, excellent mechanical properties and high conductivity (above 10^{−2} S cm^{−1} at room temperature in liquid water). Compared with samples without the addition of [VPSIm][Cl], the hybrid membranes show much higher alkaline stability, and the hybrid AEMs displayed excellent chemical stability up to 480 h in 2 M KOH solution at 60 °C."
+}

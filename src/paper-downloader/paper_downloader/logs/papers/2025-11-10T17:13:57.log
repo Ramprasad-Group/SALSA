@@ -1,0 +1,65 @@
+2025-11-10 17:13:57,084 Running in NO-DB mode (writing status to local JSONL/CSV logs)
+2025-11-10 17:13:57,088 [NO-DB] Loaded input_csv with 31 rows; columns=['pi_id', 'pid', 'doi', 'title', 'pub_year', 'download_status', 'publisher']
+2025-11-10 17:13:57,088 Started downloading papers at 2025-11-10T17:13:57
+2025-11-10 17:13:57,088 Sample size 31
+2025-11-10 17:13:57,088 Number of documents to process: 31
+2025-11-10 17:13:57,088 Downloading DOI: 10.1016/j.electacta.2015.12.181
+2025-11-10 17:13:59,091 Downloading DOI: 10.1016/j.memsci.2010.11.058
+2025-11-10 17:14:01,094 Downloading DOI: 10.1016/j.memsci.2015.02.013
+2025-11-10 17:14:03,096 Downloading DOI: 10.1016/j.memsci.2015.05.060
+2025-11-10 17:14:05,099 Downloading DOI: 10.1016/j.memsci.2015.10.005
+2025-11-10 17:14:07,101 Downloading DOI: 10.1016/j.memsci.2016.02.019
+2025-11-10 17:14:09,104 Downloading DOI: 10.1016/j.memsci.2016.04.054
+2025-11-10 17:14:11,106 Downloading DOI: 10.1016/j.memsci.2016.05.058
+2025-11-10 17:14:13,109 Downloading DOI: 10.1016/j.memsci.2016.07.006
+2025-11-10 17:14:15,111 Downloading DOI: 10.1016/j.memsci.2017.07.037
+2025-11-10 17:14:17,113 Downloading DOI: 10.1016/j.memsci.2019.117314
+2025-11-10 17:14:19,116 Downloading DOI: 10.1016/j.memsci.2023.121916
+2025-11-10 17:14:21,118 Downloading DOI: 10.1021/acs.chemmater.5b02557
+2025-11-10 17:14:23,120 Publisher: acs
+2025-11-10 17:14:23,301 [NO-DB] status logged: {'doc_id': 13, 'doi': '10.1021/acs.chemmater.5b02557', 'publisher': 'ACS', 'title': 'Mechanically Tough and Chemically Stable Anion Exchange Membranes from Rigid-Flexible Semi-Interpenetrating Networks', 'year': 2015, 'download_status': 6, 'note': {}, 'timestamp': '2025-11-10T17:14:23', 'extension': 'html'}
+2025-11-10 17:14:23,303 Downloading DOI: 10.1021/acs.macromol.8b02756
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/acsaem.9b01553
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/acsami.5b01475
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/acsami.5b09920
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/acsami.6b06426
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/acsami.6b07711
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/acsenergylett.3c00319
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/am3007005
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/am302844x
+2025-11-10 17:14:23,304 Downloading DOI: 10.1021/ma202159d
+2025-11-10 17:14:23,304 Downloading DOI: 10.1039/C4RA00833B
+2025-11-10 17:14:25,603 Publisher: rsc
+2025-11-10 17:14:25,604 Downloading DOI: 10.1039/C5TA01420D
+2025-11-10 17:14:29,342 Publisher: rsc
+2025-11-10 17:14:29,343 Downloading DOI: 10.1039/C5TA06454F
+2025-11-10 17:14:31,637 Publisher: rsc
+2025-11-10 17:14:31,639 Downloading DOI: 10.1039/C6TA05090E
+2025-11-10 17:14:33,527 Publisher: rsc
+2025-11-10 17:14:33,528 Downloading DOI: 10.1039/C7TA09409D
+2025-11-10 17:14:36,013 Publisher: rsc
+2025-11-10 17:14:36,014 Downloading DOI: 10.1039/D0PY00757A
+2025-11-10 17:14:38,135 Publisher: rsc
+2025-11-10 17:14:38,138 Downloading DOI: 10.1016/j.memsci.2016.07.012
+2025-11-10 17:14:40,141 Downloading DOI: 10.1021/ma202681z
+2025-11-10 17:14:40,141 Cursor exhausted
+2025-11-10 17:14:40,144 Last processed doc_id: 31
+2025-11-10 17:14:40,144 For publisher acs:
+2025-11-10 17:14:40,144     Number of abstract only papers: 0
+2025-11-10 17:14:40,144     Number of letter papers: 0
+2025-11-10 17:14:40,144     Number of full text papers: 0
+
+2025-11-10 17:14:40,144 For publisher rsc:
+2025-11-10 17:14:40,144     Number of abstract only papers: 0
+2025-11-10 17:14:40,144     Number of letter papers: 0
+2025-11-10 17:14:40,144     Number of full text papers: 6
+
+2025-11-10 17:14:40,145 For publisher elsevier:
+2025-11-10 17:14:40,145     Number of abstract only papers: 0
+2025-11-10 17:14:40,145     Number of letter papers: 0
+2025-11-10 17:14:40,145     Number of full text papers: 13
+
+2025-11-10 17:14:40,145 Total number of abstract only papers: 0
+2025-11-10 17:14:40,145 Total number of letter papers: 0
+2025-11-10 17:14:40,145 Total number of full text papers: 19
+2025-11-10 17:14:40,145 Total number of documents: 19

@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 4",
+  "clean_label": "Figure_4",
+  "caption": "Relationship between hydroxide conductivity and hydration number (λ) of PAES-Q-xx and QNPS-OH-60 membranes at 80 °C.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0013468615311099-gr4.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.electacta.2015.12.181",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.electacta.2015.12.181/Figure_4.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.electacta.2015.12.181",
+  "extraction_timestamp": "2025-11-10T18:11:40.035589",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

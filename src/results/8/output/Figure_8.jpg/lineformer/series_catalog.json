@@ -1,0 +1,18 @@
+[
+  {
+    "series_index": 0,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/Figure_8.jpg/lineformer/mask_series_0.png",
+    "centroid": [
+      161.9316909294513,
+      100.56215005599104
+    ]
+  },
+  {
+    "series_index": 1,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/Figure_8.jpg/lineformer/mask_series_1.png",
+    "centroid": [
+      165.64332603938732,
+      123.07768052516411
+    ]
+  }
+]

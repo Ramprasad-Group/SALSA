@@ -1,0 +1,12 @@
+{
+  "original_label": "Scheme 2",
+  "clean_label": "Scheme_2",
+  "caption": "(a) Synthetic of PAES-Im-xx copolymers; (b) Chemical structure of PAES-QA for the control sample.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0013468615311099-sc2.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.electacta.2015.12.181",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.electacta.2015.12.181/Scheme_2.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.electacta.2015.12.181",
+  "extraction_timestamp": "2025-11-10T18:11:43.708553",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

@@ -1,0 +1,15 @@
+{
+  "label": "Table 5",
+  "caption": "The hydroxide transport activation energies of the QBMPAEs membranes",
+  "notes": [],
+  "metadata": {
+    "row_count": 4,
+    "column_count": 2,
+    "has_merged_cells": false
+  },
+  "doi": "10.1039/C4RA00833B",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C4RA00833B/Table_5.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C4RA00833B",
+  "extraction_timestamp": "2025-11-10T18:22:11.325047",
+  "file_type": "table"
+}

@@ -1,0 +1,99 @@
+{
+  "DOI": "10.1039/D0PY00757A",
+  "Title": "Crosslinked metallo-polyelectrolytes with enhanced flexibility and dimensional stability for anion-exchange membranes",
+  "Keywords": [],
+  "Journal": "Polymer Chemistry",
+  "Sections": [
+    {
+      "type": "section_h2",
+      "name": "Introduction",
+      "content": [
+        "Fuel cells are one of the clean power sources that convert chemical energy into electricity with high efficiency.^{1} Alkaline anion-exchange membrane fuel cells (AEMFCs) exhibit higher volumetric energy density, potential use of non-noble metal catalysts, and better tolerance towards carbon dioxide.^{2,3} However, the critical need for anion-exchange membranes (AEMs) with robust mechanical properties, excellent chemical stability, and high ionic conductivity is one of the major challenges in the realization of high-performance AEMFCs.^{4,5} Over the past few years, considerable efforts have been made to develop advanced AEMs to achieve a balance among ionic conductivity, mechanical strength and chemical stability.^{6,7}",
+        "As the key component for polyelectrolytes, cations directly dictate the ion-transport properties.^{8} Cations are positively charged and thus the most susceptible sites to hydroxide attack in polyelectrolyte membranes. Traditional quaternary ammonium cations are known to degrade rapidly under highly basic conditions due to Hofmann elimination and S_{N}2 nucleophilic substitution reactions, as well as the formation of ylides or other chemical rearrangements.^{5,9}",
+        "Recently, various organic cations have been investigated for their chemical stability in alkaline media (Scheme 1a), especially over a long term and under low hydration conditions. Yan, Jannasch and Li reported piperidinium based AEMs with exceptional device performance.^{10–13} The groups of Coates, Swager and Holdcroft designed highly conductive and chemically stable AEMs with functionalized imidazolium cations.^{14–16} Noonan and co-workers presented a family of highly inert phosphonium cations towards alkaline media.^{17–21} On the other hand, the advances in organometallic chemistry have enabled the use of various metallo-cations as promising candidates for ion-exchange applications (Scheme 1b). Two types of metallo-cations have been recently reported for AEMs: (1) coordination metal complexes, in which metal cations interact with terpyridine ligands via coordination;^{22,23} and (2) cationic metallocenes, in which cationic metal centers are covalently bonded to two cyclopentadienyl (Cp) ligands. We along with others have examined the chemical stability of cobaltocenium cations and synthesized several main-chain and side-chain cobaltocenium polyelectrolytes.^{24–31}",
+        "While cation chemistry dictates chemical stability and ion-transport properties, choosing appropriate polymer backbones and topological architectures greatly impacts the morphology, mechanical properties and water uptake.^{32} Polyethylene possessing an excellent processing property and chemical tolerance represents an ideal candidate for membrane applications.^{33–35} Facile modification of cyclooctene and its derivatives can yield a range of monomers for ring-opening metathesis polymerization (ROMP) toward polyolefin based AEMs.^{18,36} However, many of these polymers are mechanically soft especially with high cation loadings and at elevated temperature, due to the low glass transition temperature of polyolefin backbones. Covalent crosslinking of such soft backbones is a practical method to suppress the swelling behavior and improve the mechanical robustness.^{34,37} Besides, the water uptake of AEMs can also be effectively reduced in crosslinked systems, which may further lower the chance of hydroxide attack and improve the alkaline resistance.",
+        "Herein, we present a design of crosslinked AEMs containing cobaltocenium cations and covalently crosslinked polyolefin backbones. The obtained membranes are thermally stable, mechanically flexible, and resistant to excess water uptake. A microphase separated morphology of crosslinked membranes is also observed, which ensures good ionic conductivity under a low swelling state."
+      ]
+    },
+    {
+      "type": "section_h2",
+      "name": "Results and discussion",
+      "content": [
+        "Monomer 3 was first synthesized by adopting a procedure reported earlier.^{25} The purified monomer was then subjected to ROMP with commercial cis-cyclooctene to obtain random copolymers (4) with different cation loadings at the side-chain. Here, x and y represent the molar fractions of cobaltocenium and cyclooctene units in the copolymers, respectively. Thiol–ene click chemistry was then employed to crosslink the unsaturated backbone. Considering that some hydrophobic crosslinking bonds may also hinder the transportation of hydrophilic ions and reduce the ionic conductivity of AEMs, a hydrophilic dithiol crosslinker was employed.^{38} The reduction of unsaturated double bonds was confirmed with the drastic decrease of the characteristic absorption band (1627–1700 cm^{−1}) in FT-IR spectra (Fig. S1†). The crosslinked membranes were fabricated by solution casting, peeled off from Teflon molds, and directly used for elemental analysis (Fig. S2b†) and counterion exchange. In this study, crosslinked polymers with the highest ion-exchange capacity (IEC) of 1.23 mmol g^{−1} were investigated, considering the mechanical integrity and water management property. The IEC of these membranes was calculated from the theoretical ion content and further measured by a back-titration method (Table 1).",
+        "Table 1 Properties of crosslinked metallo-AEMs",
+        "To demonstrate whether the metallo-polyelectrolytes possess sufficient thermal stability for AEMFCs, thermogravimetric analysis (TGA) of crosslinked membranes and corresponding monomers (3) was performed (Fig. S3†). The 5 wt% weight-loss decomposition temperature (T_{d}) of crosslinked membranes (CL-AEM30-OH) was ∼250 °C. The dithiol crosslinker degraded in the range of 250 to 300 °C. When the temperature increased to above 300 °C, cobaltocenium cations and polyethylene backbones (>400 °C) started to degrade. Given that the operating temperature for AEMFCs is usually lower than 100 °C, these crosslinked membranes demonstrated sufficient thermal stability.",
+        "Crosslinking has been proven as an effective strategy to improve the mechanical properties and dimensional stability of polyelectrolyte membranes.^{16,39} With a densely crosslinked architecture, the cobaltocenium AEMs exhibited great flexibility and high toughness (Fig. 1a). Generally, the Young's modulus of crosslinked AEMs increased with higher loading of cobaltocenium cations (Table S1†). Among samples with different levels of cations, CL-AEM25-OH exhibited a maximum strength of 12.5 MPa and a strain-at-break of 266%. The highest toughness was calculated to be 18.9 MJ m^{−3}, while for previously reported metallo-AEMs with polysulfone or polybenzimidazole backbones, the mechanical strain at break is usually pretty low (<65%) due to the high rigidity of aromatic backbones.^{24,26}",
+        "Densely crosslinked membranes are also resistant to take excess water. Fig. 1b and c display the water uptake and swelling behavior of the crosslinked membranes as a function of temperature. All samples exhibited low water uptake (<36%) and swelling ratios (<13%) even up to 80 °C, which can be explained by the hydrophobic nature of the polyolefin backbone and a highly crosslinked network. Besides, the number of absorbed water molecules per cobaltocenium cation was calculated to be in the range of 7.3 and 10.6 (at room temperature) and showed a tendency to increase with a higher IEC (Table 1). Hence, all crosslinked membranes displayed excellent dimensional stability at various temperatures and such a water management property plays a critical role to ensure the durability of AEMs.",
+        "The trade-off between a low swelling extent and high ionic conductivity has always been an issue. For example, polyethylene-based AEMs with a high loading of organic cations (for higher conductivity) were found to severely swell at elevated temperature.^{4,18} Consequently, achieving high ionic conductivity at a low swelling state usually relies on microstructural engineering of membranes.",
+        "An appropriate microscale morphology is responsible for facilitating the ion conduction and improving the chemical stability.^{40–43} Our cobaltocenium membranes were expected to show phase separation due to the immiscibility of the hydrophobic alkyl chains and hydrophilic cobaltocenium cations in the copolymers.^{25} Transmission electron microscopy (TEM) was applied to disclose the real space morphology of the polyolefin based cobaltocenium AEM (Fig. S5†). The dark region in the TEM image is formed by the aggregation of ionic domains (containing cobalt ions), while the light region corresponds to the hydrophobic hydrocarbon scaffold. The AEM causes a disordered microphase separation, which is reasonable as the membrane is not based on block copolymers. Small-angle X-ray scattering (SAXS) was further used to examine the microphase separation of crosslinked cobaltocenium membranes (Fig. 1d). All membranes exhibited a broad primary scattering peak around q* = 1 to 2 nm^{−1} with a d spacing (2π/q*) in the range of 4.0–5.4 nm. These results agree well with the TEM study.",
+        "The ionic conductivity of crosslinked membranes with hydroxide counterions under fully hydrated conditions is shown in Fig. 1e. CL-AEM30-OH with the highest cobaltocenium content and IEC exhibited the highest conductivities of 18.6 and 53.3 mS cm^{−1} at 20 °C and 80 °C, respectively. A schematic illustration of ion transport pathways in crosslinked membranes is proposed in Scheme 2b. Moreover, the ionic conductivity of these crosslinked membranes also followed an Arrhenius relationship (Fig. 1f). The activation energy for hydroxide transport decreased with the increase of the ionic content, which could be explained by more efficient hydroxide migration due to the formation of denser ion transport channels in the membranes. The activation energy was also lower than those in our previous reports on hydrogenated cobaltocenium membranes, probably due to the inhibition of backbone crystallization and the hydrophilic nature of the dithiol crosslinker.^{25}",
+        "The alkaline stability of AEMs under elevated temperature has always been a major concern for AEMs. The alkaline stability of crosslinked membranes was evaluated in 3 M KOH at 60 °C. FT-IR spectra of CL-AEM25-OH showed that most chemical structures remain unchanged before and after the alkaline stability test (Fig. S6†). In a time-dependent conductivity test, both CL-AEM25-OH and CL-AEM30-OH exhibited a rapid decline of conductivity during the first 50 h and a much slower decrease afterwards (Fig. S7†). The hydroxide conductivity of CL-AEM30-OH was retained at 14.5 mS cm^{−1} (at room temperature) after treatment in 3 M KOH at 60 °C for 15 days. We hypothesize that the decrease in conductivity over time was possibly caused by slowly dissolving of uncrosslinked or weakly crosslinked copolymers at elevated temperature."
+      ]
+    },
+    {
+      "type": "section_h2",
+      "name": "Conclusions",
+      "content": [
+        "In summary, we report a class of metallo-polyelectrolyte membranes by integrating cobaltocenium cations into a covalently crosslinked network. These membranes were prepared via ROMP in conjunction with thiol–ene click chemistry to promote the crosslinking of a polyolefin backbone. The robust polymeric network was believed to prevent excess water absorption that resulted in lower water uptake and swelling ratios. These membranes exhibited good chemical stability with enhanced flexibility and ionic conductivity. This work may pave a new pathway to investigate other crosslinked AEMs towards understanding the ion-transport behaviors of metallo-polyelectrolytes."
+      ]
+    },
+    {
+      "type": "section_h2",
+      "name": "Conflicts of interest",
+      "content": [
+        "There are no conflicts to declare."
+      ]
+    },
+    {
+      "type": "section_h2",
+      "name": "References",
+      "content": [
+        "J. Larminie, A. Dicks and M. S. McDonald, Fuel cell systems explained, J. Wiley Chichester, UK, 2003 Search PubMed.",
+        "J. R. Varcoe, P. Atanassov, D. R. Dekel, A. M. Herring, M. A. Hickner, P. A. Kohl, A. R. Kucernak, W. E. Mustain, K. Nijmeijer and K. Scott, Energy Environ. Sci., 2014, 7, 3135–3191 RSC.",
+        "X. Peng, T. J. Omasta, E. Magliocca, L. Wang, J. R. Varcoe and W. E. Mustain, Angew. Chem., Int. Ed., 2019, 131, 1058–1063 CrossRef.",
+        "W. You, K. J. Noonan and G. W. Coates, Prog. Polym. Sci., 2020, 100, 101177 CrossRef CAS.",
+        "G. Couture, A. Alaaeddine, F. Boschet and B. Ameduri, Prog. Polym. Sci., 2011, 36, 1521–1557 CrossRef CAS.",
+        "J. Ran, L. Wu, Y. He, Z. Yang, Y. Wang, C. Jiang, L. Ge, E. Bakangura and T. Xu, J. Membr. Sci., 2017, 522, 267–291 CrossRef CAS.",
+        "S. Noh, J. Y. Jeon, S. Adhikari, Y. S. Kim and C. Bae, Acc. Chem. Res., 2019, 52, 2745–2755 CrossRef CAS PubMed.",
+        "Z. Sun, B. Lin and F. Yan, ChemSusChem, 2018, 11, 58–70 CrossRef CAS PubMed.",
+        "J. R. Varcoe and R. C. Slade, Fuel Cells, 2005, 5, 187–200 CrossRef CAS.",
+        "J. Wang, Y. Zhao, B. P. Setzler, S. Rojas-Carbonell, C. B. Yehuda, A. Amel, M. Page, L. Wang, K. Hu and L. Shi, Nat. Energy, 2019, 4, 392–398 CrossRef CAS.",
+        "X. Chu, Y. Shi, L. Liu, Y. Huang and N. Li, J. Mater. Chem. A, 2019, 7, 7717–7727 RSC.",
+        "J. S. Olsson, T. H. Pham and P. Jannasch, Adv. Funct. Mater., 2018, 28, 1702758 CrossRef.",
+        "T. H. Pham, J. S. Olsson and P. Jannasch, J. Mater. Chem. A, 2019, 7, 15895–15906 RSC.",
+        "W. You, E. Padgett, S. N. MacMillan, D. A. Muller and G. W. Coates, Proc. Natl. Acad. Sci. U. S. A., 2019, 116, 9729–9734 CrossRef CAS PubMed.",
+        "J. Fan, S. Willdorf-Cohen, E. M. Schibli, Z. Paula, W. Li, T. J. G. Skalski, A. T. Sergeenko, A. Hohenadel, B. J. Frisken, E. Magliocca, W. E. Mustain, C. E. Diesendruck, D. R. Dekel and S. Holdcroft, Nat. Commun., 2019, 10, 2306 CrossRef PubMed.",
+        "Y. Kim, Y. Wang, A. France-Lanord, Y. Wang, Y.-C. M. Wu, S. Lin, Y. Li, J. C. Grossman and T. M. Swager, J. Am. Chem. Soc., 2019, 141, 18152–18159 CrossRef CAS PubMed.",
+        "C. T. Womble, J. Kang, K. M. Hugar, G. W. Coates, S. Bernhard and K. J. Noonan, Organometallics, 2017, 36, 4038–4046 CrossRef CAS.",
+        "K. J. Noonan, K. M. Hugar, H. A. Kostalik IV, E. B. Lobkovsky, H. c. D. Abruña and G. W. Coates, J. Am. Chem. Soc., 2012, 134, 18161–18164 CrossRef CAS PubMed.",
+        "H. Tang, D. Li, N. Li, Z. Zhang and Z. Zhang, J. Membr. Sci., 2018, 558, 9–16 CrossRef CAS.",
+        "L. Jiang, X. Lin, J. Ran, C. Li, L. Wu and T. Xu, Chin. J. Chem., 2012, 30, 2241–2246 CrossRef CAS.",
+        "A. M. Barnes, Y. Du, W. Zhang, S. Seifert, S. K. Buratto and E. B. Coughlin, Macromolecules, 2019, 52, 6097–6106 CrossRef CAS.",
+        "Y. Zha, M. L. Disabb-Miller, Z. D. Johnson, M. A. Hickner and G. N. Tew, J. Am. Chem. Soc., 2012, 134, 4493–4496 CrossRef CAS PubMed.",
+        "M. T. Kwasny, L. Zhu, M. A. Hickner and G. N. Tew, J. Am. Chem. Soc., 2018, 140, 7961–7969 CrossRef CAS PubMed.",
+        "S. Gu, J. Wang, R. B. Kaspar, Q. Fang, B. Zhang, E. B. Coughlin and Y. Yan, Sci. Rep., 2015, 5, 11668 CrossRef CAS PubMed.",
+        "T. Zhu, S. Xu, A. Rahman, E. Dogdibegovic, P. Yang, P. Pageni, M. P. Kabir, X.-d. Zhou and C. Tang, Angew. Chem., Int. Ed., 2018, 57, 2388–2392 CrossRef CAS PubMed.",
+        "N. Chen, H. Zhu, Y. Chu, R. Li, Y. Liu and F. Wang, Polym. Chem., 2017, 8, 1381–1392 RSC.",
+        "T. Zhu, Y. Sha, H. Adabi, X. Peng, Y. Cha, D. M. M. M. Dissanayake, M. Smith, A. Vannucci, W. E. Mustain and C. Tang, J. Am. Chem. Soc., 2020, 142, 1083–1089 CrossRef CAS PubMed.",
+        "H. Yuan, Y. Liu, T.-H. Tsai, X. Liu, S. B. Kim, R. Gupta, W. Zhang, S. P. Ertem, S. Seifert and A. M. Herring, Polyhedron, 2020, 181, 114462 CrossRef CAS.",
+        "T. Zhu, J. Zhang and C. Tang, Trends Chem., 2020, 2, 227–240 CrossRef.",
+        "U. F. Mayer, J. B. Gilroy, D. O'Hare and I. Manners, J. Am. Chem. Soc., 2009, 131, 10382–10383 CrossRef CAS PubMed.",
+        "J. B. Gilroy, S. K. Patra, J. M. Mitchels, M. A. Winnik and I. Manners, Angew. Chem., Int. Ed., 2011, 50, 5851–5855 CrossRef CAS PubMed.",
+        "W.-H. Lee, E. J. Park, J. Han, D. W. Shin, Y. S. Kim and C. Bae, ACS Macro Lett., 2017, 6, 566–570 CrossRef CAS.",
+        "S. Kobayashi, L. M. Pitet and M. A. Hillmyer, J. Am. Chem. Soc., 2011, 133, 5794–5797 CrossRef CAS PubMed.",
+        "N. J. Robertson, H. A. Kostalik IV, T. J. Clark, P. F. Mutolo, H. c. D. Abruña and G. W. Coates, J. Am. Chem. Soc., 2010, 132, 3400–3404 CrossRef CAS PubMed.",
+        "L. Wang, X. Peng, W. E. Mustain and J. R. Varcoe, Energy Environ. Sci., 2019, 12, 1575–1579 RSC.",
+        "H. A. Kostalik IV, T. J. Clark, N. J. Robertson, P. F. Mutolo, J. M. Longo, H. D. Abruna and G. W. Coates, Macromolecules, 2010, 43, 7147–7150 CrossRef.",
+        "K. H. Lee, D. H. Cho, Y. M. Kim, S. J. Moon, J. G. Seong, D. W. Shin, J.-Y. Sohn, J. F. Kim and Y. M. Lee, Energy Environ. Sci., 2017, 10, 275–285 RSC.",
+        "L. Wang and M. A. Hickner, Polym. Chem., 2014, 5, 2928–2935 RSC.",
+        "J. Han, B. Lin, H. Peng, Y. Zhu, Z. Ren, L. Xiao and L. Zhuang, J. Power Sources, 2020, 459, 227838 CrossRef CAS.",
+        "T. Zhu, Y. Sha, J. Yan, P. Pageni, M. A. Rahman, Y. Yan and C. Tang, Nat. Commun., 2018, 9, 4329 CrossRef PubMed.",
+        "D. W. Shin, M. D. Guiver and Y. M. Lee, Chem. Rev., 2017, 117, 4759–4805 CrossRef CAS PubMed.",
+        "J. Pan, C. Chen, Y. Li, L. Wang, L. Tan, G. Li, X. Tang, L. Xiao, J. Lu and L. Zhuang, Energy Environ. Sci., 2014, 7, 354–360 RSC.",
+        "W. Zhang, Y. Liu, A. C. Jackson, A. M. Savage, S. P. Ertem, T.-H. Tsai, S. Seifert, F. L. Beyer, M. W. Liberatore and A. M. Herring, Macromolecules, 2016, 49, 4714–4722 CrossRef CAS.",
+        "Click here to see how this site uses Cookies. View our privacy policy here."
+      ]
+    }
+  ],
+  "Abstract": "[]"
+}

@@ -1,0 +1,7 @@
+Sample,τ (day),Ratio (IEC/IEC0)c,Conductivity Before,Conductivity Afterd
+QNPS-OH-30,>48,0.99,0.011,0.011
+QNPS-OH-40,>48,0.98,0.016,0.016
+QNPS-OH-50,>48,1.00,0.022,0.021
+QNPS-OH-60,>48,0.97,0.036,0.035
+QNPS-OH-70,>48,0.98,0.056,0.056
+F-QNPS-OH-70,15,0.94,0.040,–e

@@ -1,0 +1,84 @@
+{
+  "DOI": "10.1016/j.memsci.2015.05.060",
+  "publisher": "Elsevier BV",
+  "journal": "Journal of Membrane Science",
+  "year": 2015,
+  "month": 10,
+  "day": 7,
+  "title": "Side-chain-type poly(arylene ether sulfone)s containing multiple quaternary ammonium groups as anion exchange membranes",
+  "citations": 92,
+  "reference_list": [
+    "10.1021/cr020711a",
+    "10.1002/adma.201001164",
+    "10.1016/j.progpolymsci.2011.04.004",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1021/ja204166e",
+    "10.1021/ja211365r",
+    "10.1021/ja303067t",
+    "10.1002/adfm.200901314",
+    "10.1021/ma202159d",
+    "10.1021/am3007005",
+    "10.1016/j.jpowsour.2013.02.059",
+    "10.1016/j.memsci.2013.03.053",
+    "10.1021/ja307466s",
+    "10.1039/c2ra20336g",
+    "10.1016/j.memsci.2010.01.003",
+    "10.1016/j.memsci.2011.02.044",
+    "10.1016/j.memsci.2013.07.005",
+    "10.1016/j.memsci.2014.01.034",
+    "10.1016/j.memsci.2014.02.043",
+    "10.1021/ma901538c",
+    "10.1021/ma902430y",
+    "10.1021/ma401620m",
+    "10.1021/ma902479d",
+    "10.1021/ma901606z",
+    "10.1016/j.memsci.2010.11.058",
+    "10.1016/j.memsci.2015.02.013",
+    "10.1016/j.memsci.2013.04.059",
+    "10.1016/j.polymer.2013.10.052",
+    "10.1016/j.memsci.2015.02.002",
+    "10.1021/ma100260a",
+    "10.1021/cm2016164",
+    "10.1016/j.memsci.2013.10.054",
+    "10.1016/j.memsci.2014.07.036",
+    "10.1021/ma502362a",
+    "10.1021/ma402254h",
+    "10.1021/ma2015968",
+    "10.1039/c2jm34414a",
+    "10.1016/j.memsci.2013.02.046",
+    "10.1016/j.jpowsour.2012.02.076",
+    "10.1021/ma202681z",
+    "10.1016/j.polymer.2010.09.049",
+    "10.1016/j.jpowsour.2012.07.011",
+    "10.1016/j.memsci.2012.02.045",
+    "10.1021/ma102107a"
+  ],
+  "author_list": [
+    {
+      "given": "Chenyi",
+      "family": "Wang"
+    },
+    {
+      "given": "Bin",
+      "family": "Shen"
+    },
+    {
+      "given": "Chang",
+      "family": "Xu"
+    },
+    {
+      "given": "Xiaoyan",
+      "family": "Zhao"
+    },
+    {
+      "given": "Jian",
+      "family": "Li"
+    }
+  ],
+  "funder_list": [
+    "National Natural Science Foundation of China",
+    "Natural Science Foundation of Jiangsu Province",
+    "Opening Project of State Key Laboratory for Modification of Chemical Fibers and Polymer Materials"
+  ],
+  "issn": "0376-7388"
+}

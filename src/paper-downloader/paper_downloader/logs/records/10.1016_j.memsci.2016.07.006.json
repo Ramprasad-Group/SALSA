@@ -1,0 +1,86 @@
+{
+  "DOI": "10.1016/j.memsci.2016.07.006",
+  "publisher": "Elsevier BV",
+  "journal": "Journal of Membrane Science",
+  "year": 2016,
+  "month": 11,
+  "day": 12,
+  "title": "Interpenetrating anion exchange membranes using poly(1-vinylimidazole) as bifunctional crosslinker for fuel cells",
+  "citations": 81,
+  "reference_list": [
+    "10.1039/c3cs60053j",
+    "10.1039/c1cc12430g",
+    "10.1002/fuce.200400045",
+    "10.1002/polb.23395",
+    "10.1038/nature05118",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1021/ja204166e",
+    "10.1039/C4RA00833B",
+    "10.1021/ma202681z",
+    "10.1016/j.memsci.2015.08.069",
+    "10.1021/ma400995n",
+    "10.1039/C4PY01671H",
+    "10.1021/ma901538c",
+    "10.1039/c0py00084a",
+    "10.1039/C4RA06519K",
+    "10.1002/cssc.201500133",
+    "10.1021/acs.chemmater.5b02557",
+    "10.1016/j.jpowsour.2012.11.041",
+    "10.1016/j.cej.2014.06.077",
+    "10.1016/j.memsci.2004.10.034",
+    "10.1021/am4043257",
+    "10.1039/C5TA01123J",
+    "10.1021/ma100260a",
+    "10.1002/anie.200806299",
+    "10.1016/j.ijhydene.2014.11.099",
+    "10.1016/j.memsci.2007.12.029",
+    "10.1039/c1jm11093d",
+    "10.1016/j.apsusc.2014.11.069",
+    "10.1016/j.memsci.2015.05.023",
+    "10.1016/S0032-3861(01)00015-5",
+    "10.1021/ie901092n",
+    "10.1016/j.memsci.2012.05.006",
+    "10.1002/macp.200300130",
+    "10.1016/j.jpowsour.2013.08.141",
+    "10.1002/app.32504",
+    "10.1039/C5RA16068E",
+    "10.1016/j.memsci.2012.03.056",
+    "10.1016/j.ijhydene.2008.08.022",
+    "10.1016/S0376-7388(02)00579-3",
+    "10.1021/cm502422h",
+    "10.1016/j.ijhydene.2011.09.112",
+    "10.1039/c1jm10656b"
+  ],
+  "author_list": [
+    {
+      "given": "Dong",
+      "family": "Guo"
+    },
+    {
+      "given": "Yi Zhi",
+      "family": "Zhuo"
+    },
+    {
+      "given": "Ao Nan",
+      "family": "Lai"
+    },
+    {
+      "given": "Qiu Gen",
+      "family": "Zhang"
+    },
+    {
+      "given": "Ai Mei",
+      "family": "Zhu"
+    },
+    {
+      "given": "Qing Lin",
+      "family": "Liu"
+    }
+  ],
+  "funder_list": [
+    "National Natural Science Foundation of China",
+    "Nature Science Foundation of Fujian Province of China",
+    "Research Fund for the Priority Areas of Development in Doctoral Program of Higher Education"
+  ],
+  "issn": "0376-7388"
+}

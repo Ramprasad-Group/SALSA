@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 9",
+  "clean_label": "Figure_9",
+  "caption": "(a) Polarization curves of  V-1.5-O-1, V-1.5-H-1  and  V-2-H-1  in 1 M KOH at 60 °C of the water electrolyzer. (b) Polarization curves of  V-1.5-O-1, V-1.5-H-1  and  V-2-H-1  in 0.1 M KOH at 60 °C of the water electrolyzer. (c) Polarization curves of  V-2-H-1  in 1 M KOH at 40–80 °C of the water electrolyzer. Durability test of (d)  V-1.5-O-1,  (e)  V-1.5-H-1  and (f)  V-2-H-1  operation at 60 °C in 0.1 M KOH aqueous solution using a galvanic mode of 200 mA cm −2 .",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738823005720-gr9.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2023.121916",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2023.121916/Figure_9.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2023.121916",
+  "extraction_timestamp": "2025-11-10T18:17:31.126077",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

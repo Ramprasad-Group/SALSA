@@ -1,0 +1,21 @@
+{
+  "label": "Table 4",
+  "caption": "Table 4DBM, IEC, water uptake,\u03bb, swelling ratio and hydroxide conductivity of the QBMPAEs membranes",
+  "notes": [
+    "Calculated from the polymer composition and DBM.",
+    "IEC for QBMPAEs membranes (Br\u2212 from), determined using Mohr titration.",
+    "IEC for QBMPAEs membranes (OH\u2212 from), determined using back titration.",
+    "T1 = 20 \u00b0C, T2 = 80 \u00b0C.",
+    "\u03bb = [Water uptake (g per g)/18.02 (g mol\u22121)] \u00d7 [1000/IEC (mmol g\u22121)]."
+  ],
+  "metadata": {
+    "row_count": 12,
+    "column_count": 13,
+    "has_merged_cells": true
+  },
+  "doi": "10.1039/C4RA00833B",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C4RA00833B/Table_4.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1039@C4RA00833B",
+  "extraction_timestamp": "2025-11-10T18:22:11.323626",
+  "file_type": "table"
+}

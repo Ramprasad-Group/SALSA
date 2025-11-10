@@ -1,0 +1,78 @@
+{
+  "DOI": "10.1039/c7ta09409d",
+  "publisher": "Royal Society of Chemistry (RSC)",
+  "journal": "Journal of Materials Chemistry A",
+  "year": 2017,
+  "month": 11,
+  "day": 8,
+  "title": "Robust anion conductive polymers containing perfluoroalkylene and pendant ammonium groups for high performance fuel cells",
+  "citations": 115,
+  "reference_list": [
+    "10.1039/C4EE01303D",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1039/c1jm10656b",
+    "10.1021/cm2016164",
+    "10.1039/c2ra21402d",
+    "10.1149/1.3484682",
+    "10.1073/pnas.1217215110",
+    "10.1002/cssc.201403022",
+    "10.1021/jp3014964",
+    "10.1021/acsmacrolett.5b00145",
+    "10.1149/2.0891510jes",
+    "10.1039/C5TA06454F",
+    "10.1055/s-1994-25668",
+    "10.1016/j.polymer.2011.12.049",
+    "10.1002/chem.201001570",
+    "10.1021/ma5019878",
+    "10.1021/acs.macromol.5b01302",
+    "10.3390/en8077084",
+    "10.1016/j.ijhydene.2006.10.062",
+    "10.1021/je970140x",
+    "10.1021/ja307466s",
+    "10.1021/ja403671u",
+    "10.1039/C5RA04741B"
+  ],
+  "author_list": [
+    {
+      "given": "Hideaki",
+      "family": "Ono",
+      "affiliation": "Interdisciplinary Graduate School of Medicine and Engineering"
+    },
+    {
+      "given": "Taro",
+      "family": "Kimura",
+      "affiliation": "Interdisciplinary Graduate School of Medicine and Engineering"
+    },
+    {
+      "given": "Aoi",
+      "family": "Takano",
+      "affiliation": "Frontier Technology R&D Division"
+    },
+    {
+      "given": "Koichiro",
+      "family": "Asazawa",
+      "affiliation": "Frontier Technology R&D Division"
+    },
+    {
+      "given": "Junpei",
+      "family": "Miyake",
+      "affiliation": "Clean Energy Research Center"
+    },
+    {
+      "given": "Junji",
+      "family": "Inukai",
+      "affiliation": "Clean Energy Research Center"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0001-5713-2635",
+      "given": "Kenji",
+      "family": "Miyatake",
+      "affiliation": "Clean Energy Research Center"
+    }
+  ],
+  "funder_list": [
+    "Core Research for Evolutional Science and Technology",
+    "Japan Science and Technology Agency"
+  ],
+  "issn": "2050-7488"
+}

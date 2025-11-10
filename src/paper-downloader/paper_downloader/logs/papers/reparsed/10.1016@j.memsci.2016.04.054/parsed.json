@@ -1,0 +1,295 @@
+{
+  "Journal": "Journal of Membrane Science",
+  "DOI": "10.1016/j.memsci.2016.04.054",
+  "Title": "Side-chain-type anion exchange membranes bearing pendent imidazolium-functionalized poly(phenylene oxide) for fuel cells",
+  "Keywords": [
+    "Side-chain-type",
+    "Anion exchange membrane",
+    "Imidazolium",
+    "Alkaline fuel cells"
+  ],
+  "Sections": [
+    {
+      "type": "ce_section",
+      "name": "Introduction",
+      "content": [
+        "Fuel cells can generate electrical energy directly from chemical energy with high efficiency, high energy density and low pollution, and are considered as one of the most promising energy conversion devices for mobile application . Of those, polymeric electrolyte fuel cells including proton exchange membranes fuel cells (PEMFCs) and alkaline fuel cells (AFCs) have attracted great attention during the past decades . Although perfluorosulfonated polymer membrane (such as Nafion) based PEMFCs have been widely studied, their commercialization is still impeded by the dependence on high-cost noble metal catalyst (such as Pt) and high fuel permeability [6]. AEM based AFCs are currently an intensive research area due to the advantages of improved oxygen reduction kinetics and faster fuel oxidation kinetics under alkaline condition. These would lead to higher efficiency and enable to utilize non-noble metals (such as Fe, Ni and Co) instead of expensive noble metals as electrocatalysts, and greatly reduce the cost of fuel cell devices . Besides, fuel crossover is sharply depressed since hydroxide ions transport is in the reverse direction to fuels [10].",
+        "As one of the core component of AFCs, AEMs serve as a conductor of hydroxide ions and as a barrier between fuel and oxidant. To date, most of the AEMs have been prepared by introducing highly alkaline functional groups such as quaternary ammonium , imidazolium , guanidinium , phosphonium , sulfonium [22] and metal ions into polymer backbones. Although great progresses have been made in preparing various types of AEMs, their hydroxide conductivity still lags behind proton exchange membranes due to the inherently lower mobility of OH^{−} ions (the ion mobility of H^{+} is found to be 1.76 times greater than OH^{−} in an infinite dilute solution at 25 °C) [25].",
+        "Except for the limits in ion mobility, the design of membranes with favorable micro-phase separated morphology by preparing block and side-chain-type copolymers has been verified as a promising way to enhance hydroxide conductivity and attracted much attention in recent years . For example, Tanaka and co-workers [29] synthesized block poly(arylene ether sulfone)s AEMs bearing quaternary ammonium groups displaying much higher conductivity than random AEMs at a similar IEC. Yokota and coworkers [30] prepared block aromatic copolymer AEMs exhibiting a high conductivity of 138 mS cm^{−1}at 80 °C due to their well-developed hydrophilic/ hydrophobic phase separated morphology. However, these AEMs were prepared using toxic and carcinogenic choloromethyl methyl ether, which is harmful to human health [19]. Furthermore, the block copolymer membranes generally suffer from deformation leading to the loss of mechanical properties . Well-developed micro-phase separated morphology can also be formed in the side-chain-type AEMs, and will be beneficial to the formation of effective ion conducting channels [34]. For instance, Ran and coworkers [35] synthesized a series of side-chain-type copolymers with densely functionalized side chain by atom transfer radical polymerization (ATRP) showing a micro-phase separated morphology with nanosize ion clusters. These AEMs exhibited higher hydroxide conductivity, alkaline stability and dimensional stability than main-chain-type AEMs. This indicates that the side-chain structure is effective at enhancing the properties of AEMs. Nevertheless, the reaction condition for ATRP is harsh because the existence of oxygen can easily terminate the reaction. Besides, high concentrated Cu catalyst generally involved in the ATRP is difficult to remove after the reaction [36]. This may have a negative influence on the performance of the synthesized polymers. In this regard, it is essential to design a method for production of novel side-chain-type AEMs with densely functionalized side chain under mild condition.",
+        "Herein, a series of novel side-chain-type AEMs composed of poly(arylene ether sulfone)s backbone and pendent imidazolium-functionalized PPO was prepared under mild condition. Hydroxyl-containing poly(arylene ether sulfone)s were synthesized via nucleophilic substitution polycondensation and demethylation reaction. Fluorine-terminated PPO oligomers were produced and grafted onto hydroxyl-containing poly(arylene ether sulfone)s backbone via nucleophilic substitution reaction, followed by bromination, functionalization and alkalization to yield side-chain-type AEMs. The introduction of PPO oligomers is expected to provide AEMs with densely functionalized side chain, and is thus beneficial to the formation of micro-phase separated morphology. The side-chain-type copolymers were brominated by N-bromosuccinimide (NBS) and thus could avoid the use of toxic chloromethyl methyl ether. Besides, the synthesis, morphology, ionic exchange capacity, water uptake, swelling ratio, hydroxide conductivity, mechanical properties, thermal and alkaline stability and H_{2}/O_{2} single cell performance of the AEMs have been investigated in detail."
+      ]
+    },
+    {
+      "type": "ce_section",
+      "name": "Experimental",
+      "content": [
+        {
+          "type": "ce_section",
+          "name": "Materials",
+          "content": [
+            "Bis(4-fluorophenyl) sulfone (FPS) (99.0%, TCI, Japan), 2-methoxyhydroquinone (MOHQ) (98.0%, TCI, Japan), 4,4′-(hexafluoroisopropylidene) diphenol (BPHF) (98%, Aladdin, China), methylhydroquinone (MHQ) (98%, Aladdin, China) were dried under vacuum at room temperature overnight before use. N,N,N’,N’-tetramethylethylenediamine (TMEDA) (AR, Sinopharm, China), 2,6-dimethylphenol (DMP) (99%, Aladdin, China), copper (I) chloride (AR, Sinopharm, China), 1,4-difluorobenzene (DFB) (99%, J&K, China), 1-methylimidazole (99%, Aladdin, China), N-bromosuccinimide (99%, Aladdin, China), N-methyl-2-pyrrolidone (NMP) (AR, Sinopharm, China), chlorobenzene (CB) (AR, Sinopharm, China), N,N-dimethylacetamide (DMAc) (99.8%, Aladdin, China) and toluene (AR, Sinopharm, China) were used as received. Azodiisobutyronitrile (AIBN) (99.0%, Sinopharm, China) was recrystallized twice from methanol. All other chemicals were obtained from Aladdin Industrial Inc. (China) and used as purchased."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Preparation of anion exchange membranes",
+          "content": [
+            {
+              "type": "ce_section",
+              "name": "Synthesis of methoxy-containing poly(arylene ether sulfone) (PAES-x-OCH_{3})",
+              "content": [
+                "A typical synthetic procedure for preparing PAES-x-OCH_{3} (x=5, 10, 12.5 and 15) copolymers, where x is the mole percent of MOHQ to FPS, is described as follows ( Scheme 1). For example, PAES-10-OCH_{3} contains 0.10 mol of MOHQ and 0.90 mol of BPHF per 1 mol of FPS. BPHF (4.8417 g, 14.4 mmol), MOHQ (0.2242 g, 1.6 mmol), FPS (4.0680 g, 16 mmol), K_{2}CO_{3} (4.4227 g, 32 mmol), DMAc (50 mL) and toluene (15 mL) were added in a three-necked flask equipped with a mechanical stirrer, condenser, Dean-Stark trap and a nitrogen inlet. Under a nitrogen atmosphere, the mixture was heated to 140 °C for 4 h and then increased to 155 °C for another 16 h. The reaction mixture was subsequently cooled to room temperature (RT) and coagulated into a large excess of aqueous methanol solution under vigorous stirring. The fibrous copolymer was washed with methanol and deionized water for several times, and vacuum dried at 80 °C for 24 h (yield: 96%)."
+              ]
+            },
+            {
+              "type": "ce_section",
+              "name": "Synthesis of hydroxyl-containing poly(arylene ether sulfone) (PAES-x-OH)",
+              "content": [
+                "4.000 g of PAES-10-OCH_{3} (0.7557 mmol -OCH_{3} groups) was dissolved to make a solution in 80 mL of chloroform in a 150 mL three-necked flask with a magnetic stirrer and a nitrogen inlet. 1.43 mL of BBr_{3} (15.12 mmol) was mixed with 20 mL of chloroform to make a solution which was dropwise added in the PAES-10-OCH_{3} solution at RT. After reacting for 6 h, the precipitate was filtered and washed thoroughly with a large excess of methanol to yield a solid. The solid was subsequently dried under vacuum at 80 °C for 24 h to produce copolymers (PAES-10-OH) (yield: 86%)."
+              ]
+            },
+            {
+              "type": "ce_section",
+              "name": "Synthesis of fluorine-terminated PPO-F oligomers",
+              "content": [
+                "A typical route for the synthesis of poly(2,6-dimethyl-1,4-phenylene) (PPO-OH) oligomers was carried out as follows ( Scheme 2). CuCl (0.0820 g, 0.8283 mmol), TMEDA (0.4813 g, 4.1414 mmol) and ethanol (30 mL) were charged into a 100 mL reactor equipped with a magnetic stirrer and an oxygen inlet. Oxygen was bubbled through the solution with a flow rate of 500 mL min^{−1}. A mixture of DMP (6.1085 g, 50 mmol) and ethanol (30 mL) was added dropwise into the reactor under vigorously stirring at RT for 6 h. Due to the low solubility of PPO-OH oligomers in a strong polar solvent, a large amount of precipitate was formed in ethanol. The precipitate was filtered to yield a crude product. An off-white powder was obtained by Soxhlet extraction of the crude product with ethanol for 48 h and vacuum drying at 80 °C for 24 h (yield: 70%).",
+                "The synthesis of the fluorine-terminated PPO oligomers (PPO-F) via nucleophilic substitution was carried out as follows (Scheme 2). In a 100 mL three-necked flask fitted with a magnetic stirrer, a condenser and a nitrogen inlet were added PPO-OH oligomers (4.0000 g, 2.0822 mmol), HFB (2.3244 g, 12.4932 mmol) and K_{2}CO_{3} (0.5776 g, 4.1644 mmol). Then, 40 mL of DMF was charged into the flask under a nitrogen atmosphere and the mixture was heated to 80 °C. After 36 h, the solution was poured into 400 mL of methanol to precipitate the product. The PPO-F oligomers were filtered and washed with an excess of methanol for several times, and dried under vacuum at 80 °C for 24 h to obtain an off-white powder (yield: 71%)."
+              ]
+            },
+            {
+              "type": "ce_section",
+              "name": "Synthesis of side-chain-type copolymers (PAES-x-PPO)",
+              "content": [
+                "Side-chain-type PAES-10-PPO copolymers were synthesized via nucleophilic substitution, as shown in Scheme 3. 1 g of PAES-10-OH (0.1894 mmol of -OH groups), 0.4943 g of PPO-F (0.1894 mmol), 0.2618 g of K_{2}CO_{3} (1.894 mmol) and 20 mL of NMP were added in a 100 mL round-bottomed flask equipped with a condenser, a Dean-Stark trap, a magnetic stirrer and a nitrogen inlet. Under the protection of nitrogen, the reaction mixture was stirred at 105 °C for 10 h and then the temperature was gradually raised up to 160 °C. After 20 h, the mixture was cooled to RT and poured into 200 mL of an aqueous HCl solution (concentrated HCl/deionized water=1:20, v/v) followed by vigorous stirring and washing with deionized water for several times to obtain a light brown solid. The solid was then dried in a vacuum oven at 80 °C for 24 h (yield: 95%)."
+              ]
+            },
+            {
+              "type": "ce_section",
+              "name": "Bromination of side-chain type copolymers (PAES-x-BPPO)",
+              "content": [
+                "A typical procedure for preparing PAES-10-BPPO is shown as follows (Scheme 3). 1.0000 g of PAES-10-PPO (4.956 mmol -CH_{3}) was dissolved into 20 mL of CB to make a solution in a 100 mL three-necked flask and heated to 135 °C under vigorous stirring. Then, 1.3231 g of NBS (7.434 mmol) and 0.0882 g of AIBN were added in the flask. The bromination reaction was proceeded for 4 h under reflux. After cooling to RT, the reaction mixture was poured into 200 mL of methanol to form a precipitate. The precipitate was collected by filtration and washed thoroughly with methanol several times, followed by vacuum drying at 80 °C for 24 h to give a pale yellow solid product of PAES-10-BPPO. The degree of bromomethylation is 75% (yield: 92%)."
+              ]
+            },
+            {
+              "type": "ce_section",
+              "name": "Synthesis of imidazolium-functionalized PAES-x-IMPPO copolymers and membrane",
+              "content": [
+                "Taking PAES-10-IMPPO as an example, 1.0000 g of PAES-10-BPPO and 20 mL of DMF were added in a 50 mL round-bottomed flask equipped with a magnetic stirrer. After being dissolved completely, 1.1 mL of 1-methylimidazole was added dropwise into the flask and heated to 50 °C for 12 h under vigorous stirring. The reaction mixture was then poured into anhydrous ether to yield a precipitate, followed by washing with a large excess of anhydrous ether to remove impurities. The product was collected and dried in a vacuum oven at RT for 24 h (yield: 95%).",
+                "PAES-10-IMPPO was dissolved in DMF to form a 5 wt% solution. The resulting solution was filtered by a 0.45 µm PTFE membrane, and was then cast onto smooth glass plates followed by drying under vacuum at 60 °C for 24 h to make the PAES-10-QPPO membranes in the Br^{−}form. Afterward, the membranes were immersed into a 1 M aqueous NaOH solution at RT for 48 h to obtain the OH^{−} form PAES-10-QPPO membranes. The membranes were kept in deionized water for more than 48 h before use."
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Characterization",
+          "content": [
+            "^{1}H NMR spectra was recorded at 500 MHz on a Bruker Avance III spectrometer (Switzerland) using CDCl_{3} or DMSO-d _{6} as the solvent and tetramethylsilane (TMS) as the internal reference. Solid state ^{13}C NMR spectra were recorded on a Bruker Avance 400 spectrometer. The molecular weight of the as-synthesized polymers was determined via gel permeation chromatography (GPC) using a Waters 1515 isocratic HPLC pump, coupled with three Styragel columns (Waters HT4, HT5E and HT6) and a Waters 2414 differential refractometer detector. Tetrahydrofuran (THF) was used as the eluent with a flow rate of 1.0 mL min^{−1} and polystyrene standards were used to calibrate the columns.",
+            "A scanning electron microscope (SEM) (Sigma, Zeiss, Germany) was used to examine the morphology of the AEMs. For transmission electron microscopy (TEM) observation, the membrane was stained with tungstate ions by immersing the sample into a 1 M aqueous Na_{2}WO_{4} solution at RT for 48 h, followed by washing with deionized water for several times and vacuum drying at 60 °C for 24 h. Then, the sample was embedded in epoxy resin and sliced into 60 nm thickness by a microtome, and collected on copper grids for observation. TEM images were recorded on a JEM-2100 electron microscope (JEOL, Japan) operating at 200 kV."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Ionic exchange capacity",
+          "content": [
+            "Ionic exchange capacity (IEC) was determined using the back titration method and ^{1}H NMR. A dry membrane (m g) in the hydroxide form was immersed into an HCl solution (V _{1} mL, c _{1} mol L^{−1}≈0.1 mol L^{−1}) for 48 h. The solution was then neutralized with a NaOH solution (V _{2} mL, c _{2} mol L^{−1}) using phenolphthalein as the indicator. The IEC is calculated from the following equation"
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Water uptake and swelling ratio",
+          "content": [
+            "A rectangle membrane was dried in an oven under vacuum at 80 °C for 24 h, followed by immersing into deionized water at a certain temperature for 24 h. When taken out, the membrane surface was wiped with tissue paper with mass and length/thickness being recorded. The length and thickness of the membranes were measured by a vernier caliper and spiral micrometer, respectively. The water uptake (WU) of the membrane is calculated bywhere m d and m w are the weight of the dry and wet membranes, respectively.",
+            "The hydration number (λ) around each cationic group is calculated using the following equation",
+            "The dimensional swelling ratio (SR) of the membranes in the in-plane and through-plane directions can be calculated as follows where L w and L d are the length of the wet and dry membranes, and T w and T d are the thickness of the wet and dry membranes, respectively."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Ionic conductivity",
+          "content": [
+            "The ionic conductivity (σ, mS cm^{−1}) of each membrane (size: 1 cm×3 cm) is calculated bywhere L is the distance between the reference electrodes (1 cm), and A is the cross-sectional area of the membrane sample. R is the membrane impedance (kΩ) measured over the frequency range from 0.1 Hz to 100 kHz by the two-point probe alternating current (AC) impedance technique on a Parstat 263 electrochemical workstation (Princeton Advanced Technology, USA). The membrane was sandwiched by two pairs of copper-plate electrodes, and was then immersed into deionized water (degassing treatment) and equilibrated at a certain temperature for at least 2 h to record the impedance spectrum."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Mechanical properties and thermal stability",
+          "content": [
+            "Mechanical properties including tensile strength, Young's modulus and elongation at break were measured using an Instron 3343 universal testing machine with a tensile speed of 0.2 mm s^{−1} at RT. A dog-bone-shaped sample (5.0 mm×2.0 mm in the gauge area) was punched from membranes for tensile test. Before measurement, the membrane was immersed in deionized water at RT for 24 h.",
+            "A thermogravimetric analyzer (SDT-Q600, TA instruments, USA) was used to evaluate the thermal stability of the membranes. The membrane samples were heated from RT to 800 °C at a heating rate of 10 °C min^{−1} under a nitrogen atmosphere. Before test, the membrane samples were dried in a vacuum oven at 80 °C for 24 h."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Alkaline stability",
+          "content": [
+            "The alkaline stability of the membranes was evaluated by immersing the hydroxide form membrane into a 1 M aqueous KOH solution at 80 °C for 600 h. The change in ionic conductivity, IEC and FT-IR spectra was monitored. The ionic conductivity of each membrane was determined under fully hydrated condition at 30 °C. Before measurements, the hydroxide form membrane was washed with deionized water and kept in deionized water at RT for at least 48 h."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Single cell performance",
+          "content": [
+            "The membrane electrode assembly (MEA) composed of a membrane and both anode/cathode electrodes was constructed as follows. First, Pt/C catalyst (40 wt% Pt, Johnson Matthey, UK) was mixed with glycol and ionomer solution via ultrasonic dispersion and vigorously magnetic stirring at RT to prepare a well dispersed catalyst ink. Afterwards, the catalyst ink was coated onto a carbon paper (Toray TGP-H-060, Japan) with Pt loading of 1 mg cm^{−2} to construct anode/cathode electrodes. The OH^{−} form PAES-15-IMPPO membrane was sandwiched between the two ink-treated carbon papers, followed by hot-pressing at 5 MPa and 30 °C for 5 min to obtain MEA for single cell test.",
+            "The performance of the MEA with an effective area of 2 cm×2 cm was tested using a fuel cell test system (ZY8714, ZHONGYING Electronic Co., Ltd.) at 60 °C. The flow rate of H_{2} and O_{2} supplied to the anode and cathode was both at 100 mL min^{−1} with a relative humidity of 100%."
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ce_section",
+      "name": "Results and discussion",
+      "content": [
+        {
+          "type": "ce_section",
+          "name": "Synthesis of hydroxyl-containing poly(arylene ether sulfone) (PAES-x-OH)",
+          "content": [
+            "A nucleophilic polycondensation reaction was performed to synthesize PAES-x-OCH_{3} (x=5, 10, 12.5 and 15) under various MOHQ to FPS ratios. The conversion from -OCH_{3} to -OH groups was carried out using BBr_{3} in CHCl_{3} via demethylation reaction, as reported in our previous work [14]. Fig. S1 (Supporting information) shows the ^{1}H NMR spectra of PAES-10-OCH_{3} and PAES-10-OH as a typical example. All the signals from 6.5 to 8.5 ppm were ascribed to the aromatic protons on the benzene rings. The band at 3.60 ppm associated with the proton signals of -OCH_{3} groups completely disappeared after demethylation reaction. A new band appeared at 10.13 ppm was ascribed to the hydrogen atoms of -OH groups. The degree of demethylation is 100%."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Synthesis of fluorine-terminated PPO-F oligomers",
+          "content": [
+            "The oxidative polymerization of DMP with oxygen was performed in ethanol using copper-amine as the oxidative catalyst [37]. The PPO-OH oligomers with molecular weight of M_{n}=2341 g mol^{−1} (Table S1, Supporting Information) were precipitated from ethanol due to their poor solubility in polar alcohols. Since HFB has multiple -F groups, a large excess of HFB was used in the end-capping reaction to avoid inter-oligomer coupling. As confirmed by GPC (Table S1), without any increase in M_{n} of the PPO oligomers after the end-capping reaction suggests the undesirable side reaction being avoided successfully.",
+            "The chemical structure of the PPO and PPO-F oligomers was characterized by ^{1}H NMR using CDCl_{3} as the solvent. As shown in Fig. S2(a), the signal at 4.26 ppm attributed to the chemical shift of -OH groups disappeared after reacting with HFB, indicating a complete end-capping reaction."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Synthesis of imidazolium-functionalized PAES-x-IMPPO copolymers",
+          "content": [
+            "PAES-x-OH was reacted with PPO-F smoothly via nucleophilic substitution using K_{2}CO_{3} as the acid-binding agent at a given temperature without crosslinking reaction. The structure of PAES-10-PPO was confirmed by ^{1}H NMR. As shown in Fig. S3, the chemical shift of the -OH group proton at 10.13 ppm disappeared and the band belonging to PPO appeared at 2.03 and 6.50 ppm, indicating the successful synthesis of target side-chain-type copolymers.",
+            "The conversion of -CH_{3} to reactive -CH_{2}Br on the side chain of PAES-x-PPO was carried out using NBS as the brominating agent and AIBN as the initiator. A comparison with PAES-10-PPO (Fig. S3) shows a new band at 4.46 ppm ascribed to the -CH_{2}Br proton appeared in the ^{1}H NMR spectra of PAES-10-BPPO (Fig. S4(a)). A comparison of the integration of -CH_{2}Br at 4.46 ppm with -CH_{3} at 2.03 ppm yields the degree of bromination of PAES-x-BPPO.",
+            "As depicted in , 1-methylimidazole was used as the functional reagent for preparing PAES-x-IMPPO. Taking PAES-10-IMPPO as an example, the functionalized copolymer was characterized by ^{1}H NMR, as shown in Fig. S4(b). The band of the -CH_{2}Br proton at 4.46 ppm disappeared in the ^{1}H NMR spectra while a new band appeared at 5.50 ppm could be ascribed to the two benzylic protons, indicating that a complete conversion of -CH_{2}Br to imidazolium groups was achieved. The solubility of the as-synthesized copolymers was also investigated, as shown in Table S2."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Morphology",
+          "content": [
+            "The morphology of the as-synthesized membranes was observed using scanning electron microscopy (SEM) and transmission electron microscopy (TEM). As shown in Fig. 1(a) and (b), the membrane is transparent and flexible. It is also found that a smooth, homogeneous and dense membrane without pores was formed after converting to hydroxide form (Fig. 1(c) and (d)). The micro-morphology of the as-synthesized membrane was further examined using TEM. As shown in Fig. 2, the dark and bright regions are attributed to the hydrophilic (ionic) and hydrophobic domains, respectively [38]. All of the AEMs exhibit distinct hydrophilic/hydrophobic phase separation and the size of the ion clusters increased with increasing side-chain segment ratio.",
+            "The diameter of the ion clusters was 5–15 nm, 10–25 nm and 15–30 nm for PAES-5-IMPPO, PAES-10-IMPPO and PAES-15-IMPPO, respectively. Especially, the ion clusters of PAES-15-IMPPO are interconnected in some domains. The hydrophilic/hydrophobic phase separation is considered to stem from incompatibility between the hydrophobic poly(arylene ether sulfone) backbone and hydrophilic side chain, thus driving copolymers to self-assemble and form ion domains containing imidazolium groups. This is beneficial to the formation of nanoscale channels for efficient hydroxide conducting ( Fig. 3)."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Ionic exchange capacity, water uptake and swelling ratio",
+          "content": [
+            "As a critical factor, IEC dominated the properties such as water uptake, swelling ratio and hydroxide conductivity of a membrane. As listed in Table 1, the titrated IEC was in the range of 1.54–2.55 meq g^{−1}, and agreed well with the calculated IEC from the ^{1}H NMR spectra, indicating that all of the bromide ions were almost fully converted into hydroxide ions.",
+            "As a basic parameter of the AEMs, water is critical for the ion dissociation and formation of effective hydroxide conducting channels. It is imperative to maintain a moderate water uptake because excess water will result in an over-swelling and thus a decrease in mechanical properties of the AEMs. Fig. 4(a) shows the temperature dependence of water uptake of the PAES-x-IMPPO membranes in the hydroxide form. As expected, the water uptake increased with increasing temperature. This may be caused by the increased mobility of the polymer chain at elevated temperature to provide a larger space for holding water. To overcome the IEC differences, we calculated the number of absorbed water molecules per imidazolium group (designated as λ). As shown in Table 1, λfor the PAES-x-IMPPO was ranged from 10.9 to 26 at 30 °C. The PAES-10-IMPPO membrane have water uptake (70.1%) and λ (18.5) (IEC=2.1 meq g^{−1}) slightly lower than the reported block F-QPES (WU=109.4%, λ=32.2, IEC=1.89 meq g^{−1}) [39] and QPE-X16Y11 (WU=112%, λ=32.2, IEC=2.05 meq g^{−1}) [29] with a similar IEC at 30 °C. The side-chain structure may be responsible for this because the formation of nanosize ion clusters (confirmed by TEM, Fig. 2) could enhance elastic forces and thus constrain excessive swelling, as noted by Ran [40].",
+            "The tendency of in-plane swelling ratio versus temperature for the PAES-x-IMPPO is in line with water uptake, as shown in Fig. 4(b). For example, PAES-5-IMPPO shows the lowest in-plane swelling ratio of 7.8% at 30 °C and 13.5% at 80 °C while PAES-15-IMPPO exhibits the highest value of 28% at 30 °C and 39.1% at 80 °C. Table 1 shows the swelling ratio of PAES-x-IMPPO membranes in the in-plane and through-plane directions at 30 °C. The through-plane swelling ratio of the PAES-x-IMPPO membranes is found to be ~1.6 times greater than the in-plane swelling ratio indicating a slight degree of anisotropy."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Hydroxide conductivity",
+          "content": [
+            "Hydroxide conductivity is one of the critical parameter influencing the performance of fuel cells. In general, the requirement for the hydroxide conductivity should be above 10 mS cm^{−1} for AEM materials used in fuel cells . Fig. 5 shows the temperature dependence of hydroxide conductivity of the PAES-x-IMPPO membranes. As expected, the hydroxide conductivity increased with increasing IEC because the concentration of imidazolium groups increased in the AEMs. It was also observed that the hydroxide conductivity of the PAES-x-IMPPO membranes increased by increasing temperature. There are two reasons for this : (1) the ion mobility increased with temperature; (2) the free volume of the polymer increased with temperature leading to an expansion of the ion conducting channels for hydroxide transport. The hydroxide conductivity is in the range of 10.7–30.6 mS cm^{−1} at 30 °C and 33.7–78.8 mS cm^{−1} at 80 °C, and is greater than 10 mS cm^{−1} over the temperature range, indicating that the as-synthesized AEMs hold promise for application in fuel cells. The high hydroxide conductivity may be ascribed to the formation of effective ion conducting channels from ion clusters with large size, as confirmed by TEM, which are favorable for high conductivity.",
+            "Besides, the relationship between hydroxide conductivity (ln σ) and temperature (1000/T) was found to conform to Arrhenius equation, as shown in Fig. 6. The hydroxide transport activation energies (E a) of the as-synthesized membranes were calculated using the equation: E a=−bR, where b is the slope of the linear regressed of ln σ−1000/T plots and R is the universal gas constant (8.314 J(mol K)^{−1}). The variation trend of the E a value is in line with that of hydroxide conductivity. It is observed that PAES-5-IMPPO with the lowest hydroxide conductivity exhibited the highest E a. This suggests that more energy was required for transporting hydroxide ions in the membrane. The increment of IEC induced an increase in the water uptake, which is beneficial to the formation of ion conducting channels in the membranes and results in a lower E a [44]. All the as-synthesized membranes show E a values range from 16.65 to 20.05 kJ mol^{−1}, and are similar to the reported AEMs ."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Mechanical property and thermal stability",
+          "content": [
+            "The mechanical properties of the PAES-x-IMPPO membranes are considered as essential parameters for fuel cell application. The measurements of the mechanical properties were carried out at RT, and the results are listed in Table 2. The tensile strength, Young's modulus and elongation at break of the PAES-x-IMPPO membranes were in the range of 36–62 MPa, 522–1431 MPa and 8.2–22.8%, respectively. Although the tensile strength demonstrated in this work decreased with increasing IEC, and is still higher than that of main-chain-type MPAES-Q-2 [47] and BIm-PPO-0.54 [48], comb-shaped B-g-Q-2 [40] and block I-QPES [40] reported in the literature. These results suggest that PAES-x-IMPPO exhibits robust mechanical properties and can meet the requirement for potential application in alkaline fuel cells.",
+            "A thermogravimetrc analyzer (TGA) was used to evaluate the thermal stability of the PAES-x-IMPPO membranes. A slight weight loss observed below 150 °C was ascribed to the evaporation of residual water and solvent ( Fig. 7). The degradation temperature of imidazolium groups (200 °C) was similar to that of the AEMs containing imidazolium, but greater than that of the AEMs containing quaternary ammonium (140 °C) [49]. The weight loss above 280 °C corresponding to the decomposition of aromatic backbone indicates that the AEMs have a good thermal stability and can meet the requirement for low-temperature alkaline fuel cells (23–70 °C) [6]."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Alkaline stability",
+          "content": [
+            "The alkaline stability of PAES-15-IMPPO (IEC=2.55 meq g^{−1}, OH^{−} form) was examined in a 1 M aqueous KOH solution at 80 °C for 600 h, and the change in IEC and conductivity with time was recorded. As shown in Fig. 8, the trend of variation in conductivity and IEC was similar, indicating that the degradation of cation groups was responsible for the conductivity loss. The hydroxide conductivity decreased rapidly to 17.6 mS cm^{−1} (30 °C) at the initial 192 h and gradually tended to a relative constant value of 15.0 mS cm^{−1}. There is approximately 50% of the original conductivity remained after 600 h. The IEC of PAES-15-IMPPO reduced to 1.16 meq g^{−1}, and was about 45% of the original value. Fig. S5(b) shows the FT-IR spectra of degraded PAES-15-IMPPO membrane. The peaks at 627 and 1667 cm^{−1} assigned to the imidazolium groups [50] were smaller than those of the pristine membrane (Fig. S5(a)), suggesting the degradation of the imidazolium cation groups.",
+            "Interestingly, although with moderate alkaline stability, the imidazolium-based PAES-15-IMPPO maintained its original shape and flexibility throughout the test. However, the quaternized PPO membrane based on trimethylamine was broken into small pieces under the same condition . This is an indicative of decline in mechanical properties and molecular weight of the polymer. PAES-15-IMPPO was also found to be insoluble in organic solvents after the stability test. This suggests there may be crosslinking reaction leading to a good maintainability of the shape and flexibility of the membrane. The same phenomena were observed by other researchers in studying the degradation of imidazolium-based AEMs. Ramani et al. [53] found that their degraded imidazolium-based AEM was insoluble in a variety of deuterated solvents. Hickner et al. [54] reported that their imidazolium-based poly (arylene ether sulfone)s AEMs were crosslinked after stability tests. As noted by Zhao et al. [55] and Xie et al. [56], the proposed degradation mechanism of the imidazolium cation could be illustrated in Scheme S1. The degradation resultant -CHO groups could react with –NH-CH_{3} groups to form a crosslinked network [53]. To further interpret the mechanism of crosslinking reaction in the degraded membranes, we provided ^{13}C NMR solid state spectra of PAES-15-IMPPO before and after alkaline stability test (Fig. S6). The –CH_{3} signal of the imidazolium groups around 36 ppm decreased in intensity, which is an evidence of the ring-open reaction of imidazolium cations, and a new signal around 29 ppm is attributed to the -NH-CH_{3} carbon. An increase in the intensity around 160 ppm is ascribed to the presence of –CHO carbon. A new signal around 150 ppm is attributed to the -CO-N(CH_{3})- carbon, which is corresponding to the crosslinked groups. However, we are not sure that the mechanism of crosslinking reaction is reversible yet, which need further investigation."
+          ]
+        },
+        {
+          "type": "ce_section",
+          "name": "Single cell performance",
+          "content": [
+            "PAES-15-IMPPO in the OH^{−} form was chosen for fuel cell performance test due to its high conductivity. The single cell was operated under humidified H_{2} and O_{2} with flow rate of 100 mL min^{−1} at 60 °C. The polarization and power density curves for PAES-15-IMPPO are shown in Fig. 9. The open circuit voltage (OCV) of 0.98 V was a little lower than the theoretical value (1.23 V) [57], indicating that the voltage loss caused by gas crossover was acceptable. However, the voltage declined rapidly by increasing current density because of the activation polarization. A maximum power density (P max, 56.8 mW cm^{−2}) was achieved at a current density of 125 mA cm^{−2}. This is higher than the P max (30 mW cm^{−2}) using an imidazolium-functionalized PPO membrane [58] and P max (12.8 mW cm^{−2}) using an ammonium-functionalized copolymer membrane at 60 °C [59]. It is worth to point out that the fuel cell performance has a strong dependence on electrode structure [60], MEA fabrication method and operating conditions [63]. In this work, our research focuses on the synthesis and characterization of membranes. We thus only offer the preliminary performance of the single cell without optimization. Further work will focus on the optimization of the factors mentioned above for a better fuel cell performance."
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ce_section",
+      "name": "Conclusions",
+      "content": [
+        "We have designed and prepared a series of novel side-chain-type AEMs composed of poly(arylene ether sulfone)s backbone and pendent imidazolium-functionalized PPO via chemical graft reaction, bromination, functionalization and alkalization. The as-synthesized PAES-x-IMPPO exhibited distinct microphase separation due to the hydrophilic/hydrophobic differences between backbone and side chain. PAES-15-IMPPO with IEC=2.55 meq g^{−1} exhibited the highest conductivity of 78.8 mS cm^{−1} at 80 °C. Furthermore, all the PAES-x-IMPPO exhibited robust mechanical properties and good thermal stability, and can meet the requirements for alkaline fuel cells. The PAES-x-IMPPO also showed reasonable stability in a 1 M aqueous KOH solution at 80 °C. The high performance of side-chain-type PAES-x-IMPPO membranes hold promise for application in alkaline fuel cells. Nevertheless, the preparation approach was complex and needed further simplification. Furthermore, PAES-15-IMPPO exhibited high water uptake and swelling ratio at 80 °C. We deduced that PAES-x-IMPPO (x>15) would result in higher swelling ratio and poorer mechanical properties, which may be unsuitable for MEA fabrication. Hence, we did not synthesize such membranes. Further work will focus on developing a facile approach for preparing AEMs with such structure and controlling the water uptake and swelling ratio of the membranes."
+      ]
+    },
+    {
+      "type": "ce_bibliography",
+      "name": "References",
+      "content": [
+        "[1] M. Jacobson W. Colella D. Golden Cleaning the air and improving health with hydrogen fuel-cell vehicles Science 308 2005 1901 1905",
+        "[2] A.K. Mishra S. Bose T. Kuila N.H. Kim J.H. Lee Silicate-based polymer-nanocomposite membranes for polymer electrolyte membrane fuel cells Prog. Polym. Sci. 37 2012 842 869",
+        "[3] G. He Z. Li J. Zhao S. Wang H. Wu M.D. Guiver Z. Jiang Nanostructured ion-exchange membranes for fuel cells: recent advances and perspectives Adv. Mater. 27 2015 5280 5295",
+        "[4] N. Awang A.F. Ismail J. Jaafar T. Matsuura H. Junoh M.H.D. Othman M.A. Rahman Functionalization of polymeric materials as a high performance membrane for direct methanol fuel cell: a review React. Funct. Polym. 25 2015 248 258",
+        "[5] Y.J. Wang J. Qiao R. Baker J. Zhang Alkaline polymer electrolyte membranes for fuel cell applications Chem. Soc. Rev. 42 2013 5768 5787",
+        "[6] G. Merle M. Wessling K. Nijmeijer Anion exchange membranes for alkaline fuel cells: a review J. Membr. Sci. 377 2011 1 35",
+        "[7] M.A. Hickner A.M. Herring E.B. Coughlin Anion exchange membranes: current status and moving forward J. Polym. Sci. Part B: Polym. Phys. 51 2013 1727 1735",
+        "[8] X. Wang E. Yu J. Horsfall K. Scott Performance of the direct methanol carbonate fuel cell using anion exchange materials and non-noble metal cathode catalyst Fuel Cells 13 2013 817 821",
+        "[9] R. Janarthanan A. Serov S.K. Pilli D.A. Gamarra P. Atanassov M.R. Hibbs A.M. Herring Direct methanol anion exchange membrane fuel cell with a non-platinum group metal cathode based on iron-aminoantipyrine catalyst Electrochim. Acta 175 2015 202 208",
+        "[10] S.C. Price X. Ren A.C. Jackson Y. Ye Y.A. Elabd F.L. Beyer Bicontinuous alkaline fuel cell membranes from strongly self-segregating block copolymers Macromolecules 46 2013 7332 7340",
+        "[11] Z. Zhang K. Shen L. Lin J. Pang Anion exchange membranes based on tetra-quaternized poly(arylene ether ketone) J. Membr. Sci. 497 2016 318 327",
+        "[12] Z. Yang J. Zhou S. Wang J. Hou L. Wu T. Xu A strategy to construct alkali-stable anion exchange membranes bearing ammonium groups via flexible spacers J. Mater. Chem. A 3 2015 15015 15019",
+        "[13] Y. Yang D.M. Knauss Poly (2,6-dimethyl-1,4-phenylene oxide)-b-poly (vinylbenzyltrimethylammonium) diblock copolymers for highly conductive anion exchange membranes Macromolecules 48 2015 4471 4480",
+        "[14] Y.Z. Zhuo A.L. Lai Q.G. Zhang A.M. Zhu M.L. Ye Q.L. Liu Enhancement of hydroxide conductivity by grafting flexible pendant imidazolium groups into poly (arylene ether sulfone) as anion exchange membranes J. Mater. Chem. A 3 2015 18105 18114",
+        "[15] E.A. Weiber P. Jannasch Polysulfones with highly localized imidazolium groups for anion exchange membranes J. Membr. Sci. 481 2015 164 171",
+        "[16] A.H. Rao S. Nam T.-H. Kim Comb-shaped alkyl imidazolium-functionalized poly (arylene ether sulfone) s as high performance anion-exchange membranes J. Mater. Chem. A 3 2015 8571 8580",
+        "[17] S.D. Sajjad Y. Hong F. Liu Synthesis of guanidinium-based anion exchange membranes and their stability assessment Polym. Adv. Technol. 25 2014 108 116",
+        "[18] L. Liu Q. Li J. Dai H. Wang B. Jin R. Bai A facile strategy for the synthesis of guanidinium-functionalized polymer as alkaline anion exchange membrane with improved alkaline stability J. Membr. Sci. 453 2014 52 60",
+        "[19] X. Lin L. Wu Y. Liu A.L. Ong S.D. Poynton J.R. Varcoe T. Xu Alkali resistant and conductive guanidinium-based anion-exchange membranes for alkaline polymer electrolyte fuel cells J. Power Sources 217 2012 373 380",
+        "[20] X. Yan S. Gu G. He X. Wu W. Zheng X. Ruan Quaternary phosphonium-functionalized poly(ether ether ketone) as highly conductive and alkali-stable hydroxide exchange membrane for fuel cells J. Membr. Sci. 466 2014 220 228",
+        "[21] K.J. Noonan K.M. Hugar H.At Kostalik E.B. Lobkovsky H.D. Abruna G.W. Coates Phosphonium-functionalized polyethylene: a new class of base-stable alkaline anion exchange membranes J. Am. Chem. Soc. 134 2012 18161 18164",
+        "[22] B. Zhang S. Gu J. Wang Y. Liu A.M. Herring Y. Yan Tertiary sulfonium as a cationic functional group for hydroxide exchange membranes RSC Adv. 2 2012 12683",
+        "[23] S. Gu J. Wang R.B. Kaspar Q. Fang B. Zhang E.B. Coughlin Y. Yan Permethyl cobaltocenium (Cp* 2Co+) as an ultra-stable cation for polymer hydroxide-exchange membranes Sci. Rep. 5 2015 11668",
+        "[24] Y. Zha M.L. Disabb-Miller Z.D. Johnson M.A. Hickner G.N. Tew Metal-cation-based anion exchange membranes J. Am. Chem. Soc. 134 2012 4493 4496",
+        "[25] J.R. Varcoe P. Atanassov D.R. Dekel A.M. Herring M.A. Hickner P.A. Kohl A.R. Kucernak W.E. Mustain K. Nijmeijer K. Scott Anion-exchange membranes in electrochemical energy systems Energy Environ. Sci. 7 2014 3135 3191",
+        "[26] E.A. Weiber D. Meis P. Jannasch Anion conducting multiblock poly (arylene ether sulfone) s containing hydrophilic segments densely functionalized with quaternary ammonium groups Polym. Chem. 6 2015 1986 1996",
+        "[27] Q. Li L. Liu Q. Miao B. Jin R. Bai Hydroxide-conducting polymer electrolyte membranes from aromatic ABA triblock copolymers Polym. Chem. 5 2014 2208 2213",
+        "[28] J. Pan Y. Li J. Han G. Li L. Tan C. Chen J. Lu L. Zhuang A strategy for disentangling the conductivity-stability dilemma in alkaline polymer electrolytes Energy Environ. Sci. 6 2013 2912 2915",
+        "[29] M. Tanaka K. Fukasawa E. Nishino S. Yamaguchi K. Yamada H. Tanaka B. Bae K. Miyatake M. Watanabe Anion conductive block poly (arylene ether)s: synthesis, properties, and application in alkaline fuel cells J. Am. Chem. Soc. 133 2011 10646 10654",
+        "[30] N. Yokota M. Shimada H. Ono R. Akiyama E. Nishino K. Asazawa J. Miyake M. Watanabe K. Miyatake Aromatic copolymers containing ammonium-functionalized oligophenylene moieties as highly anion conductive membranes Macromolecules 47 2014 8238 8246",
+        "[31] N. Li Q. Zhang C. Wang Y.M. Lee M.D. Guiver Phenyltrimethylammonium functionalized polysulfone anion exchange membranes Macromolecules 45 2012 2411 2419",
+        "[32] Q. Ge J. Ran J. Miao Z. Yang T. Xu Click chemistry finds its way in constructing ionic highway in anion exchange membrane ACS Appl. Mater. Interfaces 7 2015 28545 28553",
+        "[33] L. Wu Z. Zhang J. Ran D. Zhou C. Li T. Xu Advances in proton-exchange membranes for fuel cells: an overview on proton conductive channels (PCCs) Phys. Chem. Chem. Phys. 15 2013 4870 4887",
+        "[34] N. Li Y. Leng M.A. Hickner C.Y. Wang Highly stable, anion conductive, comb-shaped copolymers for alkaline fuel cells J. Am. Chem. Soc. 135 2013 10124 10133",
+        "[35] J. Ran L. Wu B. Wei Y. Chen T. Xu Simultaneous enhancements of conductivity and stability for anion exchange membranes (AEMs) through precise structure design Sci. Rep. 4 2014 1 5",
+        "[36] K. Matyjaszewski Atom transfer radical polymerization (ATRP): current status and future perspectives Macromolecules 45 2012 4015 4039",
+        "[37] A.S. Hay Poly(2,6-diphenyl-1,4-phenylene oxide) Macromolecules 2 1969 107 108",
+        "[38] A.N. Lai K. Zhou Y.Z. Zhuo Q.G. Zhang A.M. Zhu M.L. Ye Q.L. Liu Anion exchange membranes based on carbazole-containing polyolefin for direct methanol fuel cells J. Membr. Sci. 497 2016 99 107",
+        "[39] P.Y. Xu K. Zhou G.L. Han Q.G. Zhang A.M. Zhu Q.L. Liu Effect of fluorene groups on the properties of multiblock poly(arylene ether sulfone)s-based anion-exchange membranes ACS Appl. Mater. Interfaces 6 2014 6776 6785",
+        "[40] J. Ran L. Wu T. Xu Enhancement of hydroxide conduction by self-assembly in anion conductive comb-shaped copolymers Polym. Chem. 4 2013 4612 4620",
+        "[41] J. Wang S. Li S. Zhang Novel Hydroxide-conducting polyelectrolyte composed of an poly(arylene ether sulfone) containing pendant quaternary guanidinium groups for alkaline fuel cell applications Macromolecules 43 2010 3890 3896",
+        "[42] Y. Xiong Q.L. Liu Q.H. Zeng Quaternized cardo polyetherketone anion exchange membrane for direct methanol alkaline fuel cells J. Power Sources 193 2009 541 546",
+        "[43] Q. Li L. Liu Q. Miao B. Jin R. Bai A novel poly(2,6-dimethyl-1,4-phenylene oxide) with trifunctional ammonium moieties for alkaline anion exchange membranes Chem. Commun. 50 2014 2791 2793",
+        "[44] B. Lin L. Qiu J. Lu F. Yan Cross-linked alkaline ionic liquid-based polymer electrolytes for alkaline fuel cell applications Chem. Mater. 22 2010 6718 6725",
+        "[45] T.A. Sherazi S. Zahoor R. Raza A.J. Shaikh S.A.R. Naqvi G. Abbas Y. Khan S. Li Guanidine functionalized radiation induced grafted anion-exchange membranes for solid alkaline fuel cells Int. J. Hydrog. Energy 40 2015 786 796",
+        "[46] L.-c. Jheng S.L.-c. Hsu B.-y. Lin Y.-l. Hsu Quaternized polybenzimidazoles with imidazolium cation moieties for anion exchange membrane fuel cells J. Membr. Sci. 460 2014 160 170",
+        "[47] X. Lin X. Liang S.D. Poynton J.R. Varcoe A.L. Ong J. Ran Y. Li Q. Li T. Xu Novel alkaline anion exchange membranes containing pendant benzimidazolium groups for alkaline fuel cells J. Membr. Sci. 443 2013 193 200",
+        "[48] X. Li G. Nie J. Tao W. Wu L. Wang S. Liao Assessing the influence of side-chain and main-chain aromatic benzyltrimethyl ammonium on anion exchange membranes ACS Appl. Mater. Interfaces 6 2014 7585 7595",
+        "[49] N.W. Li T.Z. Yan Z. Li T. Thurn-Albrecht W.H. Binder Comb-shaped polymers to enhance hydroxide transport in anion exchange membranes Energy Environ. Sci. 5 2012 7888 7892",
+        "[50] A.N. Lai L.S. Wang C.X. Lin Y.Z. Zhuo Q.G. Zhang A.M. Zhu Q.L. Liu Phenolphthalein-based poly (arylene ether sulfone nitrile)s multiblock copolymers as anion exchange membranes for alkaline fuel cells ACS Appl. Mater. Interfaces 7 2015 8284 8292",
+        "[51] N. Li L. Wang M. Hickner Cross-linked comb-shaped anion exchange membranes with high base stability Chem. Commun. 50 2014 4092 4095",
+        "[52] D. Chen M.A. Hickner Degradation of imidazolium- and quaternary ammonium-functionalized poly(fluorenyl ether ketone sulfone) anion exchange membranes ACS Appl. Mater. Interfaces 4 2012 5775 5781",
+        "[53] C.G. Arges V. Ramani Investigation of cation degradation in anion exchange membranes using multi-dimensional NMR spectroscopy J. Electrochem. Soc. 160 2013 F1006 F1021",
+        "[54] D. Chen M.A. Hickner Degradation of imidazolium-and quaternary ammonium-functionalized poly (fluorenyl ether ketone sulfone) anion exchange membranes ACS Appl. Mater. Interfaces 4 2012 5775 5781",
+        "[55] B. Wang W. Sun F. Bu X. Li H. Na Z. Zhao Comparison of alkaline stability of benzyltrimethylammonium, benzylmethylimidazolium and benzyldimethylimidazolium functionalized poly (arylene ether ketone) anion exchange membranes Int. J. Hydrog. Energy 41 2016 3102 3112",
+        "[56] W. Wang S. Wang X. Xie Y. lv V.K. Ramani Hydroxide-ion induced degradation pathway for dimethylimidazolium groups in anion exchange membranes J. Membr. Sci. 462 2014 112 118",
+        "[57] H.W. Zhang D.Z. Chen Y. Xianze S.B. Yin Anion-exchange membranes for fuel cells: synthesis strategies, properties and perspectives Fuel Cells 15 2015 761 780",
+        "[58] J. Ran L. Wu J.R. Varcoe A.L. Ong S.D. Poynton T. Xu Development of imidazolium-type alkaline anion exchange membranes for fuel cell application J. Membr. Sci. 415–416 2012 242 249",
+        "[59] L. Wu C. Li Z. Tao H. Wang J. Ran E. Bakangura Z. Zhang T. Xu Anionic quaternary ammonium fluorous copolymers bearing thermo-responsive grafts for fuel cells Int. J. Hydrog. Energy 39 2014 9387 9396",
+        "[60] Y. Zhao H. Yu F. Xie Y. Liu Z. Shao B. Yi High durability and hydroxide ion conducting pore-filled anion exchange membranes for alkaline fuel cell applications J. Power Sources 269 2014 1 6",
+        "[61] Y. Zhao J. Pan H. Yu D. Yang J. Li L. Zhuang Z. Shao B. Yi Quaternary ammonia polysulfone-PTFE composite alkaline anion exchange membrane for fuel cells application Int. J. Hydrog. Energy 38 2013 1983 1987",
+        "[62] M. Carmo G. Doubek R.C. Sekol M. Linardi A.D. Taylor Development and electrochemical studies of membrane electrode assemblies for polymer electrolyte alkaline fuel cells using FAA membrane and ionomer J. Power Sources 230 2013 169 175",
+        "[63] Y.-C. Cao X. Wang M. Mamlouk K. Scott Preparation of alkaline anion exchange polymer membrane from methylated melamine grafted poly (vinylbenzyl chloride) and its fuel cell performance J. Mater. Chem. 21 2011 12910 12916"
+      ]
+    }
+  ],
+  "Abstract": "A series of novel side-chain-type anion exchange membranes (AEMs) composed of poly (arylene ether sulfone)s backbone and pendent imidazolium-functionalized polyphenylene oxide (PPO) was prepared via chemical grafting, bromination, functionalization and alkalization. The chemical structure of the as-synthesized copolymers was confirmed by ^{1}H NMR spectroscopy. Scanning electron microscopy (SEM) and transmission electron microscopy (TEM) were used to observe the morphology of the AEMs. The densely functionalized side chains are found to be beneficial to the formation of ion clusters, as demonstrated by TEM. As a result, the hydroxide conductivity of the PAES-x-IMPPO membranes was 78.8 mS cm^{−1} at 80 °C. Moreover, the AEMs also exhibit robust mechanical properties, good thermal stability and reasonable alkaline stability. An open circuit voltage (0.98 V) of H_{2}/O_{2} alkaline fuel cell using PAES-15-IMPPO at 60 °C can be an indicative of low fuel crossover. The maximum power density was 56.8 mW cm^{2} at a current density of 125 mA cm^{2} without optimization."
+}

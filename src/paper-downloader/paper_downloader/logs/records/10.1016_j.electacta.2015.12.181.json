@@ -1,0 +1,85 @@
+{
+  "DOI": "10.1016/j.electacta.2015.12.181",
+  "publisher": "Elsevier BV",
+  "journal": "Electrochimica Acta",
+  "year": 2015,
+  "month": 2,
+  "day": 31,
+  "title": "Stable poly(arylene ether sulfone)s anion exchange membranes containing imidazolium cations on pendant phenyl rings",
+  "citations": 44,
+  "reference_list": [
+    "10.1126/science.1109157",
+    "10.1021/cr020711a",
+    "10.1016/S0376-7388(00)00632-3",
+    "10.1016/j.memsci.2003.10.033",
+    "10.1002/marc.200700452",
+    "10.1002/adma.201001164",
+    "10.1016/j.polymer.2009.09.001",
+    "10.1016/j.progpolymsci.2011.06.001",
+    "10.1002/adfm.200901314",
+    "10.1021/ja204166e",
+    "10.1021/ja303067t",
+    "10.1016/j.progpolymsci.2011.04.004",
+    "10.1016/j.memsci.2013.03.053",
+    "10.1002/cssc.201300320",
+    "10.1039/c3cc47897a",
+    "10.1021/ma901606z",
+    "10.1021/ma902430y",
+    "10.1016/j.memsci.2013.02.046",
+    "10.1021/ma901538c",
+    "10.1016/j.electacta.2013.04.033",
+    "10.1021/ma201864u",
+    "10.1039/c1cc12430g",
+    "10.1016/j.memsci.2013.04.059",
+    "10.1016/j.reactfunctpolym.2013.06.010",
+    "10.1021/am301557w",
+    "10.1016/j.memsci.2015.02.002",
+    "10.1016/j.jpowsour.2015.03.065",
+    "10.1021/ma100260a",
+    "10.1021/cm2016164",
+    "10.1021/ja307466s",
+    "10.1021/ja211365r",
+    "10.1039/c1jm10656b",
+    "10.1016/j.memsci.2014.05.017",
+    "10.1021/cm400468u",
+    "10.1039/c3ta15178f",
+    "10.1016/j.memsci.2015.03.067",
+    "10.1039/C5TA00562K",
+    "10.1016/j.jpowsour.2013.02.059",
+    "10.1039/C5TA01123J",
+    "10.1021/ma202681z",
+    "10.1021/ma202159d",
+    "10.1021/ma2015968",
+    "10.1039/c2jm34414a",
+    "10.1016/j.memsci.2012.02.045",
+    "10.1016/j.jpowsour.2012.02.076"
+  ],
+  "author_list": [
+    {
+      "given": "Chenyi",
+      "family": "Wang"
+    },
+    {
+      "given": "Chang",
+      "family": "Xu"
+    },
+    {
+      "given": "Bin",
+      "family": "Shen"
+    },
+    {
+      "given": "Xiaoyan",
+      "family": "Zhao"
+    },
+    {
+      "given": "Jian",
+      "family": "Li"
+    }
+  ],
+  "funder_list": [
+    "National Natural Science Foundation of China",
+    "Natural Science Foundation of Jiangsu Province",
+    "Opening Project of State Key Laboratory of Molecular Engineering of Polymers"
+  ],
+  "issn": "0013-4686"
+}

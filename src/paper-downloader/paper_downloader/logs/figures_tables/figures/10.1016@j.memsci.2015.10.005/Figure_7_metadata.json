@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 7",
+  "clean_label": "Figure_7",
+  "caption": "Water up take (a), swelling ratio (b) and IEC (c) of the membranes.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738815302349-gr7.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2015.10.005",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2015.10.005/Figure_7.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2015.10.005",
+  "extraction_timestamp": "2025-11-10T18:14:35.304049",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

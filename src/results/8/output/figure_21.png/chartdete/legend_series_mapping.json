@@ -1,0 +1,106 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "7C",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/lineformer/mask_series_3.png",
+    "series_index": 3,
+    "cost": 0.23023010790348053,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        92.14285714285714,
+        247.11428571428573
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        0.0,
+        163.72366333007812,
+        240.79759216308594
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "IC",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/lineformer/mask_series_2.png",
+    "series_index": 2,
+    "cost": 0.05064786598086357,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        0.0,
+        212.77018633540374
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    },
+    "series_desc": {
+      "hsv": [
+        0.0,
+        0.0,
+        180.76560974121094
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 2,
+    "legend_text": "10C",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/chartdete/legend/patch_2.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.23134873807430267,
+    "legend_desc": {
+      "hsv": [
+        240.0,
+        84.49230769230769,
+        243.90769230769232
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        160.05450439453125,
+        241.80075073242188
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 3,
+    "legend_text": "14C",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/chartdete/legend/patch_3.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/results/8/output/figure_21.png/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.22442901134490967,
+    "legend_desc": {
+      "hsv": [
+        178.0,
+        61.745098039215684,
+        216.33333333333334
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        180.0,
+        109.67523193359375,
+        188.5688018798828
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 2",
+  "clean_label": "Figure_2",
+  "caption": "(a) and (b):  1 H NMR spectra of CmPEEK and ImPEEK, respectively. (c) and (d): Solid-state  13 C NMR spectra of Cm-O-POSS and Im-O-POSS, respectively. The FD of CmPEEK was calculated using the equation  \n                         \n                            FD \n                            \n                            = \n                            \n                            \n                               \n                                  A \n                                  r \n                                  e \n                                  a \n                                  \n                                  ( \n                                  N \n                                  o \n                                  \n                                  0.12 \n                                  ) \n                                  / \n                                  2 \n                               \n                               \n                                  A \n                                  r \n                                  e \n                                  a \n                                  \n                                  ( \n                                  N \n                                  o \n                                  \n                                  0.3 \n                                  \n                                  ~ \n                                  \n                                  6 \n                                  ) \n                                  / \n                                  4 \n                               \n                            \n                         \n                      . Because the FD of PEEK is not 100%, hydrogen atoms can be detected at location 12′ in some polymer chains.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738817306919-gr2.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2017.07.037",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2017.07.037/Figure_2.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2017.07.037",
+  "extraction_timestamp": "2025-11-10T18:16:40.447070",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

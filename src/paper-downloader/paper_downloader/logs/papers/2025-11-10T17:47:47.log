@@ -1,0 +1,66 @@
+2025-11-10 17:47:47,230 Running in NO-DB mode (writing status to local JSONL/CSV logs)
+2025-11-10 17:47:47,234 [NO-DB] Loaded input_csv with 31 rows; columns=['pi_id', 'pid', 'doi', 'title', 'pub_year', 'download_status', 'publisher']
+2025-11-10 17:47:47,234 Started downloading papers at 2025-11-10T17:47:47
+2025-11-10 17:47:47,234 Sample size 31
+2025-11-10 17:47:47,234 Number of documents to process: 31
+2025-11-10 17:47:47,234 Downloading DOI: 10.1016/j.electacta.2015.12.181
+2025-11-10 17:47:49,237 Downloading DOI: 10.1016/j.memsci.2010.11.058
+2025-11-10 17:47:51,239 Downloading DOI: 10.1016/j.memsci.2015.02.013
+2025-11-10 17:47:53,242 Downloading DOI: 10.1016/j.memsci.2015.05.060
+2025-11-10 17:47:55,244 Downloading DOI: 10.1016/j.memsci.2015.10.005
+2025-11-10 17:47:57,246 Downloading DOI: 10.1016/j.memsci.2016.02.019
+2025-11-10 17:47:59,249 Downloading DOI: 10.1016/j.memsci.2016.04.054
+2025-11-10 17:48:01,251 Downloading DOI: 10.1016/j.memsci.2016.05.058
+2025-11-10 17:48:03,254 Downloading DOI: 10.1016/j.memsci.2016.07.006
+2025-11-10 17:48:05,256 Downloading DOI: 10.1016/j.memsci.2017.07.037
+2025-11-10 17:48:07,258 Downloading DOI: 10.1016/j.memsci.2019.117314
+2025-11-10 17:48:09,261 Downloading DOI: 10.1016/j.memsci.2023.121916
+2025-11-10 17:48:11,263 Downloading DOI: 10.1021/acs.chemmater.5b02557
+2025-11-10 17:48:21,273 Publisher: acs
+2025-11-10 17:48:21,425 [ACS] Session expired — please refresh cookies via browser login.
+2025-11-10 17:48:21,426 [NO-DB] status logged: {'doc_id': 13, 'doi': '10.1021/acs.chemmater.5b02557', 'publisher': 'ACS', 'title': 'Mechanically Tough and Chemically Stable Anion Exchange Membranes from Rigid-Flexible Semi-Interpenetrating Networks', 'year': 2015, 'download_status': 6, 'note': {}, 'timestamp': '2025-11-10T17:48:21', 'extension': 'html'}
+2025-11-10 17:48:21,428 Downloading DOI: 10.1021/acs.macromol.8b02756
+2025-11-10 17:48:21,428 Downloading DOI: 10.1021/acsaem.9b01553
+2025-11-10 17:48:21,428 Downloading DOI: 10.1021/acsami.5b01475
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/acsami.5b09920
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/acsami.6b06426
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/acsami.6b07711
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/acsenergylett.3c00319
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/am3007005
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/am302844x
+2025-11-10 17:48:21,429 Downloading DOI: 10.1021/ma202159d
+2025-11-10 17:48:21,429 Downloading DOI: 10.1039/C4RA00833B
+2025-11-10 17:48:23,352 Publisher: rsc
+2025-11-10 17:48:23,353 Downloading DOI: 10.1039/C5TA01420D
+2025-11-10 17:48:29,289 Publisher: rsc
+2025-11-10 17:48:29,291 Downloading DOI: 10.1039/C5TA06454F
+2025-11-10 17:48:31,211 Publisher: rsc
+2025-11-10 17:48:31,213 Downloading DOI: 10.1039/C6TA05090E
+2025-11-10 17:48:33,412 Publisher: rsc
+2025-11-10 17:48:33,414 Downloading DOI: 10.1039/C7TA09409D
+2025-11-10 17:48:35,509 Publisher: rsc
+2025-11-10 17:48:35,511 Downloading DOI: 10.1039/D0PY00757A
+2025-11-10 17:48:37,776 Publisher: rsc
+2025-11-10 17:48:37,781 Downloading DOI: 10.1016/j.memsci.2016.07.012
+2025-11-10 17:48:39,783 Downloading DOI: 10.1021/ma202681z
+2025-11-10 17:48:39,784 Cursor exhausted
+2025-11-10 17:48:39,786 Last processed doc_id: 31
+2025-11-10 17:48:39,787 For publisher acs:
+2025-11-10 17:48:39,787     Number of abstract only papers: 0
+2025-11-10 17:48:39,787     Number of letter papers: 0
+2025-11-10 17:48:39,787     Number of full text papers: 0
+
+2025-11-10 17:48:39,787 For publisher rsc:
+2025-11-10 17:48:39,787     Number of abstract only papers: 0
+2025-11-10 17:48:39,787     Number of letter papers: 0
+2025-11-10 17:48:39,787     Number of full text papers: 6
+
+2025-11-10 17:48:39,787 For publisher elsevier:
+2025-11-10 17:48:39,787     Number of abstract only papers: 0
+2025-11-10 17:48:39,787     Number of letter papers: 0
+2025-11-10 17:48:39,787     Number of full text papers: 13
+
+2025-11-10 17:48:39,787 Total number of abstract only papers: 0
+2025-11-10 17:48:39,787 Total number of letter papers: 0
+2025-11-10 17:48:39,787 Total number of full text papers: 19
+2025-11-10 17:48:39,787 Total number of documents: 19

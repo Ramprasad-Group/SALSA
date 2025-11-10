@@ -1,0 +1,82 @@
+[
+  {
+    "source": "legend",
+    "patch_bbox": [
+      237.9729766845703,
+      25.711811065673828,
+      260.38446044921875,
+      32.223045349121094,
+      0.9216932654380798
+    ],
+    "label_bbox": [
+      260.48065185546875,
+      23.204744338989258,
+      275.4042053222656,
+      33.57929611206055,
+      0.9613659381866455
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/patch_0.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/label_0.jpg",
+    "text": "7C"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      237.3731689453125,
+      12.292123794555664,
+      260.4332275390625,
+      19.62793731689453,
+      0.9190965294837952
+    ],
+    "label_bbox": [
+      260.9816589355469,
+      10.013571739196777,
+      275.270263671875,
+      20.61069679260254,
+      0.9412593841552734
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/patch_1.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/label_1.jpg",
+    "text": "IC"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      237.18374633789062,
+      38.89242935180664,
+      260.2558898925781,
+      45.18684387207031,
+      0.9018116593360901
+    ],
+    "label_bbox": [
+      261.227783203125,
+      36.30906295776367,
+      280.540283203125,
+      46.80841064453125,
+      0.975777268409729
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/patch_2.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/label_2.jpg",
+    "text": "10C"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      237.6686553955078,
+      52.10232925415039,
+      260.4722900390625,
+      58.03965759277344,
+      0.8916287422180176
+    ],
+    "label_bbox": [
+      261.275146484375,
+      49.470726013183594,
+      280.41162109375,
+      60.00074005126953,
+      0.9633281826972961
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/patch_3.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/results/6/output/figure_21.png/chartdete/legend/label_3.jpg",
+    "text": "14C"
+  }
+]

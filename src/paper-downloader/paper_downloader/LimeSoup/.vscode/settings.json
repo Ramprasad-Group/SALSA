@@ -1,0 +1,5 @@
+{
+    "python.pythonPath": "/home/pranav/yandex-disk/miniconda3/envs/word_vectors/bin/python",
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true
+}

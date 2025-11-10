@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 7",
+  "clean_label": "Figure_7",
+  "caption": "Swelling ratio of the PP-x membranes and Nafion® 117.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738816308808-gr7.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2016.07.006",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.006/Figure_7.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.07.006",
+  "extraction_timestamp": "2025-11-10T18:16:17.542611",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

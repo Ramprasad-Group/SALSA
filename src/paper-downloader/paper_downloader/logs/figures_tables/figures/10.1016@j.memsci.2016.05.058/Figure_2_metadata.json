@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 2",
+  "clean_label": "Figure_2",
+  "caption": "Synthetic procedure of DMAQA-C18 and C18BQAPPO.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738816305166-gr2.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2016.05.058",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.05.058/Figure_2.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.05.058",
+  "extraction_timestamp": "2025-11-10T18:15:57.011767",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

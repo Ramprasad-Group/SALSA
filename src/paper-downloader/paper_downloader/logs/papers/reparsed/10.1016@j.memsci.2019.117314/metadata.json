@@ -1,0 +1,15 @@
+{
+  "doi": "10.1016/j.memsci.2019.117314",
+  "directory": "elsevier",
+  "doctype": "xml",
+  "source_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/elsevier/10.1016@j.memsci.2019.117314.xml",
+  "parsed_at": "2025-11-10T18:07:14.063983",
+  "title": "A facile approach to fabricate poly(2,6-dimethyl-1,4-phenylene oxide) based anion exchange membranes with extended alkaline stability and ion conductivity for fuel cell applications",
+  "keywords": [
+    "Alkaline stability",
+    "Anion exchange membrane",
+    "Fuel cell",
+    "Polyhedral oligomeric silsesquioxane",
+    "Quaternization"
+  ]
+}

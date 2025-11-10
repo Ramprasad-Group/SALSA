@@ -1,0 +1,15 @@
+{
+  "label": "Table 2",
+  "caption": "Mechanical properties of the membranes.",
+  "notes": [],
+  "metadata": {
+    "row_count": 8,
+    "column_count": 5,
+    "has_merged_cells": false
+  },
+  "doi": "10.1016/j.memsci.2016.04.054",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2016.04.054/Table_2.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2016.04.054",
+  "extraction_timestamp": "2025-11-10T18:15:55.756830",
+  "file_type": "table"
+}

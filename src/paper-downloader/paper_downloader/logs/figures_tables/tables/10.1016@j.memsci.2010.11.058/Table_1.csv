@@ -1,0 +1,11 @@
+Expt no.,T (°C),Solvent,Base,Time,Results
+1,130,DMSO,K2CO3,6 days,"η = 0.21, Mn = 21,000, and PDI = 1.9"
+2,140,DMSO,K2CO3,6 days,No polymer was obtained
+3,130,DMSO,Cs2CO3,6 days,"η = 0.34, Mn = 44,200, and PDI = 1.8"
+4,120,DMSO/toluene,Cs2CO3,8h,"η = 0.37, Mn = 49,100, and PDI = 2.3"
+5,130,DMSO/toluene,Cs2CO3,8h,"η = 0.53, Mn = 84,000, and PDI = 2.2"
+6,140,DMSO/toluene,Cs2CO3,8h,No polymer was obtained
+7,130,DMAc/toluene,Cs2CO3,8h,"η = 0.43, Mn = 61,100, and PDI = 2.4"
+8,130,NMP/toluene,Cs2CO3,8h,"η = 0.41, Mn = 58,400, and PDI = 2.5"
+9,130,DMF/toluene,Cs2CO3,8h,"η = 0.39, Mn = 52,300, and PDI = 2.4"
+10,130,DMSO/toluene,K2CO3,8h,"η = 0.23, Mn = 23,500, and PDI = 2.6"

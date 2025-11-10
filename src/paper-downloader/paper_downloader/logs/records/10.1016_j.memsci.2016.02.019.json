@@ -1,0 +1,113 @@
+{
+  "DOI": "10.1016/j.memsci.2016.02.019",
+  "publisher": "Elsevier BV",
+  "journal": "Journal of Membrane Science",
+  "year": 2016,
+  "month": 6,
+  "day": 17,
+  "title": "Imidazolium-based organic–inorganic hybrid anion exchange membranes for fuel cell applications",
+  "citations": 81,
+  "reference_list": [
+    "10.1126/science.1109157",
+    "10.1021/ja906975z",
+    "10.1002/adma.201501406",
+    "10.1002/fuce.200400045",
+    "10.1073/pnas.0810041106",
+    "10.1039/C2EE02552C",
+    "10.1002/polb.23395",
+    "10.1021/ja111160r",
+    "10.1021/jp910572g",
+    "10.1016/j.jpowsour.2014.12.136",
+    "10.1039/c3cs60053j",
+    "10.1021/am302844x",
+    "10.1016/j.memsci.2013.02.041",
+    "10.1039/c3ta00342f",
+    "10.1021/am3007005",
+    "10.1016/j.ijhydene.2012.04.163",
+    "10.1016/j.memsci.2010.01.003",
+    "10.1016/j.ijhydene.2009.12.128",
+    "10.1039/c3ta10355b",
+    "10.1002/app.33483",
+    "10.1002/polb.23245",
+    "10.1039/c3ta10308k",
+    "10.1021/am301557w",
+    "10.1039/C5TA01420D",
+    "10.1002/pat.1463",
+    "10.1016/j.jpowsour.2008.04.010",
+    "10.1016/j.memsci.2005.09.012",
+    "10.1021/am4043257",
+    "10.1016/j.memsci.2012.01.019",
+    "10.1016/j.jpowsour.2011.10.020",
+    "10.1002/polb.23331",
+    "10.1039/C0PY00238K",
+    "10.1039/c0cc04335d",
+    "10.1016/j.jpowsour.2012.05.062",
+    "10.1016/j.electacta.2007.03.034",
+    "10.1016/j.memsci.2007.11.039",
+    "10.1016/S0376-7388(03)00167-4",
+    "10.1016/j.memsci.2004.06.026",
+    "10.1021/cm400468u",
+    "10.1016/j.memsci.2008.05.035",
+    "10.1021/ma100260a",
+    "10.1002/anie.200806299",
+    "10.1021/ja303067t",
+    "10.1021/ja211365r",
+    "10.1021/cm102957g",
+    "10.1149/2.0511409jes",
+    "10.1021/ma202681z",
+    "10.1016/j.memsci.2014.02.043",
+    "10.1016/j.jpowsour.2015.03.065",
+    "10.1039/C1JM14331J",
+    "10.1039/c2jm16211c",
+    "10.1016/j.memsci.2009.04.012",
+    "10.1016/j.jpowsour.2014.05.003",
+    "10.1016/j.polymdegradstab.2011.12.024",
+    "10.1007/s10971-010-2248-z",
+    "10.1039/c1jm10656b"
+  ],
+  "author_list": [
+    {
+      "given": "Tianying",
+      "family": "Feng"
+    },
+    {
+      "given": "Bencai",
+      "family": "Lin"
+    },
+    {
+      "given": "Shuai",
+      "family": "Zhang"
+    },
+    {
+      "given": "Ningyi",
+      "family": "Yuan"
+    },
+    {
+      "given": "Fuqiang",
+      "family": "Chu"
+    },
+    {
+      "given": "Michael A",
+      "family": "Hickner"
+    },
+    {
+      "given": "Chenyu",
+      "family": "Wang"
+    },
+    {
+      "given": "Liang",
+      "family": "Zhu"
+    },
+    {
+      "given": "Jianning",
+      "family": "Ding"
+    }
+  ],
+  "funder_list": [
+    "National Natural Science Foundation of China",
+    "Natural Science Foundation of Jiangsu Province",
+    "Jiangnan Graphene Research Institute",
+    "Priority Academic Program Development of Jiangsu Higher Education Institutions"
+  ],
+  "issn": "0376-7388"
+}

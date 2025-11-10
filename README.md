@@ -65,7 +65,7 @@ Once the setup is complete, you can use the tool as follows:
 │ ├── output/ # Directory where extracted data will be saved
 │ ├── plextract/ # Main application logic for extraction
 │ │ └── main.py # Entry point for running the extraction
-    └── helpers for main.py
+    └── helpers # helpers for main.py
   ├── results/
 │ ├── scripts/
 │   └── setup.sh # Script to handle additional setup tasks

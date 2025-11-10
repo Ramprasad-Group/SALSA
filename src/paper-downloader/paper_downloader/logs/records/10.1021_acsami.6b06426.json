@@ -1,0 +1,105 @@
+{
+  "DOI": "10.1021/acsami.6b06426",
+  "publisher": "American Chemical Society (ACS)",
+  "journal": "ACS Applied Materials &amp; Interfaces",
+  "year": 2016,
+  "month": 8,
+  "day": 24,
+  "title": "Facilitating Anion Transport in Polyolefin-Based Anion Exchange Membranes via Bulky Side Chains",
+  "citations": 109,
+  "reference_list": [
+    "10.1126/science.1109157",
+    "10.1021/cr200035s",
+    "10.1038/35104620",
+    "10.1021/ma101172a",
+    "10.1039/C0PY00293C",
+    "10.1039/c2ee22050d",
+    "10.1021/acsami.5b11519",
+    "10.1021/acsami.5b09920",
+    "10.1021/ma901538c",
+    "10.1021/ma500125t",
+    "10.1002/adfm.200901314",
+    "10.1073/pnas.1217215110",
+    "10.1021/am500915w",
+    "10.1016/S0032-3861(01)00245-2",
+    "10.1016/S0378-7753(98)00168-2",
+    "10.1016/S0376-7388(00)00506-8",
+    "10.1021/mz300486h",
+    "10.1021/ma200836d",
+    "10.1021/ja905242r",
+    "10.1021/ja908638d",
+    "10.1021/ja307466s",
+    "10.1016/j.memsci.2013.03.053",
+    "10.1002/pol.1965.100030708",
+    "10.1039/C5TA01420D",
+    "10.1002/polb.23149",
+    "10.1021/ja403671u",
+    "10.1021/ma902479d",
+    "10.1021/ja204166e",
+    "10.1039/C5CC09024E",
+    "10.1039/c3py01490h",
+    "10.1021/cm703263n",
+    "10.1039/c3cc49027k",
+    "10.1039/C0PY00238K",
+    "10.1016/j.memsci.2010.11.058",
+    "10.1021/jp9122198",
+    "10.1021/ma202681z",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1039/C4EE01303D",
+    "10.1021/ma402254h",
+    "10.1039/C4TA03300K"
+  ],
+  "author_list": [
+    {
+      "given": "Min",
+      "family": "Zhang",
+      "affiliation": "College\rof Materials Science and Engineering, Beijing Institute of Petrochemical Technology, Beijing, 102617, China"
+    },
+    {
+      "given": "Chunrong",
+      "family": "Shan",
+      "affiliation": "College\rof Materials Science and Engineering, Beijing Institute of Petrochemical Technology, Beijing, 102617, China"
+    },
+    {
+      "given": "Lei",
+      "family": "Liu",
+      "affiliation": "State\rKey Laboratory of Coal Conversion, Institute of Coal Chemistry, Chinese Academy of Sciences, Taiyuan, 030001, China"
+    },
+    {
+      "given": "Jiayou",
+      "family": "Liao",
+      "affiliation": "State\rKey Laboratory of Coal Conversion, Institute of Coal Chemistry, Chinese Academy of Sciences, Taiyuan, 030001, China"
+    },
+    {
+      "given": "Quan",
+      "family": "Chen",
+      "affiliation": "State\rKey Laboratory of Polymer Physics and Chemistry, Changchun Institute of Applied Chemistry, Chinese Academy of Sciences, Changchun, 130022, China"
+    },
+    {
+      "given": "Meng",
+      "family": "Zhu",
+      "affiliation": "State\rKey Laboratory of Solidification Processing, Northwestern Polytechnical University, Xi’an, 710072, China"
+    },
+    {
+      "given": "Yiguang",
+      "family": "Wang",
+      "affiliation": "State\rKey Laboratory of Solidification Processing, Northwestern Polytechnical University, Xi’an, 710072, China"
+    },
+    {
+      "given": "Linan",
+      "family": "An",
+      "affiliation": "Department\rof Materials Science and Engineering, Advanced Materials Processing\rand Analysis Center, University of Central Florida, Orlando, Florida 32816, United States"
+    },
+    {
+      "given": "Nanwen",
+      "family": "Li",
+      "affiliation": "State\rKey Laboratory of Coal Conversion, Institute of Coal Chemistry, Chinese Academy of Sciences, Taiyuan, 030001, China"
+    }
+  ],
+  "funder_list": [
+    "Ministry of Education of the People's Republic of China",
+    "National Natural Science Foundation of China",
+    "Chinese Academy of Sciences"
+  ],
+  "issn": "1944-8244"
+}

@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 4",
+  "clean_label": "Figure_4",
+  "caption": "(a) Water uptake and (b) Swelling ratio of  V-1.5-O-1, V-1.5-H-1  and  V-2-H-1  membranes at various temperatures. (c) Water uptake with various IEC at various temperatures. (d)  N \n                      free  and  N \n                      bound  of  V-1.5-O-1, V-1.5-H-1  and  V-2-H-1  membranes.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738823005720-gr4.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2023.121916",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2023.121916/Figure_4.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2023.121916",
+  "extraction_timestamp": "2025-11-10T18:17:24.447332",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

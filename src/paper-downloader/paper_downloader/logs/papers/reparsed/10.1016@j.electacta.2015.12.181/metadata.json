@@ -1,0 +1,15 @@
+{
+  "doi": "10.1016/j.electacta.2015.12.181",
+  "directory": "elsevier",
+  "doctype": "xml",
+  "source_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/elsevier/10.1016@j.electacta.2015.12.181.xml",
+  "parsed_at": "2025-11-10T18:07:12.719280",
+  "title": "Stable poly(arylene ether sulfone)s anion exchange membranes containing imidazolium cations on pendant phenyl rings",
+  "keywords": [
+    "Fuel cells",
+    "Anion exchange membranes",
+    "Poly(arylene ether sulfone)s",
+    "Imidazolium cations",
+    "Alkaline stability"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 3",
+  "clean_label": "Figure_3",
+  "caption": "SEM images of the cross-section of (a) CS control membrane, (b) CS/HNTs-5, (c) CS/C4-QHNTs-5, (d) CS/C10-QHNTs-5, (e) CS/E-QHNTs-5, and (f) CS/B-QHNTs-5.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738815302349-gr3.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2015.10.005",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2015.10.005/Figure_3.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2015.10.005",
+  "extraction_timestamp": "2025-11-10T18:14:30.736270",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

@@ -1,0 +1,15 @@
+{
+  "doi": "10.1016/j.memsci.2015.05.060",
+  "directory": "elsevier",
+  "doctype": "xml",
+  "source_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files/elsevier/10.1016@j.memsci.2015.05.060.xml",
+  "parsed_at": "2025-11-10T18:07:13.090494",
+  "title": "Side-chain-type poly(arylene ether sulfone)s containing multiple quaternary ammonium groups as anion exchange membranes",
+  "keywords": [
+    "Fuel cell",
+    "Anion exchange membranes",
+    "Poly(arylene ether sulfone)s",
+    "Swelling ratio",
+    "Hydroxide conductivity"
+  ]
+}

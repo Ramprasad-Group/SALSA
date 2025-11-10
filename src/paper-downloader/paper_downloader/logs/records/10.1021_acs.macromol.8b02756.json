@@ -1,0 +1,177 @@
+{
+  "DOI": "10.1021/acs.macromol.8b02756",
+  "publisher": "American Chemical Society (ACS)",
+  "journal": "Macromolecules",
+  "year": 2019,
+  "month": 5,
+  "day": 29,
+  "title": "Poly(olefin)-Based Anion Exchange Membranes Prepared Using Ziegler–Natta Polymerization",
+  "citations": 115,
+  "reference_list": [
+    "10.1038/nchem.2085",
+    "10.1038/525447a",
+    "10.1002/1615-6854(200105)1:1<5::AID-FUCE5>3.0.CO;2-G",
+    "10.1038/35104620",
+    "10.1021/acs.macromol.6b01381",
+    "10.1021/acs.macromol.5b02671",
+    "10.1038/nmat2091",
+    "10.1016/j.jpowsour.2004.01.023",
+    "10.1021/ie0501172",
+    "10.1021/acs.chemmater.5b02557",
+    "10.1021/cm950192a",
+    "10.1149/1.1859814",
+    "10.1021/ja204166e",
+    "10.1016/S1369-7021(10)70082-1",
+    "10.1016/j.memsci.2005.05.002",
+    "10.1021/jp910572g",
+    "10.1021/ja111160r",
+    "10.1021/ar200201x",
+    "10.1039/c3cs60053j",
+    "10.1021/jp064898b",
+    "10.1016/j.jpowsour.2011.12.052",
+    "10.1021/acsmacrolett.5b00145",
+    "10.1021/acs.macromol.6b00578",
+    "10.1016/j.ijhydene.2016.10.054",
+    "10.1039/C6EE03079C",
+    "10.1021/acsami.6b07711",
+    "10.1016/j.jpowsour.2008.12.127",
+    "10.1021/ma100260a",
+    "10.1039/c0cc04335d",
+    "10.1016/j.memsci.2016.09.050",
+    "10.1039/C6TA05090E",
+    "10.1021/ma500125t",
+    "10.1002/anie.200806299",
+    "10.1039/C7PY00026J",
+    "10.1039/C7TA00481H",
+    "10.1021/acs.macromol.5b00459",
+    "10.1021/acs.chemmater.7b01494",
+    "10.1021/acs.macromol.6b01140",
+    "10.1016/j.jpowsour.2017.06.020",
+    "10.1039/C5PY01911G",
+    "10.1149/06917.0403ecst",
+    "10.1021/acs.macromol.5b01302",
+    "10.1021/acs.macromol.7b00401",
+    "10.1021/cm502422h",
+    "10.1073/pnas.1217215110",
+    "10.1021/acsmacrolett.7b00148",
+    "10.1021/ma901538c",
+    "10.1016/j.ijhydene.2016.11.169",
+    "10.1021/acs.macromol.6b00434",
+    "10.1021/ma5015148",
+    "10.1016/j.memsci.2009.11.051",
+    "10.1016/j.jpowsour.2009.12.106",
+    "10.1021/jacs.6b12944",
+    "10.1039/C6EE00656F",
+    "10.1021/acsami.6b06426",
+    "10.1021/ja908638d",
+    "10.1021/ja307466s",
+    "10.1002/polb.23149",
+    "10.1021/ma101172a",
+    "10.1002/chem.200500837",
+    "10.1039/C5TA01420D",
+    "10.1016/j.memsci.2017.06.042",
+    "10.1002/pol.1965.100030708",
+    "10.1021/ma0482720",
+    "10.1039/C4TA00558A",
+    "10.1039/C8EE00122G",
+    "10.1016/j.jpowsour.2017.05.006",
+    "10.1016/0584-8539(68)80109-6",
+    "10.1039/TF9504600533",
+    "10.1017/CBO9780511525261",
+    "10.1039/c3ee41968a",
+    "10.1016/j.memsci.2017.07.032",
+    "10.1021/acs.macromol.5b01457",
+    "10.1039/C5TA00350D",
+    "10.1039/C5TA02941D",
+    "10.1039/C6EE03079C",
+    "10.1016/j.progpolymsci.2011.04.004",
+    "10.1002/fuce.200400045",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1021/jp7115577",
+    "10.1149/1.2781031",
+    "10.1007/s10973-007-8930-x",
+    "10.1039/C6EE01046F",
+    "10.1039/C6EE01958G",
+    "10.1039/C7EE02468A",
+    "10.1039/C4EE02564D"
+  ],
+  "author_list": [
+    {
+      "ORCID": "https://orcid.org/0000-0003-4551-0963",
+      "given": "Liang",
+      "family": "Zhu",
+      "affiliation": "Department of Materials Science and Engineering, The Pennsylvania State University, University Park, Pennsylvania 16802, United States"
+    },
+    {
+      "given": "Xuedi",
+      "family": "Yu",
+      "affiliation": "Department of Materials Science and Engineering, The Pennsylvania State University, University Park, Pennsylvania 16802, United States"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0001-8737-5830",
+      "given": "Xiong",
+      "family": "Peng",
+      "affiliation": "Department of Chemical Engineering, University of South Carolina, Columbia, South Carolina 29208, United States"
+    },
+    {
+      "given": "Tawanda J.",
+      "family": "Zimudzi",
+      "affiliation": "Department of Materials Science and Engineering, The Pennsylvania State University, University Park, Pennsylvania 16802, United States"
+    },
+    {
+      "given": "Nayan",
+      "family": "Saikia",
+      "affiliation": "Department of Materials Science and Engineering, The Pennsylvania State University, University Park, Pennsylvania 16802, United States"
+    },
+    {
+      "given": "Michael T.",
+      "family": "Kwasny",
+      "affiliation": "Department of Polymer Science and Engineering, University of Massachusetts Amherst, Amherst, Massachusetts 01003, United States"
+    },
+    {
+      "given": "Shaofei",
+      "family": "Song",
+      "affiliation": "MOE Key Laboratory of Macromolecular Synthesis and Functionalization, Department of Polymer Science and Engineering, Zhejiang University, 38 Zheda Road, Hangzhou 310027, China"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0002-3020-7737",
+      "given": "Douglas I.",
+      "family": "Kushner",
+      "affiliation": "Department of Materials Science and Engineering, The Pennsylvania State University, University Park, Pennsylvania 16802, United States"
+    },
+    {
+      "given": "Zhisheng",
+      "family": "Fu",
+      "affiliation": "MOE Key Laboratory of Macromolecular Synthesis and Functionalization, Department of Polymer Science and Engineering, Zhejiang University, 38 Zheda Road, Hangzhou 310027, China"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0003-3277-7925",
+      "given": "Gregory N.",
+      "family": "Tew",
+      "affiliation": "Department of Polymer Science and Engineering, University of Massachusetts Amherst, Amherst, Massachusetts 01003, United States"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0001-7804-6410",
+      "given": "William E.",
+      "family": "Mustain",
+      "affiliation": "Department of Chemical Engineering, University of South Carolina, Columbia, South Carolina 29208, United States"
+    },
+    {
+      "given": "Michael A.",
+      "family": "Yandrasits",
+      "affiliation": "Corporate Research Laboratory, Electrochemical Components Lab, 3M Center, St. Paul, Minnesota 55144-1000, United States"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0002-2252-7626",
+      "given": "Michael A.",
+      "family": "Hickner",
+      "affiliation": "Department of Materials Science and Engineering, The Pennsylvania State University, University Park, Pennsylvania 16802, United States"
+    }
+  ],
+  "funder_list": [
+    "Corning Incorporated Foundation",
+    "Advanced Research Projects Agency - Energy",
+    "Fuel Cell Technologies Office"
+  ],
+  "issn": "0024-9297"
+}

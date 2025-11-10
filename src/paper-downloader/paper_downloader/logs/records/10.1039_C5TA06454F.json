@@ -1,0 +1,67 @@
+{
+  "DOI": "10.1039/c5ta06454f",
+  "publisher": "Royal Society of Chemistry (RSC)",
+  "journal": "Journal of Materials Chemistry A",
+  "year": 2015,
+  "month": 9,
+  "day": 17,
+  "title": "Anion exchange membranes composed of perfluoroalkylene chains and ammonium-functionalized oligophenylenes",
+  "citations": 72,
+  "reference_list": [
+    "10.1002/1615-6854(200105)1:1<5::AID-FUCE5>3.0.CO;2-G",
+    "10.1021/cm402742u",
+    "10.1021/ef501977k",
+    "10.1149/2.F03102if",
+    "10.1016/j.memsci.2011.04.043",
+    "10.1039/C4EE01303D",
+    "10.1073/pnas.0810041106",
+    "10.1038/pj.2014.56",
+    "10.1021/ja403671u",
+    "10.1021/am503870g",
+    "10.1021/acsmacrolett.5b00145",
+    "10.1021/ma902479d",
+    "10.1021/ja204166e",
+    "10.1016/j.memsci.2012.08.045",
+    "10.1021/cm502422h",
+    "10.1073/pnas.1217215110",
+    "10.1021/ma5019878",
+    "10.1039/a704872f",
+    "10.1002/chem.200600499",
+    "10.1016/j.electacta.2012.04.065",
+    "10.1021/ma2000306",
+    "10.1021/am5046586"
+  ],
+  "author_list": [
+    {
+      "given": "Hideaki",
+      "family": "Ono",
+      "affiliation": "Interdisciplinary Graduate School of Medicine and Engineering"
+    },
+    {
+      "given": "Junpei",
+      "family": "Miyake",
+      "affiliation": "Clean Energy Research Center"
+    },
+    {
+      "given": "Shigehumi",
+      "family": "Shimada",
+      "affiliation": "Interdisciplinary Graduate School of Medicine and Engineering"
+    },
+    {
+      "given": "Makoto",
+      "family": "Uchida",
+      "affiliation": "Fuel Cell Nanomaterials Center"
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0001-5713-2635",
+      "given": "Kenji",
+      "family": "Miyatake",
+      "affiliation": "Fuel Cell Nanomaterials Center"
+    }
+  ],
+  "funder_list": [
+    "Ministry of Education, Culture, Sports, Science, and Technology",
+    "Core Research for Evolutional Science and Technology, Japan Science and Technology Agency"
+  ],
+  "issn": "2050-7488"
+}

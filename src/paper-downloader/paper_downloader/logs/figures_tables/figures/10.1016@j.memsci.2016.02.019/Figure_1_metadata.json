@@ -1,0 +1,12 @@
+{
+  "original_label": "Fig. 1",
+  "clean_label": "Figure_1",
+  "caption": "Photographs of the membranes: (a) Membrane-0, (b) Membrane-5, (c) Membrane-15, (d) Membrane-25, (e) Membrane-10.",
+  "url": "https://api.elsevier.com/content/object/eid/1-s2.0-S0376738816300771-gr1.jpg?httpAccept=%2A%2F%2A",
+  "doi": "10.1016/j.memsci.2016.02.019",
+  "figure_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.02.019/Figure_1.jpg",
+  "figure_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures/10.1016@j.memsci.2016.02.019",
+  "extraction_timestamp": "2025-11-10T18:15:06.789015",
+  "file_type": "figure",
+  "publisher": "elsevier"
+}

@@ -1,0 +1,17 @@
+{
+  "label": "Table 1",
+  "caption": "IECs of the utilized fillers and membranes.",
+  "notes": [
+    "The calculated IEC is the weighted average of the IECs of ImPEEK and Im-O-POSS."
+  ],
+  "metadata": {
+    "row_count": 2,
+    "column_count": 7,
+    "has_merged_cells": false
+  },
+  "doi": "10.1016/j.memsci.2017.07.037",
+  "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2017.07.037/Table_1.csv",
+  "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2017.07.037",
+  "extraction_timestamp": "2025-11-10T18:16:55.391976",
+  "file_type": "table"
+}

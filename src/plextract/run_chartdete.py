@@ -50,20 +50,9 @@ from huggingface_hub import snapshot_download
 # Ensure the ChartDete fork (which contains the custom LGF head) is imported FIRST.
 # ChartDete is a sibling of plextract: <repo-root>/ChartDete and <repo-root>/plextract
 # --------------------------------------------------------------------------------------
-chartdete_root = '/home/wschertzer3/ChartDete'
-
-# Put ChartDete ahead of site-packages so its forked mmdet is used
-sys.path.insert(0, str(chartdete_root))
-
-# Force-register the custom CascadeRoIHead_LGF into MMDet registry
-# (Import AFTER sys.path insertion, BEFORE init_detector)
-# try:
-#     importlib.import_module("mmdet.models.roi_heads.cascade_roi_head_lgf")
-# except Exception as e:
-#     raise RuntimeError(
-#         "Failed to import ChartDete's custom LGF head. Ensure you've installed the ChartDete repo "
-#         f"(pip install -e {chartdete_root}) with a compatible mmcv-full 1.x."
-#     ) from e
+# Directory where ChartDete can be found
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../extern"))
+sys.path.insert(0, parent_dir)
 
 # Now it's safe to import mmdet apis; they will resolve to the fork
 from mmdet.apis import init_detector, inference_detector  # noqa: E402
