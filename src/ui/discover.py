@@ -1,0 +1,221 @@
+# AEM_OCR/src/ui/discover.py
+from __future__ import annotations
+import json
+from pathlib import Path
+from typing import Dict, List
+
+from schemas import RunResult, DoiResult, FigureItem, TableItem
+
+def _read_json(p: Path) -> dict:
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+def _find_metadata_sidecar(img_path: Path) -> Path | None:
+    # your scripts typically use *_metadata.json
+    meta = img_path.with_name(img_path.stem + "_metadata.json")
+    return meta if meta.exists() else None
+
+# def _find_final_dataset_csv(plextract_workdir: Path) -> Dict[str, Dict[str, List[Path]]]:
+#     """
+#     Returns mapping:
+#       { safe_doi: { fig_stem: [paths...] } }
+
+#     We scan:
+#       plextract_workdir/results/<run_id>/output/<safe_doi>/**/*
+#     and attach csv/json that contain the figure stem in their name.
+#     """
+#     out: Dict[str, Dict[str, List[Path]]] = {}
+#     results_root = plextract_workdir / "results"
+#     if not results_root.exists():
+#         return out
+
+#     # choose latest numeric run id (plextract uses 0,1,2,...)
+#     run_dirs = [p for p in results_root.iterdir() if p.is_dir() and p.name.isdigit()]
+#     if not run_dirs:
+#         return out
+#     run_dirs.sort(key=lambda p: int(p.name), reverse=True)
+#     latest = run_dirs[0]
+
+#     output_root = latest / "output"
+#     if not output_root.exists():
+#         return out
+
+#     for doi_dir in output_root.iterdir():
+#         if not doi_dir.is_dir():
+#             continue
+#         safe_doi = doi_dir.name
+#         out.setdefault(safe_doi, {})
+#         # gather candidate artifacts
+#         for p in doi_dir.rglob("*"):
+#             if not p.is_file():
+#                 continue
+#             if p.suffix.lower() not in {".csv", ".json"}:
+#                 continue
+#             # we don’t know the exact naming; store everything, later match by fig stem substring
+#             # keep only reasonably small-ish artifacts (avoid huge intermediates if any)
+#             out[safe_doi].setdefault("__all__", []).append(p)
+
+#     return out
+
+def _find_final_dataset_csv(plextract_workdir: Path) -> Dict[str, Dict[str, Path]]:
+    """
+    Returns mapping:
+      { safe_doi: { fig_id: path_to_final_dataset_csv } }
+
+    We look for:
+      plextract_workdir/results/<numeric_run>/output/<safe_doi>/<Figure_X(.jpg|.png|...)>/final/final_dataset.csv
+    where <Figure_X...> is a DIRECTORY named like the figure filename (often includes extension).
+    """
+    out: Dict[str, Dict[str, Path]] = {}
+    results_root = plextract_workdir / "results"
+    if not results_root.exists():
+        return out
+
+    # choose latest numeric run id (plextract uses 0,1,2,...)
+    run_dirs = [p for p in results_root.iterdir() if p.is_dir() and p.name.isdigit()]
+    if not run_dirs:
+        return out
+    run_dirs.sort(key=lambda p: int(p.name), reverse=True)
+    latest = run_dirs[0]
+
+    output_root = latest / "output"
+    if not output_root.exists():
+        return out
+
+    for doi_dir in output_root.iterdir():
+        if not doi_dir.is_dir():
+            continue
+        safe_doi = doi_dir.name
+        out.setdefault(safe_doi, {})
+
+        # Each figure typically becomes a folder like:
+        #   <doi_dir>/Figure_9.jpg/final/final_dataset.csv
+        for fig_folder in doi_dir.iterdir():
+            if not fig_folder.is_dir():
+                continue
+
+            # If folder is "Figure_9.jpg", then fig_id should match your UI id=img.stem => "Figure_9"
+            fig_id = Path(fig_folder.name).stem
+
+            csv_path = fig_folder / "final" / "final_dataset.csv"
+            if csv_path.exists():
+                out[safe_doi][fig_id] = csv_path
+
+    return out
+
+def _scan_plextract_artifacts(plextract_workdir: Path) -> Dict[str, List[Path]]:
+    """
+    Returns:
+      { safe_doi: [all csv/json artifacts under latest plextract output] }
+    Used to populate extracted_xy_paths heuristically.
+    """
+    out: Dict[str, List[Path]] = {}
+    results_root = plextract_workdir / "results"
+    if not results_root.exists():
+        return out
+
+    run_dirs = [p for p in results_root.iterdir() if p.is_dir() and p.name.isdigit()]
+    if not run_dirs:
+        return out
+    run_dirs.sort(key=lambda p: int(p.name), reverse=True)
+    latest = run_dirs[0]
+
+    output_root = latest / "output"
+    if not output_root.exists():
+        return out
+
+    for doi_dir in output_root.iterdir():
+        if not doi_dir.is_dir():
+            continue
+        safe_doi = doi_dir.name
+        out.setdefault(safe_doi, [])
+        for p in doi_dir.rglob("*"):
+            if p.is_file() and p.suffix.lower() in {".csv", ".json"}:
+                out[safe_doi].append(p)
+
+    return out
+
+
+
+def discover_run(run_dir: Path) -> RunResult:
+    reparsed = run_dir / "reparsed"
+    figures_tables = run_dir / "figures_tables"
+    plextract_workdir = run_dir / "plextract_work"
+
+    final_csv_map = _find_final_dataset_csv(plextract_workdir)
+    plex_artifacts = _scan_plextract_artifacts(plextract_workdir)
+
+
+    dois: list[DoiResult] = []
+    if reparsed.exists():
+        for doi_dir in sorted([p for p in reparsed.iterdir() if p.is_dir()]):
+            safe_doi = doi_dir.name
+            parsed_json = doi_dir / "parsed.json"
+            fulltext = None  # if you later write a fulltext.txt, add it here
+
+            # recover original doi from metadata if present
+            meta = _read_json(doi_dir / "metadata.json")
+            doi = meta.get("doi", safe_doi.replace("@", "/"))
+
+            dr = DoiResult(
+                doi=doi,
+                safe_doi=safe_doi,
+                parsed_json_path=parsed_json if parsed_json.exists() else None,
+                fulltext_path=fulltext,
+                extra=meta,
+            )
+
+            # figures
+            fig_dir = figures_tables / "figures" / safe_doi
+            if fig_dir.exists():
+                for img in sorted(list(fig_dir.glob("*.png")) + list(fig_dir.glob("*.jpg")) + list(fig_dir.glob("*.jpeg")) + list(fig_dir.glob("*.gif"))):
+                    meta_path = _find_metadata_sidecar(img)
+                    meta_obj = _read_json(meta_path) if meta_path else {}
+                    caption = meta_obj.get("caption", "")
+
+                    fi = FigureItem(
+                        id=img.stem,
+                        caption=caption,
+                        figure_path=img,
+                        metadata_path=meta_path,
+                        filtered=True,  # “filtered” = survived your filter step (currently deletes non-matching)
+                        extra=meta_obj,
+                    )
+
+                    # attach final extracted dataset if present
+                    final_csv = final_csv_map.get(safe_doi, {}).get(img.stem)
+                    if final_csv:
+                        fi.extra["final_dataset_csv"] = str(final_csv)
+
+                    # attach plextract outputs if possible
+                    candidates = plex_artifacts.get(safe_doi, [])
+                    for c in candidates:
+                        if img.stem in c.name:
+                            fi.extracted_xy_paths.append(c)
+
+
+                    dr.figures.append(fi)
+
+            # tables
+            tab_dir = figures_tables / "tables" / safe_doi
+            if tab_dir.exists():
+                for tfile in sorted([p for p in tab_dir.iterdir() if p.is_file() and not p.name.endswith("_metadata.json")]):
+                    meta_path = tfile.with_name(tfile.stem + "_metadata.json")
+                    meta_path = meta_path if meta_path.exists() else None
+                    meta_obj = _read_json(meta_path) if meta_path else {}
+                    caption = meta_obj.get("caption", "")
+
+                    dr.tables.append(TableItem(
+                        id=tfile.stem,
+                        caption=caption,
+                        table_path=tfile,
+                        metadata_path=meta_path,
+                        filtered=True,
+                        extra=meta_obj,
+                    ))
+
+            dois.append(dr)
+
+    return RunResult(run_id=run_dir.name, run_dir=run_dir, dois=dois)

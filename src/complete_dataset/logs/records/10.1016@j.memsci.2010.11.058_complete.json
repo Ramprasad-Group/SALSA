@@ -1,0 +1,663 @@
+{
+  "doi": "10.1016/j.memsci.2010.11.058",
+  "modified_doi": "10.1016@j.memsci.2010.11.058",
+  "full_text": {
+    "Journal": "Journal of Membrane Science",
+    "DOI": "10.1016/j.memsci.2010.11.058",
+    "Title": "Poly(arylene ether sulfone)s ionomers with pendant quaternary ammonium groups for alkaline anion exchange membranes: Preparation and stability issues",
+    "Keywords": [
+      "Quaternized poly(arylene ether sulfone)",
+      "Anion exchange membrane",
+      "Polymerization",
+      "Conductivity",
+      "Stability"
+    ],
+    "Sections": [
+      {
+        "type": "ce_section",
+        "name": "Abstract",
+        "content": [
+          "A series of quaternized poly(arylene ether sulfone)s containing up to two pendant quaternary ammonium groups per repeat unit was prepared by cesium carbonate mediated direct aromatic nucleophilic substitution polycondensation of 2,2\u2032-dimethylaminemethylene-4,4\u2032-biphenol (DABP), 4,4\u2032-biphenol (BP) and 4,4\u2032-difluorodiphenylsulfone (DFDPS), followed by reaction with iodomethane. The anion exchange membranes formed from these polymers showed conductivities above 10^{\u22122} S cm^{\u22121} at room temperature with a hydroxide conductivity of 6.5 \u00d7 10^{\u22122} S cm^{\u22121} for QNPS-OH-80. At the test of alkaline stability, these poly(arylene ether sulfone) ionomers were more stable than our previous reported partially fluorinated poly(arylene ether sulfone) ionomers under highly basic conditions."
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Introduction",
+        "content": [
+          "Fuel cells are being advanced towards commercialization because they offer the potential of long operating lifetimes and the ability to refuel rather than recharge, as in the case of batteries . Recent developments and the need for lower cost and more efficient fuel cells have catalyzed interest in anion exchange membrane fuel cells (AEMFCs) [4]. Alkaline anion exchange membranes (AEMs) are materials that transport hydroxide ions. Despite being relatively underdeveloped, AEM offer important benefits such as enhanced kinetics for the oxygen reduction reaction and reduced fuel crossover. This increases fuel cell efficiency and also permits the use of cheaper non-noble metal catalysts, making this technology financially more viable [5]. Additionally, the use of metal-free AEMs avoids CO_{2} poisoning (i.e., precipitation of carbonate salts), which is the major shortcoming of conventional alkaline fuel cells using sodium or potassium hydroxide as the electrolyte [6].",
+          "Some recent important developments in the field of AEMs come from Varcoe et al. They reported that \u03b3-irradiation-induced functionalization of mixed fluorocarbon/hydrocarbon membranes followed by attachment of tetraalkylammonium ions yield mechanically strong AEMs with promising hydroxide conductivities and low methanol permeability . Others have shown that wholly aromatic polymers are promising candidates to high performance AEMs because of their availability, processability, wide variety of chemical compositions, and anticipated stability in the fuel cell environment . Specifically, poly(arylene ether) materials such as poly(arylene ether sulfone), poly(arylene ether ketone), and their derivatives act as scaffolds for postpolymerization modification reactions yielding robust, conductive AEMs. These examples not only illustrate the remarkable progress made in this area but also reveal limitations in the synthetic approaches employed. They were prepared by chloromethylation of the parent polymers and followed by exposure to amines to form ammonium groups. Similar to post-sulfonation reactions, the amount of chloromethyl groups and their locations along the polymer backbone cannot be controlled precisely [17].",
+          "In our previous papers, we reported the synthesis of a novel bisphenol monomer containing two tertiary amine groups, 2,2\u2032-dimethylaminemethylene-4,4\u2032-biphenol (DABP). Based on this functional monomer, a facile approach was developed to prepare partially fluorinated copoly(arylene ether sulfone) ionomers containing pendant quaternary ammonium groups [24]. This novel process could precisely control the amount of quaternary ammonium groups and their locations along the polymer backbone by adjusting the composition of comonomers. The resulting quaternized copolymers exhibited outstanding solubility in polar aprotic solvents and formed flexible and tough AEMs. Additionally, this more environmentally friendly route avoids the use of chloromethyl methyl ether, a toxic chemical. However, the preparation of polysulfone from DABP and difluorodiphenylsulfone failed due to the degradation of DABP during high temperature polycondensation and the low activity of difluorodiphenylsulfone at low temperature. Therefore, the activated 3,3\u2032,4,4\u2032-tetrafluorodiphenylsulfone (TFDPS) was prepared and used as a monomer for the polymerization. Recently, we observed that these partially fluorinated copoly(arylene ether sulfone) ionomers, similar to AEMs based on partially fluorinated poly(vinylidene fluoride), were unsatisfactory for their physical weakness due to chemical degradation in the presence of strong alkaline solutions [7]. Thus, there is a need to extend this novel route and develop nonfluorinated copoly(arylene ether sulfone) ionomers for AEMs.",
+          "To overcome these problems, this article extends our preliminary work and reports in detail an optimized polycondensation procedure for preparing nonfluorinated copoly(arylene ether sulfone) ionomers, based on 2,2\u2032-dimethylaminemethylene-4,4\u2032-biphenol, 4,4\u2032-biphenol and 4,4\u2032-difluorodiphenylsulfone. The modified conditions for polymerization are discussed, and the solubility, conductivity and alkaline stability of these anion exchange membranes are reported."
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Experimental",
+        "content": [
+          {
+            "type": "ce_section",
+            "name": "Materials",
+            "content": [
+              "4,4\u2032-Biphenol (BP) and 4,4\u2032-difluorodiphenylsulfone (DFDPS) were purchased from Aldrich. Dimethyl sulfoxide (DMSO), N-methyl-2-pyrrolidone (NMP), N,N-dimethylacetamide (DMAc), and N,N-dimethylformamide (DMF) were stirred over CaH_{2} for 24 h, then distilled under reduced pressure, and stored over 4 \u00c5 molecular sieves under a nitrogen atmosphere. 2,2\u2032-Bimethylaminemethylene-4,4\u2032-biphenol (DABP) was prepared according to a previously reported method [24]. All other reagents were obtained from commercial sources and used as received."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Synthesis of copolymer TNPS-x",
+            "content": [
+              "The DF values of the copolymers, where DF represented the degree of functionalization (the number of tertiary amine groups/repeat unit), were controlled by adjusting the molar ratio of DABP to BP. A typical synthesis procedure of TNPS-50, where 50 refers to the feed percent of DABP, was as follows: to a 100-mL three-necked round-bottomed flask equipped with a Dean\u2013Stark trap, N_{2} inlet, mechanical stirrer and thermometer, DABP (1.5020 g, 5 mmol), BP (0.9311 g, 5 mmol), DFDPS (2.5425 g, 10 mmol), and dried DMSO (25 mL, 20% solids) were added and stirred strongly at room temperature. After the mixture dissolved, anhydrous Cs_{2}CO_{3} (6.84 g, 21 mmol) and 10 mL of toluene were added. The reaction bath was heated to 120 \u00b0C to dehydrate the system. After toluene and water had been distilled off, the temperature was raised gradually to 130 \u00b0C and allowed to react at this temperature for 8 h to give a viscous solution. After cooling to room temperature, an additional 30 mL of DMAc was added to dilute the highly viscous solution, after which the solution was filtered and poured into stirred deionized water. The fiber-like precipitate was washed with hot deionized water and ethanol several times prior to being dried under vacuum at 80 \u00b0C for 24 h to produce the final product."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Quaternization and membrane preparation",
+            "content": [
+              "The typical procedure is as follows: to a solution of the polymer TNPS-x (1.0 g) in 20 mL of DMAc, iodomethane (2 equiv. of the tertiary amine groups) was added quickly. The reaction mixture was stirred at 30 \u00b0C for 4 h in the dark, and then poured into distilled water. The precipitate was filtered off, washed with ethanol and water thoroughly, and dried in vacuum oven for 24 h at 80 \u00b0C to obtain a yellow powder of the quaternized polymer ionomer QNPS-I-x. ^{1}H NMR was used to confirm that the degree of conversion of tertiary amine group was close to 100%.",
+              "The ionomer QNPS-I-x (0.5 g) in 10 mL of DMSO was cast onto a clean flat glass plate. Drying the solution at 80 \u00b0C under atmospheric pressure for 12 h and then drying it in vacuum at 100 \u00b0C for 24 h gave a clear and transparent membrane. They were then soaked in 1 M NaOH for 48 h to exchange the iodide ions for hydroxide ions (QNPS-OH-x). Finally, the membranes were immersed in degassed deionized water in a closed container for at least 48 h prior."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Membrane characterization",
+            "content": [
+              {
+                "type": "ce_section",
+                "name": "Measurements",
+                "content": [
+                  "^{1}H and ^{13}C NMR spectra were measured at 300 MHz on an AV 300 spectrometer in DMSO-d_{6}. Elemental analyses were performed on an Elemental Analyses MOD-1106. The reduced viscosities were examined with an Ubbelohde capillary viscometer at 30 \u00b1 0.1 \u00b0C on 0.5 g dL^{\u22121} concentrations of polymer in DMAc. Thermogravimetric analysis (TGA) was performed in nitrogen atmosphere with a Perkin\u2013Elmer TGA-2 thermogravimetric analyzer at a heating rate of 10 \u00b0C min^{\u22121}. Molecular weights were also determined by gel permeation chromatography (GPC) using a Waters 515 HPLC pump, coupled with a Waters 410 differential refractometer detector and a Waters 996 photodiode array detector operating at a wavelength of 260 nm. CH_{3}Cl or DMF was used as eluent. Tensile measurements were carried out with an Instron-1211 mechanical testing instrument (Instron Co., U.S.A.) at a speed of 1 mm min^{\u22121}."
+                ]
+              },
+              {
+                "type": "ce_section",
+                "name": "Ion exchange capacity (IEC)",
+                "content": [
+                  "The membranes in the OH^{\u2212} form were immersed in 100 mL of 0.1 M HCl standard for 48 h. The solutions were then titrated with a standardized NaOH solution using phenolphthalein as an indicator."
+                ]
+              },
+              {
+                "type": "ce_section",
+                "name": "Water uptake and dimensional change",
+                "content": [
+                  "The membrane (30\u201340 mg per sheet) was vacuum-dried at 80 \u00b0C for 10 h until constant weight to obtain the dry material. It was immersed into deionized water at a given temperature for 4 h and then quickly removed, wiped with tissue paper, and quickly weighed on a microbalance. The water uptake (WU) was calculated according to:where W _{d} and W _{s} are the weight of the dry and the corresponding water-swollen membranes, respectively.",
+                  "The dimension changes of the membranes were measured in the plane direction, which were characterized according to:where L _{s} is the diameter of the membrane equilibrated at 70% relative humidity (RH), respectively; L refers to those of the membrane equilibrated in liquid water for 4 h."
+                ]
+              },
+              {
+                "type": "ce_section",
+                "name": "Hydroxide conductivity",
+                "content": [
+                  "Hydroxide conductivity (\u03c3, S/cm) of the QNPS-OH membranes (size: 1 cm \u00d7 4 cm) was obtained using \u03c3 = d/L _{s} W _{s} R (d: distance between reference electrodes, and L _{s} and W _{s} are the thickness and width of the membrane, respectively). Here, ohmic resistance (R) was measured by four-point probe alternating current (ac) impedance spectroscopy using an electrode system connected with an impedance/gain-phase analyzer (Solatron 1260) and an electrochemical interface (Solatron 1287, Farnborough Hampshire, ONR, UK). The membranes were sandwiched between two pairs of gold-plate electrodes. The membranes and the electrodes were set in a Teflon cell with a distance of 1 cm between the reference electrodes. The cell was placed in a thermally controlled chamber, and conductivity measurements under fully hydrated conditions were carried out with the cell immersed in liquid water. All samples were equilibrated in water for at least 24 h prior to measurement. At a given temperature, the samples were equilibrated for at least 30 min before any measurements. Repeated measurements were then taken at that given temperature with 10-min intervals until no more change in conductivity was observed."
+                ]
+              },
+              {
+                "type": "ce_section",
+                "name": "Alkaline stability",
+                "content": [
+                  "QNPS-OH-x membranes samples were kept in a 4 M NaOH solution at 20 \u00b0C. The stability was evaluated by recording the time at which the membranes broke into pieces after vigorous shaking. Furthermore, the alkaline stability was determined from changes in the IEC of the test samples when the membranes broke into pieces."
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Results and discussion",
+        "content": [
+          {
+            "type": "ce_section",
+            "name": "Polymerization and characterization",
+            "content": [
+              "In our previous papers, we noticed that the preparation of polysulfone from 2,2\u2032-dimethylaminemethylene-4,4\u2032-biphenol (DABP) and difluorodiphenylsulfone (DFDPS) was failed due to the degradation of DABP during the traditional, high temperature polycondensation process. As shown in Fig. 1 , the typical TGA curve demonstrated that DABP was a thermally unstable monomer and exhibited the starting decomposition temperature around 135 \u00b0C. Therefore, it is very important to carefully control the reaction temperature for successfully introduction of tertiary amine group onto the polymer without adverse side reactions. Table 1 lists the effect of the temperature, solvent and base on the polycondensation. Due to the low activity of DFDPS at low temperatures, the reaction of DABP with DFDPS could not be completed in 6 days at 130 \u00b0C in the presence of 2.1 equiv. of K_{2}CO_{3}. In order to increase the activity of the polycondensation, we used Cs_{2}CO_{3} instead of K_{2}CO_{3}, obtaining medium molecular weight polymer under the same reaction condition after 6 days. The superiority of cesium carbonate can be explained in terms of a decrease in the extent of ion-pairing on going from K^{\u2212} to Cs^{\u2212}, favouring the nucleophilic reactivity of the associated anion. Moreover, cesium salts are generally more soluble in organic solvents than their potassium counterparts [25]. Toluene is used to azeotropically remove the water produced during the polymerization. The use of this solvent mixture, DMAc/toluene (5:2 in volume) produced a polymer with \u03b7 = 0.53 in 8 h. In addition to the solvent DMSO, three other solvents were investigated: NMP, DMAc and DMF. As showed in Table 1, the use of DMSO as the solvent gave a faster reaction rate, higher molecular weight, and a narrower polydispersity. A possible reason was that the solubility of Cs_{2}CO_{3} and phenolate salts in DMSO is comparatively high.",
+              "As shown in Scheme 1 , the polymerization reactions of TNPS-x (where x refers to the feed percent of DABP) with DABP, BP and DFDPS, was performed in DMSO at 20 wt% concentration in the presence of 2.1 equiv. of Cs_{2}CO_{3} with toluene as an azeotropic agent to remove water generated by the condensation reaction. After dehydration at 120 \u00b0C for 4 h and subsequent removal of toluene, the reaction temperature was increased to 130 \u00b0C. After the solution viscosity had increased significantly over 8 h, the solution was poured into a large excess of water with vigorous stirring. By the use of modified reaction conditions, high-molecular-weight polymers were readily obtained, as shown by the inherent viscosity and GPC data in Table 2 .",
+              "The copolymer TNPS-x was converted to the quaternized polymer ionomer QNPS-I-x by reaction with iodomethane. The molar ratio of iodomethane to tertiary amine groups was 2:1 to ensure complete conversion of the tertiary amine units to the quaternary ammonium moieties.",
+              "The chemical structure and compositions of the synthesized copolymers were characterized by ^{1}H NMR spectroscopy with CDCl_{3} as the solvent. Fig. 2 compares four spectra of the protons for the TNPS-40, -60, -80, and -100. The peaks at \u03b4 4.1 and 2.8 could be assigned to the chemical shifts of protons on the tertiary amine groups. The expected DF values (number of the tertiary amine groups/repeat unit) derived from the synthesis feed ratios were revised by ^{1}H NMR spectroscopy, where a simple comparison of the intensities of the \u2013CH_{2}N(CH_{3})_{2} groups H _{e} resonance with the H _{g} signal of the biphenol segment allows to calculate the DF of the product. As an example, the intensity ratio of the H _{e} to H _{g} signal for TNPS-40 was 1.98, resulting in 0.398 DABP units, while the DF value was 0.795. After quaternization, the integration ratio of the H _{d} to H _{e} changed from 1:3 to 2:9, as expected for the composition of quaternary ammonium group (Fig. 3 ). In addition, as listed in Table 2, the viscosity of QNPS-I-x was even greater than the parent polymer in accordance with the reaction. This was due to the positive charges (the quaternary ammonium groups) located along the polymeric chains that repulsed each other in solution, inducing the chain extension. The higher the charge density and degree of ionization, the more marked the phenomenon. All these changes proved successful to quantitatively incorporate quaternary ammonium moieties into polysulfone.",
+              "The flexible and tough membranes (in the iodide form), QNPS-I-x, with varying ionic content could be prepared by solution casting. To convert to the hydroxide form (QNPS-OH-x), the membranes were immersed in an excess of 1 M NaOH at room temperature for two days. Finally, the membranes were immersed in deionized water for at least 24 h prior to analysis."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Solubility and mechanical properties",
+            "content": [
+              "One of the most significant problems for AEMFCs is the lack of a soluble ionomer that can be used in the catalyst layer to build an efficient three-phase boundary and thus drastically improve the utilization of the catalyst particles and reduce the internal resistance. The solubilities of the resulting ionomers in several organic solvents are summarized in Table 3 . The QNPS-OH ionomers exhibited outstanding solubility in polar aprotic solvents such as NMP, DMF, DMAc and DMSO, meanwhile QNPS-OH-100 was soluble in 2-propanol. This low boiling solvent, 2-propanol, is used frequently since it is safe to handle and easy remove during the electrode preparation.",
+              "Table 4 lists the mechanical properties of the QNPS-OH membranes as measured at room temperature and 50% RH. Testing demonstrated a tensile stress at maximum load of 30.2\u201383.4 MPa, Young's modulus of 0.32\u20131.01 GPa, and elongation at break of 29.5\u2013120.6%, respectively, which indicated a sufficient strength and toughness for fuel cell applications. As shown in Table 4, the tensile stress at maximum and Young's modulus of the membranes decrease with the increasing IEC value. This phenomenon, which has been observed in proton exchange membranes, is attributed to the plasticizing effect of the absorbed water."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Water uptake and hydroxide conductivity",
+            "content": [
+              "Water uptake of AEMs is important for hydroxide conductivity, dimensional stability, mechanical strength, and membrane\u2013electrode compatibility. The water uptake is typically a function of the degree of quaternization or the ion exchange capacities (IEC), which is a measure of the exchangeable hydroxide ions in the material. The water uptake was measured as the ratio of the weight of water absorbed by the membrane when immersed in water versus the dry membrane weight. These data are showed in Table 5 along with the swelling ratio at 20 and 60 \u00b0C. The water uptake of QNPS-OH membranes with IEC from 1.68 to 2.95 was in the range of 13\u2013235%. As shown in Fig. 4 , an increase in water uptake with increase in temperature was also observed. For example, at 60 \u00b0C, QNPS-OH-70 showed 287% water uptake, which was much higher than seen at 20 \u00b0C (119%).",
+              "The hydroxide conductivity of the QNPS-OH membranes was measured at 100% RH (in water). Fig. 5 shows the ionic conductivity of QNPS-OH membranes with different IEC values. The membranes obtained exhibited hydroxide conductivities in the range 0.016\u20130.065 S cm^{\u22121} at 20 \u00b0C. Some general trends were observed for all membranes. For example, their conductivities showed a trend that was similar to that for water uptake. At low IEC values, the conductivity of the membranes was rather low and increased in a gradual fashion. In this case, conductivity was thought to be limited by the connection between ionic domains, and as the IEC value increased, the conductivity increased rapidly as the volume fraction of water and concentration of ionic groups in the membrane increased. Additionally, the conductivity values also increased with temperature (Fig. 6 ). The hydroxide conductivity of QNPS-OH-60 increased from 3.6 to 5.5 \u00d7 10^{\u22122} S cm^{\u22121} from 20 to 60 \u00b0C."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Membrane stability",
+            "content": [
+              "The stability of the AEMs is one of the most desirable properties, and special attention is given to stability in the literature. Especially, the stability of the AEMs under strong alkaline conditions is a rather complex characteristic. It involves not only the stability of the charged groups, but also the polymer matrix. The alkaline stability of the QNPS-OH membranes was investigated by immersing the membranes into 4 M NaOH solution at 20 \u00b0C and the results are presented in Table 6 . Because of the susceptibility of benzyltrimethylammonium groups to attack by the SN2 mechanism, it was anticipated that the IECs of all AEMs would decrease somewhat during immersion. However, the membranes did not exhibit any changes in appearance or flexibility during the testing, nor was where any measurable change in their IEC or conductivity values at 20 \u00b0C. In comparison, F-QNPS-OH-70 (our previous reported partially fluorinated polysulfone ionomers) became brittle and fragmented after light shaking at 20 \u00b0C after 15 h [24]. This embrittlement suggested structural collapse of the partially fluorinated polysulfone backbone by alkali treatment. As shown in Fig. 7 , GPC curves demonstrated that the main chains of F-QNPS-OH-70 fractured and resulted in some low MW polymers, after treating with 4 M NaOH at 20 \u00b0C for 24 h, while the molecular weight of QNPS-OH-60 was kept. Meanwhile, the decomposition of F-QNPS-OH-70 was analyzed by the ^{19}F NMR measurement (Fig. 8 ). It is concluded that F in the polymer backbone is substituted by hydroxide ion and the main chains of polymer split off. Therefore, it is one of the main reasons that we prepare nonfluorinated copoly(arylene ether sulfone) ionomers for AEMs in this article."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Conclusions",
+        "content": [
+          "In conclusion, a modified reaction procedure was developed for the polycondensation of DABP, BP and DFBPS. We demonstrated that by using a functionalized monomer it is possible to directly obtain different nonfluorinated quaternized poly(arylene ether sulfone)s for anion exchange membranes. This process allows precise control of the amount of quaternary ammonium groups and their locations along the polymer backbone. These novel AEMs based on benzyltrimethylammonium hydroxide groups, QNPS-OH-x, demonstrated excellent solubility, high ionic conductivity, and good alkaline stability. These results will aid in designing better membranes, possibly with novel side chains, grafted, or cross-linked polymers, for improving membrane performance."
+        ]
+      },
+      {
+        "type": "ce_bibliography",
+        "name": "References",
+        "content": [
+          "[1] M. Winter R.J. Brodd What are batteries, fuel cells, and supercapacitors? Chem. Rev. 104 2004 4245 4269",
+          "[2] H.G. D\u00fcsterwald J. G\u00fcnnewig P. Radtke Drive-the future of automotive power: fuel cells perspective Fuel Cells 7 2007 183 189",
+          "[3] M.A. Hickner H. Ghassemi Y.S. Kim B.R. Einsla J.E. McGrath Alternative polymer systems for proton exchange membranes (PEMs) Chem. Rev. 104 2004 4587 4612",
+          "[4] B.Y.S. Lin D.W. Kirk S.J. Thorpe Performance of alkaline fuel cells: a possible future energy system? J. Power Sources 161 2006 474 483",
+          "[5] J.R. Varcoe R.C.T. Slade Prospects for alkaline anion-exchange membranes in low temperature fuel cells Fuel Cells 5 2005 187 200",
+          "[6] G.F. McLean T. Niet S. Prince-Richard N. Djilali An assessment of alkaline fuel cell technology Int. J. Hydrogen Energy 27 2002 507 526",
+          "[7] J.R. Varcoe R.C.T. Slade E.L.H. Yee Poly(ethylene-co-tetrafluoroethylene)-derived radiation-grafted anion-exchange membrane with properties specifically tailored for application in metal-cation-free alkaline polymer electrolyte fuel cells Chem. Mater. 19 2007 2686 2693",
+          "[8] J.R. Varcoe R.C.T. Slade An electron-beam-grafted ETFE alkaline anion-exchange membrane in metal-cation-free solid-state alkaline fuel cells Electrochem. Commun. 8 2006 839 843",
+          "[9] J.R. Varcoe R.C.T. Slade E.L.H. Yee An alkaline polymer electrochemical interface: a breakthrough in application of alkaline anion-exchange membranes in fuel cells Chem. Commun. 2006 1428 1429",
+          "[10] T.N. Danks R.C.T. Slade J.R. Varcoe Alkaline anion-exchange radiation-grafted membranes for possible electrochemical application in fuel cells J. Mater. Chem. 13 2003 712 721",
+          "[11] H. Herman R.C.T. Slade J.R. Varcoe The radiation-grafting of vinybenzyl chloride onto poly(hexafluoropropylene-co-tetrafluoroethylene) films with subsequent conversion to alkaline anion-exchange membranes: optimization of the experimental conditions and characterization J. Membr. Sci. 218 2003 147 163",
+          "[12] P. Zschocke D. Quellmalz Novel ion exchange membranes based on an aromatic polyethersulfone J. Membr. Sci. 22 1985 325 332",
+          "[13] T. Sata M. Tsujimoto T. Yamaguchi K. Matsusaki Change of anion exchange membranes in an aqueous sodium hydroxide solution at high temperature J. Membr. Sci. 112 1996 161 170",
+          "[14] G.J. Hwang H. Ohya Preparation of anion-exchange membrane based on block copolymers: part 1. Amination of the chloromethylated copolymers J. Membr. Sci. 140 1998 195 203",
+          "[15] E.N. Komkova D.F. Stamatialis H. Strathmann M. Wessling Anion-exchange membranes containing diamines: preparation and stability in alkaline solution J. Membr. Sci. 244 2004 25 34",
+          "[16] L. Li Y.X. Wang Quaternized polyethersulfone cardo anion exchange membranes for direct methanol alkaline fuel cells J. Membr. Sci. 262 2005 1 4",
+          "[17] G.G. Wang Y.M. Weng D. Chu R.R. Chen D. Xie Developing a polysulfone-based alkaline anion exchange membrane for improved ionic conductivity J. Membr. Sci. 332 2009 63 68",
+          "[18] M.R. Hibbs M.A. Hickner T.M. Alam S.K. McIntyre C.H. Fujimoto C.J. Cornelius Transport properties of hydroxide and proton conducting membranes Chem. Mater. 20 2008 2566 2573",
+          "[19] J. Pan S.F. Lu Y. Li A.B. Huang L. Zhuang J.T. Lu High-performance alkaline polymer electrolyte for fuel cell applications Adv. Funct. Mater. 20 2010 312 314",
+          "[20] J. Fang P.K. Shen Quaternized poly(phthalaziono ether sulfone ketone) membrane for anion exchange membrane fuel cells J. Membr. Sci. 285 2006 317 322",
+          "[21] T.W. Xu Ion exchange membranes: state of their development and perspective J. Membr. Sci. 263 2005 1 29",
+          "[22] M.R. Hibbs C.H. Fujimoto C.J. Cornelius Synthesis and characterization of poly(phenylene)-based anion exchange membranes for alkaline fuel cells Macromolecules 42 2009 8316 8321",
+          "[23] S. Gu R. Cai T. Luo Z.W. Chen M.W. Sun Y. Liu G.H. He Y.S. Yan A soluble and highly conductive ionomer for high-performance hydroxide exchange membrane fuel cells Angew. Chem. Int. Ed. 48 2009 6499 6502",
+          "[24] J.H. Wang Z. Zhao F.X. Gong S.H. Li S.B. Zhang Synthesis of soluble poly(arylene ether sulfone) ionomers with pendant quaternary ammonium groups for anion exchange membranes Macromolecules 42 2009 8711 8717",
+          "[25] H. Cristau P.P. Cellier J. Spindler M. Taillefer Mild conditions for copper-catalysed N-arylation of pyrazoles Eur. J. Org. Chem. 4 2004 695 709"
+        ]
+      }
+    ],
+    "Abstract": {
+      "type": "ce_section",
+      "name": "Graphical abstract",
+      "content": [
+        ""
+      ]
+    }
+  },
+  "tables": [
+    {
+      "doi": "10.1016/j.memsci.2010.11.058",
+      "modified_doi": "10.1016@j.memsci.2010.11.058",
+      "table_name": "Table_4",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_4.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_4_metadata.json",
+      "metadata": {
+        "label": "Table 4",
+        "caption": "Mechanical properties of the QNPS-OH membranes.",
+        "notes": [],
+        "metadata": {
+          "row_count": 5,
+          "column_count": 5,
+          "has_merged_cells": false
+        },
+        "doi": "10.1016/j.memsci.2010.11.058",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_4.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+        "extraction_timestamp": "2025-12-08T20:32:26.291156",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Sample": "QNPS-OH-40",
+          "Film properties": "Tough flexible",
+          "Tensile strength (MPa)": 83.4,
+          "Tensile modulus (GPa)": 1.01,
+          "Elongation at break (%)": 29.5
+        },
+        {
+          "Sample": "QNPS-OH-50",
+          "Film properties": "Tough flexible",
+          "Tensile strength (MPa)": 68.1,
+          "Tensile modulus (GPa)": 0.96,
+          "Elongation at break (%)": 36.4
+        },
+        {
+          "Sample": "QNPS-OH-60",
+          "Film properties": "Tough flexible",
+          "Tensile strength (MPa)": 57.5,
+          "Tensile modulus (GPa)": 0.62,
+          "Elongation at break (%)": 79.3
+        },
+        {
+          "Sample": "QNPS-OH-70",
+          "Film properties": "Tough flexible",
+          "Tensile strength (MPa)": 50.6,
+          "Tensile modulus (GPa)": 0.53,
+          "Elongation at break (%)": 90.8
+        },
+        {
+          "Sample": "QNPS-OH-80",
+          "Film properties": "Tough flexible",
+          "Tensile strength (MPa)": 30.2,
+          "Tensile modulus (GPa)": 0.32,
+          "Elongation at break (%)": 120.6
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.memsci.2010.11.058",
+      "modified_doi": "10.1016@j.memsci.2010.11.058",
+      "table_name": "Table_3",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_3.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_3_metadata.json",
+      "metadata": {
+        "label": "Table 3",
+        "caption": "Inherent viscosity and solubilitya of QNPS-OHs.",
+        "notes": [
+          "++, excellently soluble; +, soluble; \u00b1, partially soluble; \u2212, insoluble.",
+          "Inherent viscosity measured at a concentration of 0.5 g dL\u22121 in NMP at 30\u00b0C.",
+          "IPA, 2-propanol; DMF, N,N-dimethylformamide; DMAc, N,N-dimethylacetamide; NMP, N-methylpyrrolidone; DMSO, dimethylsulfoxide."
+        ],
+        "metadata": {
+          "row_count": 5,
+          "column_count": 9,
+          "has_merged_cells": true
+        },
+        "doi": "10.1016/j.memsci.2010.11.058",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_3.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+        "extraction_timestamp": "2025-12-08T20:32:26.290358",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Sample": "QNPS-OH-40",
+          "\u03b7inh (dL g\u22121)": 0.78,
+          "Solubility in H2O": "\u2212",
+          "Solubility in CHCl3": "\u2212",
+          "Solubility in IPA": "\u2212",
+          "Solubility in DMF": "++",
+          "Solubility in DMAc": "++",
+          "Solubility in NMP": "++",
+          "Solubility in DMSO": "++"
+        },
+        {
+          "Sample": "QNPS-OH-60",
+          "\u03b7inh (dL g\u22121)": 0.84,
+          "Solubility in H2O": "\u2212",
+          "Solubility in CHCl3": "\u2212",
+          "Solubility in IPA": "\u2212",
+          "Solubility in DMF": "++",
+          "Solubility in DMAc": "++",
+          "Solubility in NMP": "++",
+          "Solubility in DMSO": "++"
+        },
+        {
+          "Sample": "QNPS-OH-80",
+          "\u03b7inh (dL g\u22121)": 0.95,
+          "Solubility in H2O": "\u2212",
+          "Solubility in CHCl3": "\u2212",
+          "Solubility in IPA": "\u00b1",
+          "Solubility in DMF": "++",
+          "Solubility in DMAc": "++",
+          "Solubility in NMP": "++",
+          "Solubility in DMSO": "++"
+        },
+        {
+          "Sample": "QNPS-OH-90",
+          "\u03b7inh (dL g\u22121)": 0.95,
+          "Solubility in H2O": "\u2212",
+          "Solubility in CHCl3": "\u2212",
+          "Solubility in IPA": "+",
+          "Solubility in DMF": "++",
+          "Solubility in DMAc": "++",
+          "Solubility in NMP": "++",
+          "Solubility in DMSO": "++"
+        },
+        {
+          "Sample": "QNPS-OH-100",
+          "\u03b7inh (dL g\u22121)": 0.99,
+          "Solubility in H2O": "\u00b1",
+          "Solubility in CHCl3": "\u2212",
+          "Solubility in IPA": "+",
+          "Solubility in DMF": "++",
+          "Solubility in DMAc": "++",
+          "Solubility in NMP": "++",
+          "Solubility in DMSO": "++"
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.memsci.2010.11.058",
+      "modified_doi": "10.1016@j.memsci.2010.11.058",
+      "table_name": "Table_6",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_6.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_6_metadata.json",
+      "metadata": {
+        "label": "Table 6",
+        "caption": "The alkaline stability of QNPS-OHs and F-QNPS-OH-70a.",
+        "notes": [
+          "4 M NaOH solution, 20\u00b0C.",
+          "The time at which the membrane broke into pieces after being shaken lightly.",
+          "IEC0 and IEC are the ion exchange capacity of the test before and the test after, respectively.",
+          "The hydroxide conductivity after the alkaline stability test (4 M NaOH, 20\u00b0C, 48h).",
+          "The membrane is brittle, cannot be measured."
+        ],
+        "metadata": {
+          "row_count": 6,
+          "column_count": 5,
+          "has_merged_cells": true
+        },
+        "doi": "10.1016/j.memsci.2010.11.058",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_6.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+        "extraction_timestamp": "2025-12-08T20:32:26.292688",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Sample": "QNPS-OH-30",
+          "\u03c4 (day)b": ">48",
+          "Ratio (IEC/IEC0)c": 0.99,
+          "Conductivity Before": 0.011,
+          "Conductivity Afterd": "0.011"
+        },
+        {
+          "Sample": "QNPS-OH-40",
+          "\u03c4 (day)b": ">48",
+          "Ratio (IEC/IEC0)c": 0.98,
+          "Conductivity Before": 0.016,
+          "Conductivity Afterd": "0.016"
+        },
+        {
+          "Sample": "QNPS-OH-50",
+          "\u03c4 (day)b": ">48",
+          "Ratio (IEC/IEC0)c": 1.0,
+          "Conductivity Before": 0.022,
+          "Conductivity Afterd": "0.021"
+        },
+        {
+          "Sample": "QNPS-OH-60",
+          "\u03c4 (day)b": ">48",
+          "Ratio (IEC/IEC0)c": 0.97,
+          "Conductivity Before": 0.036,
+          "Conductivity Afterd": "0.035"
+        },
+        {
+          "Sample": "QNPS-OH-70",
+          "\u03c4 (day)b": ">48",
+          "Ratio (IEC/IEC0)c": 0.98,
+          "Conductivity Before": 0.056,
+          "Conductivity Afterd": "0.056"
+        },
+        {
+          "Sample": "F-QNPS-OH-70",
+          "\u03c4 (day)b": "15",
+          "Ratio (IEC/IEC0)c": 0.94,
+          "Conductivity Before": 0.04,
+          "Conductivity Afterd": "\u2013e"
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.memsci.2010.11.058",
+      "modified_doi": "10.1016@j.memsci.2010.11.058",
+      "table_name": "Table_5",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_5.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_5_metadata.json",
+      "metadata": {
+        "label": "Table 5",
+        "caption": "Ion exchange capacity, water uptake, swelling rate, and hydroxide conductivity of QNPS-OH membranes.",
+        "notes": [
+          "Calculated from 1H NMR.",
+          "Swelled to gel-like, could not be measured."
+        ],
+        "metadata": {
+          "row_count": 5,
+          "column_count": 9,
+          "has_merged_cells": true
+        },
+        "doi": "10.1016/j.memsci.2010.11.058",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_5.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+        "extraction_timestamp": "2025-12-08T20:32:26.291968",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Sample": "QNPS-OH-40",
+          "IEC (mequiv. g\u22121)": 1.68,
+          "IEC (mequiv. g\u22121).1": 1.62,
+          "Water uptake (%)": 13,
+          "Water uptake (%).1": "18",
+          "Swelling ratio (%)": 8,
+          "Swelling ratio (%).1": "9",
+          "Conductivity (S cm\u22121)": 0.016,
+          "Conductivity (S cm\u22121).1": "0.022"
+        },
+        {
+          "Sample": "QNPS-OH-50",
+          "IEC (mequiv. g\u22121)": 2.04,
+          "IEC (mequiv. g\u22121).1": 1.95,
+          "Water uptake (%)": 20,
+          "Water uptake (%).1": "30",
+          "Swelling ratio (%)": 11,
+          "Swelling ratio (%).1": "13",
+          "Conductivity (S cm\u22121)": 0.022,
+          "Conductivity (S cm\u22121).1": "0.033"
+        },
+        {
+          "Sample": "QNPS-OH-60",
+          "IEC (mequiv. g\u22121)": 2.36,
+          "IEC (mequiv. g\u22121).1": 2.29,
+          "Water uptake (%)": 47,
+          "Water uptake (%).1": "84",
+          "Swelling ratio (%)": 23,
+          "Swelling ratio (%).1": "36",
+          "Conductivity (S cm\u22121)": 0.036,
+          "Conductivity (S cm\u22121).1": "0.055"
+        },
+        {
+          "Sample": "QNPS-OH-70",
+          "IEC (mequiv. g\u22121)": 2.67,
+          "IEC (mequiv. g\u22121).1": 2.64,
+          "Water uptake (%)": 119,
+          "Water uptake (%).1": "287",
+          "Swelling ratio (%)": 58,
+          "Swelling ratio (%).1": "132",
+          "Conductivity (S cm\u22121)": 0.056,
+          "Conductivity (S cm\u22121).1": "\u2013"
+        },
+        {
+          "Sample": "QNPS-OH-80",
+          "IEC (mequiv. g\u22121)": 2.95,
+          "IEC (mequiv. g\u22121).1": 2.89,
+          "Water uptake (%)": 235,
+          "Water uptake (%).1": "-",
+          "Swelling ratio (%)": 179,
+          "Swelling ratio (%).1": "\u2013",
+          "Conductivity (S cm\u22121)": 0.065,
+          "Conductivity (S cm\u22121).1": "\u2013"
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.memsci.2010.11.058",
+      "modified_doi": "10.1016@j.memsci.2010.11.058",
+      "table_name": "Table_1",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_1.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_1_metadata.json",
+      "metadata": {
+        "label": "Table 1",
+        "caption": "Reaction conditions and results of condensation polymerization",
+        "notes": [
+          "DABP, 5 mmol; DFBPS, 5 mmol; base, 10.5 mmol; solvent, 13 mL.",
+          "Polydispersity."
+        ],
+        "metadata": {
+          "row_count": 10,
+          "column_count": 6,
+          "has_merged_cells": false
+        },
+        "doi": "10.1016/j.memsci.2010.11.058",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_1.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+        "extraction_timestamp": "2025-12-08T20:32:26.288491",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Expt no.": 1,
+          "T (\u00b0C)": 130,
+          "Solvent": "DMSO",
+          "Base": "K2CO3",
+          "Time": "6 days",
+          "Results": "\u03b7 = 0.21, Mn = 21,000, and PDI = 1.9"
+        },
+        {
+          "Expt no.": 2,
+          "T (\u00b0C)": 140,
+          "Solvent": "DMSO",
+          "Base": "K2CO3",
+          "Time": "6 days",
+          "Results": "No polymer was obtained"
+        },
+        {
+          "Expt no.": 3,
+          "T (\u00b0C)": 130,
+          "Solvent": "DMSO",
+          "Base": "Cs2CO3",
+          "Time": "6 days",
+          "Results": "\u03b7 = 0.34, Mn = 44,200, and PDI = 1.8"
+        },
+        {
+          "Expt no.": 4,
+          "T (\u00b0C)": 120,
+          "Solvent": "DMSO/toluene",
+          "Base": "Cs2CO3",
+          "Time": "8h",
+          "Results": "\u03b7 = 0.37, Mn = 49,100, and PDI = 2.3"
+        },
+        {
+          "Expt no.": 5,
+          "T (\u00b0C)": 130,
+          "Solvent": "DMSO/toluene",
+          "Base": "Cs2CO3",
+          "Time": "8h",
+          "Results": "\u03b7 = 0.53, Mn = 84,000, and PDI = 2.2"
+        },
+        {
+          "Expt no.": 6,
+          "T (\u00b0C)": 140,
+          "Solvent": "DMSO/toluene",
+          "Base": "Cs2CO3",
+          "Time": "8h",
+          "Results": "No polymer was obtained"
+        },
+        {
+          "Expt no.": 7,
+          "T (\u00b0C)": 130,
+          "Solvent": "DMAc/toluene",
+          "Base": "Cs2CO3",
+          "Time": "8h",
+          "Results": "\u03b7 = 0.43, Mn = 61,100, and PDI = 2.4"
+        },
+        {
+          "Expt no.": 8,
+          "T (\u00b0C)": 130,
+          "Solvent": "NMP/toluene",
+          "Base": "Cs2CO3",
+          "Time": "8h",
+          "Results": "\u03b7 = 0.41, Mn = 58,400, and PDI = 2.5"
+        },
+        {
+          "Expt no.": 9,
+          "T (\u00b0C)": 130,
+          "Solvent": "DMF/toluene",
+          "Base": "Cs2CO3",
+          "Time": "8h",
+          "Results": "\u03b7 = 0.39, Mn = 52,300, and PDI = 2.4"
+        },
+        {
+          "Expt no.": 10,
+          "T (\u00b0C)": 130,
+          "Solvent": "DMSO/toluene",
+          "Base": "K2CO3",
+          "Time": "8h",
+          "Results": "\u03b7 = 0.23, Mn = 23,500, and PDI = 2.6"
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.memsci.2010.11.058",
+      "modified_doi": "10.1016@j.memsci.2010.11.058",
+      "table_name": "Table_2",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_2.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_2_metadata.json",
+      "metadata": {
+        "label": "Table 2",
+        "caption": "Inherent viscosity, molecular weight and DF values of TNPSs.",
+        "notes": [
+          "a: Inherent viscosity measured at a concentration of 0.5 g dL\u22121 in NMP at 30\u00b0C.",
+          "b: Degree of functionalization (number of the tertiary amine groups/repeat unit).",
+          "c: Polydispersity."
+        ],
+        "metadata": {
+          "row_count": 5,
+          "column_count": 6,
+          "has_merged_cells": false
+        },
+        "doi": "10.1016/j.memsci.2010.11.058",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_2.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
+        "extraction_timestamp": "2025-12-08T20:32:26.289453",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Sample": "TNPS-40",
+          "\u03b7 inh (dL g\u22121)": 0.44,
+          "DF": 0.79,
+          "Mn (g mol\u22121)": 6.3,
+          "Mw (g mol\u22121)": 15.8,
+          "PDI": 2.5
+        },
+        {
+          "Sample": "TNPS-60",
+          "\u03b7 inh (dL g\u22121)": 0.43,
+          "DF": 1.2,
+          "Mn (g mol\u22121)": 7.2,
+          "Mw (g mol\u22121)": 16.6,
+          "PDI": 2.3
+        },
+        {
+          "Sample": "TNPS-80",
+          "\u03b7 inh (dL g\u22121)": 0.42,
+          "DF": 1.59,
+          "Mn (g mol\u22121)": 7.6,
+          "Mw (g mol\u22121)": 16.7,
+          "PDI": 2.2
+        },
+        {
+          "Sample": "TNPS-90",
+          "\u03b7 inh (dL g\u22121)": 0.4,
+          "DF": 1.81,
+          "Mn (g mol\u22121)": 6.9,
+          "Mw (g mol\u22121)": 15.8,
+          "PDI": 2.3
+        },
+        {
+          "Sample": "TNPS-100",
+          "\u03b7 inh (dL g\u22121)": 0.44,
+          "DF": 2.0,
+          "Mn (g mol\u22121)": 7.4,
+          "Mw (g mol\u22121)": 15.5,
+          "PDI": 2.1
+        }
+      ]
+    }
+  ]
+}

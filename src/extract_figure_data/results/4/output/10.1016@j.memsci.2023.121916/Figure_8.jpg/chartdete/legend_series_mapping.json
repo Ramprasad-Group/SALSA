@@ -1,0 +1,54 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "INITIAL",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.34059399366378784,
+    "legend_desc": {
+      "hsv": [
+        122.0,
+        95.38064516129032,
+        231.63225806451612
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        0.0,
+        211.28306579589844,
+        226.91647338867188
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "AFTER 1200 H",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.22247327864170074,
+    "legend_desc": {
+      "hsv": [
+        26.0,
+        127.9074074074074,
+        221.26543209876544
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        0.0,
+        202.98963928222656,
+        211.94818115234375
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  }
+]

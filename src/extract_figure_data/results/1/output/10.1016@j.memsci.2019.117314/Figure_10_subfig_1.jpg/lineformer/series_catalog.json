@@ -1,0 +1,34 @@
+[
+  {
+    "series_index": 0,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_1.jpg/lineformer/mask_series_0.png",
+    "centroid": [
+      150.30980392156863,
+      86.0326797385621
+    ]
+  },
+  {
+    "series_index": 1,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_1.jpg/lineformer/mask_series_1.png",
+    "centroid": [
+      139.43926380368097,
+      72.87852760736196
+    ]
+  },
+  {
+    "series_index": 2,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_1.jpg/lineformer/mask_series_2.png",
+    "centroid": [
+      148.93406593406593,
+      113.81181318681318
+    ]
+  },
+  {
+    "series_index": 3,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_1.jpg/lineformer/mask_series_3.png",
+    "centroid": [
+      139.85185185185185,
+      93.34722222222223
+    ]
+  }
+]

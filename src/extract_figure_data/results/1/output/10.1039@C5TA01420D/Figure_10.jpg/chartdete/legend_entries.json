@@ -1,0 +1,182 @@
+[
+  {
+    "source": "legend",
+    "patch_bbox": [
+      464.5034484863281,
+      1275.2247314453125,
+      524.4046630859375,
+      1288.7799072265625,
+      0.9335242509841919
+    ],
+    "label_bbox": [
+      529.951416015625,
+      1269.692138671875,
+      671.3733520507812,
+      1292.1444091796875,
+      0.9884412288665771
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_0.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_0.jpg",
+    "text": "PP-TMA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      492.6654968261719,
+      111.19676208496094,
+      551.4320068359375,
+      126.572021484375,
+      0.9302103519439697
+    ],
+    "label_bbox": [
+      558.0192260742188,
+      34.795108795166016,
+      698.5286254882812,
+      57.391639709472656,
+      0.9763626456260681
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_1.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_1.jpg",
+    "text": "PP-TMA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      491.9475402832031,
+      40.105045318603516,
+      551.2835693359375,
+      54.44276809692383,
+      0.9208788871765137
+    ],
+    "label_bbox": [
+      557.9678344726562,
+      70.68063354492188,
+      740.2959594726562,
+      93.85292053222656,
+      0.9787890911102295
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_2.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_2.jpg",
+    "text": "PP-DMHDA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      465.2342529296875,
+      720.0660400390625,
+      524.9430541992188,
+      736.1969604492188,
+      0.9202113747596741
+    ],
+    "label_bbox": [
+      530.1695556640625,
+      645.3375244140625,
+      668.164794921875,
+      667.4295654296875,
+      0.9819014668464661
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_3.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_3.jpg",
+    "text": "PP-TMA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      464.554931640625,
+      1312.0396728515625,
+      524.9517822265625,
+      1326.5660400390625,
+      0.9190433621406555
+    ],
+    "label_bbox": [
+      531.6478271484375,
+      1305.701171875,
+      713.2352905273438,
+      1328.3392333984375,
+      0.9883148670196533
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_4.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_4.jpg",
+    "text": "PP-DMHDA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      492.5924377441406,
+      76.90750122070312,
+      551.2837524414062,
+      91.8336181640625,
+      0.9179226756095886
+    ],
+    "label_bbox": [
+      556.699462890625,
+      107.81455993652344,
+      763.6295166015625,
+      131.23538208007812,
+      0.9727048873901367
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_5.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_5.jpg",
+    "text": "X-PP-DMHDA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      465.04351806640625,
+      1345.5533447265625,
+      524.2216186523438,
+      1361.82861328125,
+      0.9163435101509094
+    ],
+    "label_bbox": [
+      528.8106689453125,
+      1342.6195068359375,
+      737.0881958007812,
+      1365.5025634765625,
+      0.9857511520385742
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_6.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_6.jpg",
+    "text": "X-PP-DMHDA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      465.8271789550781,
+      649.7120361328125,
+      524.06787109375,
+      664.742919921875,
+      0.8960672616958618
+    ],
+    "label_bbox": [
+      531.1507568359375,
+      680.9929809570312,
+      710.3726196289062,
+      703.423583984375,
+      0.9833446145057678
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_7.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_7.jpg",
+    "text": "PP-DMHDA-20"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      465.82000732421875,
+      686.328857421875,
+      523.7138671875,
+      700.7675170898438,
+      0.8924311399459839
+    ],
+    "label_bbox": [
+      528.5875244140625,
+      717.0355224609375,
+      733.5932006835938,
+      739.4791870117188,
+      0.9768283367156982
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_8.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/label_8.jpg",
+    "text": "X-PP-DMHDA-20"
+  }
+]

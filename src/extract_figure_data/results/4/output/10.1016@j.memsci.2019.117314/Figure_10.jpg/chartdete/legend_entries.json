@@ -1,0 +1,162 @@
+[
+  {
+    "source": "legend",
+    "patch_bbox": [
+      200.83404541015625,
+      36.82853317260742,
+      222.06661987304688,
+      43.27463912963867,
+      0.9239907264709473
+    ],
+    "label_bbox": [
+      221.12254333496094,
+      15.138226509094238,
+      247.4027557373047,
+      23.970996856689453,
+      0.9789162874221802
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_0.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_0.jpg",
+    "text": "QPPO"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      201.23834228515625,
+      16.71832847595215,
+      221.72450256347656,
+      22.907073974609375,
+      0.9222068190574646
+    ],
+    "label_bbox": [
+      221.84449768066406,
+      24.95963478088379,
+      285.0644226074219,
+      34.620948791503906,
+      0.9748421311378479
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_1.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_1.jpg",
+    "text": "QPPO-QPOS-1"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      480.2990417480469,
+      17.675090789794922,
+      501.9320373535156,
+      24.293230056762695,
+      0.9130232334136963
+    ],
+    "label_bbox": [
+      500.8849182128906,
+      16.121295928955078,
+      527.2857055664062,
+      25.339733123779297,
+      0.9809126257896423
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_2.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_2.jpg",
+    "text": "QPPO"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      480.3584899902344,
+      28.293712615966797,
+      501.7160339355469,
+      34.75483322143555,
+      0.9120650291442871
+    ],
+    "label_bbox": [
+      501.70391845703125,
+      26.387264251708984,
+      566.300537109375,
+      35.67374801635742,
+      0.9767246246337891
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_3.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_3.jpg",
+    "text": "QPPO-QPOS-1"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      480.4629211425781,
+      38.20861053466797,
+      501.6961975097656,
+      44.63977813720703,
+      0.9050961136817932
+    ],
+    "label_bbox": [
+      501.6554870605469,
+      36.82017517089844,
+      566.8150024414062,
+      45.97432327270508,
+      0.974590003490448
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_4.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_4.jpg",
+    "text": "QPPO-QPOS-3"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      200.95611572265625,
+      27.10383415222168,
+      222.0071258544922,
+      33.448753356933594,
+      0.8890382051467896
+    ],
+    "label_bbox": [
+      221.8336181640625,
+      35.51298141479492,
+      285.51080322265625,
+      44.414424896240234,
+      0.9709851741790771
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_5.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_5.jpg",
+    "text": "QPPO-QPOS-3"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      201.33447265625,
+      48.0054817199707,
+      221.7095947265625,
+      54.11906433105469,
+      0.8417765498161316
+    ],
+    "label_bbox": [
+      221.78701782226562,
+      46.008575439453125,
+      285.7289123535156,
+      54.535640716552734,
+      0.9735451340675354
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_6.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_6.jpg",
+    "text": "QPPO-QPOS-5"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      480.54052734375,
+      49.31541061401367,
+      501.7896728515625,
+      55.6568489074707,
+      0.8208270072937012
+    ],
+    "label_bbox": [
+      501.7249450683594,
+      47.151031494140625,
+      567.3600463867188,
+      56.019020080566406,
+      0.9673691987991333
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/patch_7.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/legend/label_7.jpg",
+    "text": "QPPO-QPOS-5"
+  }
+]

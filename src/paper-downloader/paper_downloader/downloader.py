@@ -120,14 +120,15 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
         # Make the request to download the file
         # html_data = requests.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
         # --- ACS-aware logic ---
-        if 'acs' in publisher.lower():
-            # use pre-authenticated session with cookies
-            acs_session = get_acs_session()
-            html_data = acs_session.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
-            if html_data.status_code == 403:
-                logger.warning("[ACS] Session expired — please refresh cookies via browser login.")
-        else:
-            html_data = requests.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
+        # if 'acs' in publisher.lower():
+        #     # use pre-authenticated session with cookies
+        #     acs_session = get_acs_session()
+        #     html_data = acs_session.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
+        #     if html_data.status_code == 403:
+        #         logger.warning("[ACS] Session expired — please refresh cookies via browser login.")
+        # else:
+            
+        html_data = requests.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
 
         #Process the response
         if html_data.status_code == 200:
@@ -165,10 +166,10 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
                 )
             if year is not None:
                 logger.warning(f'Could not download {extension} file with DOI {doi} by publisher {publisher} with title '
-                               f'\'{title}\' published in {year}. Failed with HTML status code {html_data.status_code}', 'html_url:', html_url, '\n')
+                               f'\'{title}\' published in {year}. Failed with HTML status code {html_data.status_code}', 'html_url', html_url)
             else:
                 logger.warning(f'Could not download {extension} file with DOI {doi} by publisher {publisher} with title '
-                               f'\'{title}\'. Failed with HTML status code {html_data.status_code}', 'html_url:', html_url, '\n')
+                               f'\'{title}\'. Failed with HTML status code {html_data.status_code}', 'html_url', html_url)
             return
         random_wait_time = randint(1, MAX_SLEEP_TIME) # Choose any value between 1 & 2 seconds randomly
         sleep(random_wait_time)
@@ -227,6 +228,11 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
         if not path.exists(logger_file):
             open(logger_file, 'a').close()
         logger = utils.setup_logger(logger_file, logger_name)
+
+    # headers = {
+    #     'Accept': 'text/html',
+    #     'User-agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0'
+    # }
 
     headers = {
         'Accept': 'text/html',
@@ -706,7 +712,7 @@ def _validate_html_status(doi, publisher, title, year, download_directory, db, d
                                     extension=extension)
 
 
-def get_acs_session(cookie_path="/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/acs_cookies.pkl"):
+# def get_acs_session(cookie_path="/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/acs_cookies.pkl"):
     """Load institutional ACS cookies into a requests.Session."""
     s = requests.Session()
     try:

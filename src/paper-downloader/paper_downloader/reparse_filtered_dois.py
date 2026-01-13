@@ -103,7 +103,7 @@ def write_json(path_: Path, obj: Dict):
 # ---------------------------
 def main():
     ap = argparse.ArgumentParser(description="Re-parse structured files locally (no DB).")
-    ap.add_argument("--csv_path", default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/records/download_results_20251110_163021.csv', help="CSV containing DOIs (and optional filter column).")
+    ap.add_argument("--csv_path", default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/records/download_results_20251205_192922.csv', help="CSV containing DOIs (and optional filter column).")
     ap.add_argument("--structured_root", default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files',
                     help="Root directory where structured files are stored (publisher subfolders).")
     ap.add_argument("--output_dir", default="/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/reparsed",

@@ -1,0 +1,42 @@
+[
+  {
+    "source": "legend",
+    "patch_bbox": [
+      343.10968017578125,
+      45.555015563964844,
+      361.14569091796875,
+      55.81843185424805,
+      0.9499533772468567
+    ],
+    "label_bbox": [
+      363.5909729003906,
+      31.286317825317383,
+      393.05517578125,
+      41.620357513427734,
+      0.9714279770851135
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/chartdete/legend/patch_0.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/chartdete/legend/label_0.jpg",
+    "text": null
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      343.0251770019531,
+      32.258689880371094,
+      361.7917785644531,
+      42.28115463256836,
+      0.8999119997024536
+    ],
+    "label_bbox": [
+      362.25518798828125,
+      44.77630615234375,
+      420.8323059082031,
+      55.016632080078125,
+      0.9859588742256165
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/chartdete/legend/patch_1.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2023.121916/Figure_8.jpg/chartdete/legend/label_1.jpg",
+    "text": null
+  }
+]

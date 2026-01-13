@@ -15,19 +15,28 @@ import logging
 from dotenv import load_dotenv
 import traceback
 import pandas as pd
+from bs4 import Tag
+from pathlib import Path
+sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
+from ui.openai_cost import append_usage, stage_from_env, run_id_from_env
 
 load_dotenv()
 
 sys.path.append('/home/wschertzer3/paper-downloader/paper_downloader')
 from paper_downloader import config
 
+def make_client(llm_url, api_key_string):
+    base_url = os.getenv("LLM_BASE_URL", llm_url)
+    api_key = os.getenv("LLM_API_KEY", api_key_string)
+    return OpenAI(base_url=base_url, api_key=api_key)
+
 class LLMTableExtractor:
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-4o"):
         """
         Initialize the LLM table extractor
         
         Args:
-            model: OpenAI model to use (default: gpt-4o-mini)
+            model: model to use
         """
         self.model = model
         self.logger = logging.getLogger('extraction')
@@ -35,59 +44,8 @@ class LLMTableExtractor:
         api_key = os.getenv("OPENAI_API_KEY")
         org_id = os.getenv("OPENAI_ORGANIZATION")
         self.client = OpenAI(api_key=api_key, organization=org_id)
+        # self.client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
         
-    
-    def extract_tables_from_xml(self, xml_content: str, max_tokens: int = 4000) -> List[Dict[str, Any]]:
-        """
-        Extract tables from XML content using LLM
-        
-        Args:
-            xml_content: Raw XML content as string
-            max_tokens: Maximum tokens for the response
-            
-        Returns:
-            List of extracted tables with metadata
-        """
-        # Check if content contains table elements
-        table_count = xml_content.count('<ce:table') + xml_content.count('<table')
-        self.logger.debug(f"Found {table_count} table elements in XML content")
-        
-        # Truncate content if too long
-        if len(xml_content) > 50000:  
-            self.logger.debug(f"XML content truncated from {len(xml_content)} to 50000 characters")
-            xml_content = xml_content[:50000] + "... [truncated]"
-        
-        prompt = self._create_table_extraction_prompt(xml_content)
-        
-        try:
-            self.logger.debug(f"Calling OpenAI API with model: {self.model}")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert at extracting structured table data from academic papers. You can parse complex XML/HTML table structures and extract clean, structured data."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=max_tokens,
-                temperature=0.1  # Low temperature for consistent extraction
-            )
-            
-            result = response.choices[0].message.content
-            self.logger.debug(f"LLM response length: {len(result)} characters")
-            self.logger.debug(f"LLM response preview: {result[:200]}...")
-            
-            parsed_result = self._parse_llm_response(result)
-            self.logger.debug(f"Parsed result: {len(parsed_result)} tables")
-            return parsed_result
-            
-        except Exception as e:
-            traceback.print_exc()
-            return []
     
     def extract_tables_from_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
@@ -164,12 +122,15 @@ class LLMTableExtractor:
                 table_xml = ET.tostring(table_elem, encoding='unicode')
                 
                 # Send individual table to LLM
-                table_result = self.extract_single_table_with_llm(table_xml)
+                table_result = self.extract_single_table_with_llm_xml(table_xml)
+
                 if table_result:
                     all_tables.append(table_result)
                     self.logger.debug(f"Successfully processed table {i+1}")
                 else:
-                    self.logger.warning(f"Failed to process table {i+1}")
+                    self.logger.warning(f"Failed to process table {i+1} from xml")
+                    print('===table_result xml====', table_result)
+                    quit()
             
             return all_tables
             
@@ -263,14 +224,15 @@ class LLMTableExtractor:
                 if table_result:
                     all_tables.append(table_result)
                 else:
-                    self.logger.warning(f"Failed to process table {i+1}")
+                    self.logger.warning(f"Failed to process table {i+1} from html")
+                    print('===table_result html====', table_result)
+                    quit()
 
             return all_tables
 
         except Exception as e:
             self.logger.error(f"Error in HTML hybrid extraction: {e}", exc_info=True)
             return []
-    from bs4 import Tag
 
     def _find_table_caption(self, table_elem, soup):
         """Robustly detect the caption for a given table using nearby HTML context."""
@@ -325,7 +287,7 @@ class LLMTableExtractor:
             self.logger.debug(f"[Caption Detection Error] {e}")
             return ""
         
-    def extract_single_table_with_llm(self, table_xml: str) -> Dict[str, Any]:
+    def extract_single_table_with_llm_xml(self, table_xml: str) -> Dict[str, Any]:
         """
         Extract a single table using LLM
         
@@ -336,63 +298,101 @@ class LLMTableExtractor:
             Dictionary with table data or None if failed
         """
         try:
-            prompt = self._create_single_table_prompt(table_xml)
+            prompt = self._create_single_table_prompt_xml(table_xml)
             
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at extracting structured table data from Elsevier XML. Extract the table data and return it as JSON."
+                        "content": "You are an expert at extracting structured table data from XML files. Extract the table data and return it as JSON."
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                max_tokens=2000,
-                temperature=0.1
+                max_tokens=3000,
+                temperature=0.0
             )
+            self._log_cost(response,extra={"kind": "table_xml", "max_tokens": 3000, "temperature": 0.0})
             
             result = response.choices[0].message.content
-            return self._parse_single_table_response(result)
+            print('====PROMPT====', prompt)
+            print('===RESPONSE====', response)
+            print('====RESULT====', result)
+            result = self._parse_single_table_response(result)
+            if result:
+                return result
+            else:
+                # retry if result is None
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert at extracting structured table data from XML files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=3000,
+                    temperature=0.0
+                )
+                self._log_cost(response,extra={"kind": "table_xml", "max_tokens": 3000, "temperature": 0.0})
+
+                result = response.choices[0].message.content
+                print('====RETRY RESULT====', result)
+                print('===RETRY RESPONSE====', response)
+                return self._parse_single_table_response(result)
             
         except Exception as e:
-            self.logger.error(f"Error processing single table with LLM: {e}")
+            self.logger.error(f"Error processing single XML table with LLM: {e}")
             return None
     
-    def _create_single_table_prompt(self, table_xml: str) -> str:
+    def _create_single_table_prompt_xml(self, table_xml: str) -> str:
         """Create prompt for single table extraction"""
         return f"""
-Extract the table data from this Elsevier XML table element. 
+        Extract the table data from this XML table element. 
 
-XML Table:
-{table_xml}
+        XML Table:
+        {table_xml}
 
-Return ONLY valid JSON in this exact format:
-{{
-    "label": "Table 1",
-    "caption": "Full table caption text",
-    "headers": ["Column 1", "Column 2", "Column 3"],
-    "data": [
-        ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
-        ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
-    ],
-    "notes": ["Any footnotes or notes"],
-    "metadata": {{
-        "row_count": 2,
-        "column_count": 3,
-        "has_merged_cells": false
-    }}
-}}
+        Return ONLY valid JSON in this exact format:
+        {{
+            "label": "Table 1",
+            "caption": "Full table caption text",
+            "headers": ["Column 1", "Column 2", "Column 3"],
+            "data": [
+                ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
+                ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
+            ],
+            "notes": ["Any footnotes or notes"],
+            "metadata": {{
+                "row_count": 2,
+                "column_count": 3,
+                "has_merged_cells": false
+            }}
+        }}
 
-Extract:
-1. Label from <ce:label>
-2. Caption from <ce:caption> 
-3. Headers from <cals:thead>/<cals:row>/<ce:entry>
-4. Data from <cals:tbody>/<cals:row>/<ce:entry>
-5. Clean up text content (remove XML tags, preserve data values)
-"""
+        Extract:
+        1. Label
+        2. Caption
+        3. Headers
+        4. Data
+        5. Clean up text content (remove XML tags, preserve data values)
+        6. Handle merged cells appropriately (If there are merged cells, append merged content to connected cells)
+
+        CRITICAL RULE FOR MERGED AND MULTI-ROW HEADERS:
+        - If a parent header spans multiple columns (using namest/nameend),
+        and there is a second header row that contains labels such as
+        "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc.,
+        you MUST combine them into final column headers.
+
+        IMPORTANT: Use the actual caption text provided above, not placeholder text.
+        """
     
     def _parse_single_table_response(self, response: str) -> Dict[str, Any]:
         """Parse LLM response for single table"""
@@ -402,6 +402,7 @@ Extract:
             end_idx = response.rfind('}') + 1
             
             if start_idx == -1 or end_idx == 0:
+                print('====start_idx == -1 or end_idx == 0====', start_idx, end_idx)
                 return None
             
             json_str = response[start_idx:end_idx]
@@ -431,19 +432,47 @@ Extract:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at extracting structured table data from HTML tables. Extract the table data and return it as JSON."
+                        "content": "You are an expert at extracting structured table data from HTML files. Extract the table data and return it as JSON."
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                max_tokens=2000,
-                temperature=0.1
+                max_tokens=3000,
+                temperature=0.0
             )
+            self._log_cost(response,extra={"kind": "table_html", "max_tokens": 3000, "temperature": 0.0})
             
             result = response.choices[0].message.content
-            return self._parse_single_table_response(result)
+            print('====PROMPT====', prompt)
+            print('===RESPONSE====', response)
+            print('====RESULT====', result)
+            result = self._parse_single_table_response(result)
+            if result:
+                return result
+            else:
+                # retry if result is None
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert at extracting structured table data from html files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=3000,
+                    temperature=0.0
+                )
+                self._log_cost(response,extra={"kind": "table_html", "max_tokens": 3000, "temperature": 0.0})
+                result = response.choices[0].message.content
+                print('====RETRY RESULT====', result)
+                print('===RETRY RESPONSE====', response)
+                return self._parse_single_table_response(result)
             
         except Exception as e:
             self.logger.error(f"Error processing single HTML table with LLM: {e}")
@@ -454,62 +483,12 @@ Extract:
         caption_context = f"\n\nTable Caption: {caption_text}" if caption_text else ""
         
         return f"""
-Extract the table data from this HTML table element.{caption_context}
+        Extract the table data from this HTML table element.{caption_context}
 
-HTML Table:
-{table_html}
+        HTML Table:
+        {table_html}
 
-Return ONLY valid JSON in this exact format:
-{{
-    "label": "Table 1",
-    "caption": "Full table caption text",
-    "headers": ["Column 1", "Column 2", "Column 3"],
-    "data": [
-        ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
-        ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
-    ],
-    "notes": ["Any footnotes or notes"],
-    "metadata": {{
-        "row_count": 2,
-        "column_count": 3,
-        "has_merged_cells": false
-    }}
-}}
-
-Extract:
-1. Label from table caption or title (use "Table 1", "Table 2", etc. if no label found)
-2. Caption from the provided caption text or table caption/title
-3. Headers from <thead>/<th> or first <tr> with <th> elements
-4. Data from <tbody>/<tr>/<td> elements
-5. Clean up text content (remove HTML tags, preserve data values)
-6. Handle merged cells appropriately
-
-IMPORTANT: Use the actual caption text provided above, not placeholder text.
-"""
-    
-    def _create_table_extraction_prompt(self, xml_content: str) -> str:
-        """Create the prompt for table extraction"""
-        return f"""
-Extract all tables from this XML/HTML content. For each table found:
-
-1. Identify the table structure and extract all data
-2. Handle merged cells, multi-row headers, and complex formatting
-3. Extract the table label/caption if available
-4. Clean up the data (remove extra whitespace, handle special characters)
-5. Return as structured JSON
-
-IMPORTANT: 
-- Extract ALL tables, even if they look incomplete or malformed
-- Preserve the exact data values (including units, symbols, etc.)
-- Handle both simple and complex table structures
-- If a table has no clear headers, use generic column names
-
-XML/HTML Content:
-{xml_content}
-
-Return ONLY valid JSON in this exact format:
-{{
-    "tables": [
+        Return ONLY valid JSON in this exact format:
         {{
             "label": "Table 1",
             "caption": "Full table caption text",
@@ -525,11 +504,36 @@ Return ONLY valid JSON in this exact format:
                 "has_merged_cells": false
             }}
         }}
-    ]
-}}
 
-If no tables are found, return: {{"tables": []}}
-"""
+        Extract:
+        1. Label
+        2. Caption
+        3. Headers
+        4. Data
+        5. Clean up text content (remove HTML tags, preserve data values)
+        6. Handle merged cells appropriately (If there are merged cells, append merged content to connected cells)
+
+        CRITICAL RULE FOR MERGED AND MULTI-ROW HEADERS:
+        - If a parent header spans multiple columns (using namest/nameend),
+        and there is a second header row that contains labels such as
+        "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc.,
+        you MUST combine them into final column headers.
+
+        IMPORTANT: Use the actual caption text provided above, not placeholder text.
+        """
+    
+    def _log_cost(self, response, extra: dict):
+        """
+        Writes a JSONL record to <run_dir>/cost/usage.jsonl
+        Requires env var AEM_OCR_RUN_DIR (or falls back to CWD).
+        """
+        append_usage(
+            stage=stage_from_env("extract_tables"),
+            run_id=run_id_from_env("unknown"),
+            resp=response,
+            extra=extra or {},
+        )
+
     
     def _parse_llm_response(self, response: str) -> List[Dict[str, Any]]:
         """Parse the LLM response and extract tables"""
@@ -580,6 +584,7 @@ If no tables are found, return: {{"tables": []}}
         
         for i, table in enumerate(tables):
             try:
+                print("====TABLE====", table)
                 # Create filename
                 label = table.get('label', f'Table_{i+1}')
                 filename = f"{label.replace(' ', '_').replace('.', '_')}.csv"
@@ -588,6 +593,9 @@ If no tables are found, return: {{"tables": []}}
                 # Create DataFrame
                 headers = table.get('headers', [])
                 data = table.get('data', [])
+
+                print("====HEADERS====", headers)
+                print("====DATA====", data)
                 
                 if headers and data:
                     df = pd.DataFrame(data, columns=headers)

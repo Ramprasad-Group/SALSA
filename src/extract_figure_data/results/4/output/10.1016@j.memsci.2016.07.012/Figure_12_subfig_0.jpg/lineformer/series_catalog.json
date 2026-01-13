@@ -1,0 +1,18 @@
+[
+  {
+    "series_index": 0,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/lineformer/mask_series_0.png",
+    "centroid": [
+      188.04694835680752,
+      136.41236306729263
+    ]
+  },
+  {
+    "series_index": 1,
+    "mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/lineformer/mask_series_1.png",
+    "centroid": [
+      183.83414634146342,
+      120.20162601626016
+    ]
+  }
+]

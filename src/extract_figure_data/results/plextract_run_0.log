@@ -1,0 +1,95 @@
+2025-12-16 18:53:30 - INFO - number of parameters: 1.287475e+07
+2025-12-16 18:53:30 - INFO - number of parameters: 1.287475e+07
+2025-12-16 18:53:30 - INFO - number of parameters: 1.287475e+07
+2025-12-16 18:54:07 - WARNING - ERROR: len of extracted titles: 4
+2025-12-16 18:54:07 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_185145/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_185145/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_185145/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_1.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_185145/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_1.jpg']
+2025-12-16 19:31:13 - INFO - number of parameters: 1.287475e+07
+2025-12-16 19:31:13 - INFO - number of parameters: 1.287475e+07
+2025-12-16 19:31:13 - INFO - number of parameters: 1.287475e+07
+2025-12-16 19:37:39 - INFO - number of parameters: 1.287475e+07
+2025-12-16 19:37:39 - INFO - number of parameters: 1.287475e+07
+2025-12-16 19:37:39 - INFO - number of parameters: 1.287475e+07
+2025-12-16 19:38:09 - WARNING - ERROR: len of extracted titles: 4
+2025-12-16 19:38:09 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_193612/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_193612/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_193612/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_1.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251216_193612/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_1.jpg']
+2025-12-17 00:52:57 - INFO - number of parameters: 1.287475e+07
+2025-12-17 00:52:57 - INFO - number of parameters: 1.287475e+07
+2025-12-17 00:52:57 - INFO - number of parameters: 1.287475e+07
+2025-12-17 00:53:31 - WARNING - ERROR: len of extracted titles: 4
+2025-12-17 00:53:31 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/20251217_005010/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251217_005010/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251217_005010/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_1.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/20251217_005010/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_1.jpg']
+2025-12-17 00:53:42 - INFO - number of parameters: 1.287475e+07
+2025-12-17 00:53:42 - INFO - number of parameters: 1.287475e+07
+2025-12-17 00:53:42 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:00:31 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:00:31 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:00:32 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:00:57 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:00:57 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:00:57 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:01:40 - WARNING - ERROR: len of extracted titles: 5
+2025-12-17 02:01:40 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_1.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_1.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.07.012/Figure_12.jpg/chartdete/cropped_ytitle_0.jpg']
+2025-12-17 02:01:53 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:01:53 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:01:53 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:19 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:19 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:19 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:27 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:28 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:28 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:02:58 - WARNING - ERROR: len of extracted titles: 4
+2025-12-17 02:02:58 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_ytitle_1.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/cropped_xtitle_1.jpg']
+2025-12-17 02:03:08 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:08 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:08 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:17 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:17 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:17 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:26 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:26 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:26 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:54 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:54 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:03:54 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:04:22 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:04:22 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:04:22 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:04:46 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:04:46 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:04:46 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:05:10 - WARNING - ERROR: len of extracted titles: 3
+2025-12-17 02:05:10 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/cropped_ytitle_1.jpg']
+2025-12-17 02:05:22 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:05:22 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:05:22 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:05:50 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:05:50 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:05:50 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:00 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:00 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:00 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:09 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:10 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:10 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:35 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:35 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:06:35 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:07:05 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:07:05 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:07:05 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:07:43 - WARNING - ERROR: len of extracted titles: 7
+2025-12-17 02:07:43 - WARNING - TITLES: ['/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_1.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_1.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/cropped_xtitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/cropped_ytitle_0.jpg', '/home/wschertzer3/AEM_OCR/src/ui_runs/test_12_16_844/plextract_work/results/0/output/10.1016@j.memsci.2019.117314/Figure_10.jpg/chartdete/cropped_xtitle_1.jpg']
+2025-12-17 02:08:04 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:08:04 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:08:04 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:08:13 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:08:13 - INFO - number of parameters: 1.287475e+07
+2025-12-17 02:08:13 - INFO - number of parameters: 1.287475e+07
+2026-01-06 19:05:57 - INFO - number of parameters: 1.287475e+07
+2026-01-06 19:05:57 - INFO - number of parameters: 1.287475e+07
+2026-01-06 19:05:57 - INFO - number of parameters: 1.287475e+07
+2026-01-06 20:09:12 - INFO - number of parameters: 1.287475e+07
+2026-01-06 20:09:12 - INFO - number of parameters: 1.287475e+07
+2026-01-06 20:09:12 - INFO - number of parameters: 1.287475e+07
+2026-01-13 20:16:15 - INFO - number of parameters: 1.287475e+07
+2026-01-13 20:16:15 - INFO - number of parameters: 1.287475e+07
+2026-01-13 20:16:15 - INFO - number of parameters: 1.287475e+07

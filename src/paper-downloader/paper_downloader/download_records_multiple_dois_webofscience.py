@@ -113,7 +113,7 @@ def extract_year_from_record(record, csv_year=None):
     return year
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--file_path', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/inputs/validate_paper_download.csv',help='Path to CSV/Excel file containing DOIs')
+parser.add_argument('--file_path', default='/home/wschertzer3/AEM_OCR/src/doi-inputs/validate_paper_download.csv',help='Path to CSV/Excel file containing DOIs')
 parser.add_argument('--doi_column', default='DOI', help='Name of DOI column in file (default: DI for Web of Science)')
 parser.add_argument('--publisher_column', default='Publisher', help='Name of publisher column in file (default: PU for Web of Science)')
 parser.add_argument('--title_column', default='Article Title', help='Name of title column in file (default: TI for Web of Science)')

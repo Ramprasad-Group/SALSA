@@ -1,0 +1,80 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "PP-TMA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10_subfig_1.jpg/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10_subfig_1.jpg/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.34710386395454407,
+    "legend_desc": {
+      "hsv": [
+        150.0,
+        19.08865710560626,
+        200.28161668839635
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        232.0,
+        86.4011001586914,
+        82.39469146728516
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10_subfig_1.jpg/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10_subfig_1.jpg/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.18822577595710754,
+    "legend_desc": {
+      "hsv": [
+        232.0,
+        133.1375,
+        219.71666666666667
+      ],
+      "marker": "square",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        232.0,
+        161.3648681640625,
+        214.59066772460938
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 2,
+    "legend_text": "X-PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10_subfig_1.jpg/chartdete/legend/patch_2.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1039@C5TA01420D/Figure_10_subfig_1.jpg/lineformer/mask_series_2.png",
+    "series_index": 2,
+    "cost": 0.20129899680614471,
+    "legend_desc": {
+      "hsv": [
+        358.0,
+        144.4966216216216,
+        235.88175675675674
+      ],
+      "marker": "star",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        354.0,
+        173.42431640625,
+        227.30795288085938
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  }
+]

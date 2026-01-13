@@ -1,0 +1,338 @@
+{
+  "doi": "10.1016/j.electacta.2015.12.181",
+  "modified_doi": "10.1016@j.electacta.2015.12.181",
+  "full_text": {
+    "Journal": "Electrochimica Acta",
+    "DOI": "10.1016/j.electacta.2015.12.181",
+    "Title": "Stable poly(arylene ether sulfone)s anion exchange membranes containing imidazolium cations on pendant phenyl rings",
+    "Keywords": [
+      "Fuel cells",
+      "Anion exchange membranes",
+      "Poly(arylene ether sulfone)s",
+      "Imidazolium cations",
+      "Alkaline stability"
+    ],
+    "Sections": [
+      {
+        "type": "ce_section",
+        "name": "Introduction",
+        "content": [
+          "Fuel cells, which directly convert chemical energy of fuel and oxidant to electricity, have been recognized as promising clean power sources for portable power applications and power plants . Among the several types of fuel cells, proton exchange membrane fuel cells (PEMFCs) have been intensively investigated . However, the widespread application of PEMFCs was hampered by the slow electrodekinetics and high cost of the noble metal catalysts and the electrolytes. Alkaline anion exchange membrane fuel cells (AEMFCs), using alkaline membranes instead of acidic membranes as the solid electrolytes, have significant advantages comparison with PEMFCs . For example, the electrochemical reactions are more facile and non-precious metals, such as silver, cobalt, or nickel, can be used as stable catalysts for the fuel-cell reactions, making the fuel cells more cost effective.",
+          "The anion exchange membrane (AEM) is one of the key components in AEMFCs and plays a dominate role in transporting hydroxide from the cathode to the anode and preventing fuels crossover. In the past several years, quaternary ammonium (QA) containing AEM materials have been most extensively studied as the candidate electrolytes for AEMFC [12]. Various polymer backbones containing QA groups have been investigated . However, the main drawback of these QA containing AEMs is their low stability under the working condition of AEMFC (at 60 \u00b0C and high pH) due to the possible degradations of QA groups via Hofmann elimination (E2) [21], nucleophilic substitution(S_{N}2) [14], or ylide formation [22]. As alternative functional groups, other cation species including imidazolium , guanidinium , phosphonium [30], and metal-cation [31] have been explored as AEMs. Among them, imidazolium-functionalized AEMs have drawn extensive interest due to their relatively high chemical stability, which is largely attributed to the steric hindrance and the presence of the \u03c0 conjugated structures .",
+          "For fuel cell applications, the ideal AEMs should meet certain stringent requirements. It has been a scientific challenge to develop high performance AEMs that can achieve a balanced set of properties, with suitable conductivity, low water swelling, and long-term chemical stability under severe electrochemical conditions. Various synthetic strategies have been explored to improve the properties of AEMs, such as hydrophilic-hydrophobic block structures [10], crosslinking , and comb-shaped copolymers , but these approaches have only achieved limited success. In our previous work, we reported a series of side-chain-type poly(arylene ether sulfone) s containing densely populated sulfonic acid pendant units by post-sulfonation . The resulting membranes exhibited advantageous ionic conductivities as well as good dimensional and chemical stabilities. Na also prepared a series of poly(aryl ether ketone) s with quaternary ammonium on the pendant phenyl groups. The obtained AEMs displayed good alkaline stability and could maintain their flexibility and toughness even after being immerged in a 4 M NaOH solution at 80 \u00b0C for 7 days [45]. The results imply that it is possible to enhance the properties of AEMs by incorporation of imidazolium cations on pendant phenyl groups as side chains. As continuous efforts to explore high performance AEMs for fuel cell, this work proposes a series of poly(arylene ether sulfone) s containing imidazolium cations on pendant phenyl rings for AEMs. The structures of the copolymers are characterized in detail and some selected properties of AEMs based on these copolymers are investigated and compared with previously reported AEMs."
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Experimental Section",
+        "content": [
+          {
+            "type": "ce_section",
+            "name": "Materials",
+            "content": [
+              "3,5-dimethylbenzeneboronic acid, 4,4\u2032-difluorodiphenyl sulfone (DFDPS), 4,4\u2032-biphenol (BP), N-bromosuccinimide (NBS), benzoyl peroxide (BPO), and tetrakis(triphenylphosphine) palladium (0) were purchased from TCI Company and used without further purification. N-methylimidazole, 1,1,2,2-tetrachloroethane, N-methyl-2-pyrrolidinone (NMP) and dimethyl sulfoxide (DMSO) and other reagents were all used as received. K_{2}CO_{3} was dried at 120 \u00b0C for 24 h before polymerization."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Synthesis of 3,3\u2032-dibromo-4,4\u2032-difluorodiphenyl sulfone (DB-DFDPS)",
+            "content": [
+              "3,3\u2032-Dibromo-4,4\u2032-difluorodiphenyl sulfone (mp: 158\u2013160 \u00b0C) was synthesized according to the method reported in our preceding studies [44]."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Synthesis of 3,3\u2032-di(3\u201d,5\u201d-dimethylphenyl)-4,4\u2032-difluorodiphenyl sulfone (Me-DFDPS)",
+            "content": [
+              "8.24 g (0.02 mol) of DB-DFDPS, 6.30 g (0.042 mol) of 3,5-dimethylbenzeneboronic acid and 8.48 g (0.08 mol) of sodium carbonate were placed in a 500 L three-necked round-bottom flask equipped with a mechanical stirrer, reflux condenser and nitrogen inlet. Next, 1.50 g (0.0013 mol) of tetrakis(triphenylphosphine) palladium(0), 100 mL toluene, 30 mL 1,2-dimethoxyethane and 100 mL water were added and the reaction mixture was kept at 100 \u00b0C with vigorous stirring. After about 10 h, some solvents were evaporated from the mixture to obtain a suspension solution. The crude solid was recrystallized from toluene to yield 7.86 g of white crystals. Yield: 84%, mp: 167\u2013168 \u00b0C. ^{1}H NMR (400 MHz, CDCl_{3}; ppm): 8.04 (d, J = 8.0, 2H, H_{2}), 7.90 (m, 2H, H_{1}), 7.28(d, J = 8.0, 2H, H_{3}), 7.13 (s, 4H, H_{4}), 7.07 (s, 2H, H_{5}), 2.38 (s, 12H, \u2013CH_{3})."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Synthesis of poly(arylene ether sulfone) s containing pendant methyl groups (PAES-Me-xx)",
+            "content": [
+              "A typical synthetic procedure, illustrated by the preparation of PAES-Me-34 copolymer (xx = 34: Me-DFDPS/DFDPS = 34/66), is described as follows. To a 50 mL round-bottomed flask equipped with a Dean-Stark trap, condenser, a mechanical stirrer and nitrogen inlet, 0.7863 g (1.7 mmol) of Me-DFDPS, 0.8390 g (3.4 mmol) of DFDPS, 0.9311 g (5 mmol) of BP, 0.8280 g (6 mmol) of K_{2}CO_{3}, 8 mL of NMP and 3 of mL toluene were added. The reaction was first carried out at 140 \u00b0C for 3 h to azeotropically remove the water and toluene. Then, the reaction was subsequently conducted at 160 \u00b0C for another 5\u20138 h. The viscous reaction mixture was poured into water to form the fibrous product copolymer, which was washed several times with hot water and dried at 100 \u00b0C under vacuum for 6 h."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Synthesis of bromomethylated poly(arylene ether sulfone) s (PAES-Br-xx)",
+            "content": [
+              "A typical procedure for preparing bromomethylated poly(arylene ether sulfone) s (PAES-Br-34) was as follows. To a 100 mL three-necked flask equipped with mechanical stirrer, nitrogen inlet and condenser, 1.0 g of PAES-Me-34 and 40 mL of 1,1,2,2-tetrachloroethane were added. The mixture was stirred adequately to form homogeneous solution. Then 0.7653 g (4.3 mmol) of NBS and 0.07 g (0.288 mmol) BPO were added and the solution was heated to 80 \u00b0C. After 4 h, the dark-orange solution was poured into ethanol and the precipitated polymer was subsequently washed repeatedly in hot water. The resulting polymer was dried under vacuum at 100 \u00b0C for 6 h."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Synthesis of imidazolium-functionalized poly(arylene ether sulfone)s (PAES-Im-xx)",
+            "content": [
+              "A typical procedure for preparing imidazolium-functionalized poly(arylene ether sulfone) s (PAES-Im-34) was as follows. To a 100 mL three-necked flask equipped with mechanical stirrer, 1.0 g of PAES-Br-34 and 20 mL of N-methylpyrrolidone were added. The mixture was stirred adequately to form homogeneous solution. Then 1 mL of N-methylimidazole was added and the mixture was stirred at room temperature. After 48 h, the solution was precipitated in isopropanol, washed and dried at 60 \u00b0C under vacuum."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Membrane preparation and characterization",
+            "content": [
+              "The imidazolium-functionalized copolymers (0.6 g) were completely dissolved in 10 mL of DMSO firstly. The solution was filtrated and cast onto a leveled glass plate, and dried at 80 \u00b0C for 24 h. Then, the membranes were peeled off from the glass by immersion in water and further kept in a 1.0 M NaOH solution at room temperature for 48 h. Finally, the membranes were washed thoroughly with deionized water for several times.",
+              "^{1}H NMR spectra were recorded on a Bruker 400 MHz spectrometer using CDCl_{3} and DMSO-d_{6} as solvents. FTIR spectra were equipped with a Nicolet NEXUS 670 spectrometer. Ion exchange capacities (IEC) of the membranes were determined by the back titration method. The dried OH^{\u2212} form membranes were immersed in 20 mL of 0.01 M HCl standard for 48 h. The solutions were then titrated with a 0.01 M NaOH solution using phenolphthalein as an indicator. The thermal stabilities of the membranes were tested by Perkin-Elmer TGA-2 thermogravimetric analysis system at a heating rate of 10 \u00b0C/min in nitrogen. The chemical stability was evaluated by immersing the PAES-Im-xx membranes into a 4 M NaOH solution at 60 \u00b0C for a certain time. After being shaken lightly, the shape of the test sample was observed. The alkaline stability was monitored by testing the changes of IEC and ionic conductivity of the membranes.",
+              "The hydroxide conductivity (\u03c3, mS/cm) of each membrane was obtained from the equation: \u03c3 = d/LWR, where L and W are the thickness and width of the membrane, respectively). The resistance value (R) was measured over the frequency range from 1 Hz to 1 MHz by four-point probe alternating current (AC) impedance spectroscopy using an electrode system connected with an electrochemical workstation (Solartron 1287, Farnborough, Hampshire, UK). Conductivity measurements under fully hydrated conditions were carried out in a thermo-controlled chamber filled with a N_{2} saturated deionized water. All the samples were equilibrated for at least 30 min at a given temperature. Water uptake of the membranes was calculated by the Eq. (1): Water uptake (%) = [(W _{w} \u2212 W _{d})/W _{d}] \u00d7 100, where W _{d} and W _{w} are the weights of dry and corresponding wet membranes, respectively. The swelling ratio of the polymer membranes was obtained by the Eq. (2): Swelling ratio (%) = [(l _{w} \u2212 l _{d})/l _{d}] \u00d7 100, where l _{d} and l _{w} are the in-plane swelling ratio of dry and wet membranes, respectively. The hydration numbers (\u03bb) were calculated from the Eq. (3): \u03bb = [(W _{w} \u2212 W _{d})/W _{d}] \u00d7 1000/(M_{H2O} \u00d7 IEC), where M_{H2O} is the molecular weight of water."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Results and discussion",
+        "content": [
+          {
+            "type": "ce_section",
+            "name": "Synthesis of monomer and copolymers",
+            "content": [
+              "A new difluorodiphenyl sulfone monomer containing pendent 3,5-dimethylphenyl groups was synthesized by a two-step reaction according to the similar method reported in our preceding studies (Scheme 1 ) [44]. Four pendant benzylmethyl groups in this monomer were designed as side chain sites for imidazolium-functionalization. The structure of Me-DFDPS was confirmed by NMR spectroscopy. Fig. 1 was the ^{1}H NMR spectrum of Me-DFDPS. As shown in Fig. 1, the protons of methyl groups appeared at 2.38 ppm and the aromatic protons appeared at 7.0\u20138.1 ppm, respectively. The assignments of each proton agreed well with the proposed molecular structure, which indicated the successful preparation of the target monomer.",
+              "A series of poly(arylene ether sulfone) copolymers containing pendent 3,5-dimethylphenyl groups (PAES-Me-xx, xx: mole ratio (%) of Me-DFDPS) were prepared via an aromatic nucleophilic substitution polycondensation using various feed ratios of Me-DFDPS/DFDPS as shown in Scheme 2 . The feed ratios for monomers and inherent viscosities of PAES-Me-xx were given in Table 1 . Subsequent bromination of PAES-Me-xx copolymers was successfully conducted at the benzylmethyl positions using an excess of NBS and BPO as the bromine and radical source, respectively. The high conversion of the benzylmethyl groups was confirmed by ^{1}H NMR spectra. As shown in Fig. 2 a and b, the singlet peak of benzylmethyl groups at 2.34 ppm was almostly completely disappeared after selective bromination, and new peaks of benzyl bromide protons were concurrently appeared at 4.4\u20134.7 ppm. New imidazolium-functionalized poly(arylene ether sulfone) s containing side imidazolium cations on pendant phenyl rings (PAES-Im-xx) were successfully synthesized via a Menshutkin reaction by treating the brominated copolymers with N-methylimidazole in N-methyl-2-pyrrolidinone solution at room temperature. Complete conversion of the brominated benzyl groups to the corresponding cationic moiety was observed in ^{1}H NMR spectrum of PAES-Im-34. As shown in Fig. 2c, the peaks of brominated benzyl groups were disappeared and replace by the peaks of methylene at 5.40-5.70 ppm. Meanwhile, new signals arise at around 3.80 and 9.30 ppm, which can be ascribed to the protons on the imidazolium.",
+              "The PAES-Im-xx copolymers showed a poor solubility in aprotic solvents at room temperature, but were found to be soluble in DMSO at heating. Side-chain-type AEMs based on these ionomers could be obtained by casting solution and anion exchange with hydroxide ions. Their IEC values were measured by the back titration method and the values were in the range of 1.40\u20131.92 mequiv/g as shown in Table 2 . The IEC values can be adjusted by changing the feed ratios of the Me-DFDPS and DFDPS, but the samples with higher IEC values are failure to obtain due to the poor solubility."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Water uptake and swelling ratio",
+            "content": [
+              "Water uptake and swelling ratio are important properties for AEMs application. Generally, high water content could accelerate the ion transport and enhance the conductivity because the water in membranes provides a carrier for anion transport. However, saturated water absorption could also decrease the dimensional stability of the membranes. Therefore, one of the trends is to develop low swelling AEMs even at high IEC levels. Table 2 shows the water uptake and swelling ratio of PAES-Im-xx membranes. The water uptake of PAES-Im-xx membranes, which was in the range of 10.6\u201322.3% at 80 \u00b0C, increased linearly with increasing IEC values. A comparison of PAES-Im-xx and typical control sample PAES-QA based on QA containing poly(aryl ether sulfone) revealed that PAES-Im-xx membranes absorbed much less water, as shown in Fig. 3 . Lower water uptake of PAES-Im-xx membranes leads to lower dimensional swelling in water, as shown in Table 2. The in-plane swelling ratio at 80 \u00b0C was less than 8%. The swelling ratio had a steady increase with an increasing temperature. These unusually small values were much lower than that of PAES-QA AEMs. Moreover, the water uptake and swelling ratio of PAES-Im-xx membranes are also lower than those of some imidazolium-functionalized AEMs , which was due to the incorporation of side imidazolium groups in pendant phenyl rings. The conjugated imidazole rings. The presence of conjugated imidazole rings on pendant phenyl groups could weaken the interaction with the water molecules and contribute to suppression of excessive water uptake and swelling. The results illustrated that the present AEMs had better dimensional stability."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Hydroxide conductivity",
+            "content": [
+              "For fuel cell operation using polymer electrolyte membranes, there is a requirement for the ionic conductivity to be above 10 mS/cm and for water uptake to be less than 30% [40]. The hydroxide conductivity of PAES-Im-xx membranes was measured in hydrated state and the results were presented at Table 2. From Table 2, it can be clearly seen that all the obtained membranes show conductivities in the range of 25.3\u201335.9 mS/cm at 80 \u00b0C, which fulfils the basic conductivity requirement of AEMFCs. Similar to the water uptake, PAES-Im-34 had the highest hydroxide conductivity because of the more exchangeable groups in the membrane. Inorder to investigate the relationship between water uptake and hydroxide conductivity, the number of absorbed water molecules per alkyl imidazolium group (designated as \u03bb) was calculated and listed at Table 2. Fig. 4 shows the hydroxide conductivity as a function of hydration number. It should be noted that high relative water uptake and dimensional swelling can lead to difficulties in MEA fabrication, membrane-electrode interfacial resistance, and membrane creep and deformation. As shown in Fig. 4, an important finding of the present work is that PAES-Im-xx membranes has comparable hydroxide conductivity but much lower water absorption (\u03bb) values compared with that of the control sample PAES-QA. These results suggest that the present polymer designed by incorporation of multiple side-chain-type ionic groups is effective for the AEMs in mitigating dimensional swelling and improving hydroxide conductivity, as already demonstrated for acid based PEMs . Because of the densely side imidazolium groups for OH^{\u2212} transport, it is believed that PAES-Im-xx membranes are able to utilize water molecules more efficiently for ion transport.",
+              "Fig. 5 displays the temperature dependence of the hydroxide conductivity of the membranes. The influence of temperature on ionic conductivity for these membranes is significant. For example, the ionic conductivity of PAES-Im-34 membrane increases from 10.2 to 35.9 mS/cm when the temperature roses from 30 to 80 \u00b0C. This is mainly ascribed that the migration and diffusivity of ions in membrane become faster with the increasing of polymer free volume at higher temperature. Meanwhile, the polymer chain is more flexible and more water will be adsorbed by the membrane at a higher temperature, which could also promote the hydroxide conductivity. The ionic conductivities demonstrated approximate Arrhenius-type temperature dependency. The activation energies of the OH^{\u2212} transport for PAES-Im-xx membranes were calculated to be 23.90\u201328.72 kJ/mol, and the higher functionalized membrane had lightly lower activation energy."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Thermal stability",
+            "content": [
+              "Good thermal properties for AEMs are the necessary requirements for their effective use in fuel cell applications because work at elevated temperatures could enhance the reaction kinetics and reduce the thermodynamic voltage losses. The thermal properties were measured by TGA at a heating rate of 10 \u00b0C/min under a nitrogen atmosphere. The TGA traces for PEAS-Im-xx membranes were presented in Fig. 6 . There was no weight loss up to 200 \u00b0C because the samples were preheated at 120 \u00b0C for 30 min to remove absorbed water. As the temperature increased, a two-step degradation profile was observed for these membranes in their hydroxide form. The first weight loss occurred from 250 to 380 \u00b0C, which was associated with the degradation of the imidazole. The second weight loss at around 450\u2013550 \u00b0C was related to the degradation of C C bond in polymer chain."
+            ]
+          },
+          {
+            "type": "ce_section",
+            "name": "Alkaline stability",
+            "content": [
+              "Long-term alkaline stability of AEMs is regarded as a crucial property for the application of AEMs in fuel cells, especially in strong basic and elevated temperature conditions. To investigate the chemical stability of PAES-Im-xx membranes in strong basic and elevated temperature conditions, they were immersed in a 4 M NaOH solution at 80 \u00b0C for two weeks (336 h). During the testing period, PAES-Im-xx membranes could remain their original shape and flexibility (Fig. 7 ), but the control sample PAES-QA was brittle and unstable due to the degradation of QA groups. The alkaline stability of PAES-Im-xx membranes was further evaluated by measuring the changes of IEC and conductivity after treating (Table 3 ). As shown in Table 3, there is no obvious decreasing for their IEC values and conductivities after treating for 336 h. The loss of IEC values was less than 5%. It should also be noted that no new chemical shifts of the tested membrane were observed in ^{1}H NMR (Fig. 8 ). All results illustrate that these AEMs have excellent alkaline stability and could withstand corrosion in concentrated basic solutions at increased temperature.",
+              "Previous reports have suggested imidazolium-based AEMs possessed better alkaline stability than QA-containing AEMs because of the resonance effect of the imidazole ring. However, the degradation for some imidazolium-functionalized AEMs based on aliphatic and aromatic polymer backbone was also observed under high pH environment and elevated temperature due to the nucleophilic attack of hydroxide ions to the imidazole rings . Hickner reported 17% and 53% decrease in IEC values of imidazolium-functionalized AEM by immersing the membranes in 1 M NaOH solution at 60 and 80 \u00b0C for 48 h, respectively [25]. Zhang also found that the conductivity and weight of a imidazolium-functionalized polysulfone-based AEM decreased by 23.3% and 6% after treatment with 3 M NaOH at 60 \u00b0C for 24 h [32]. Obviously, PAES-Im-xx displayed better alkaline stability than these typical imidazolium-functionalized AEMs. The improved alkaline stability mainly ascribed to the incorporation of side-chain-type structures, which could reduce the influence of cationic degradation on the polymer backbone. Meanwhile, the locally imidazolium groups on side phenyl rings could further increase the resonance effect, thus diminishing their interaction with the hydroxide ions and enhancing alkaline stability."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ce_section",
+        "name": "Conclusions",
+        "content": [
+          "In conclusion, a series of new AEMs based on side-chain-type poly(arylene ether sulfone) s containing imidazolium cations on pendant phenyl rings were successfully prepared. The incorporation of side imidazolium cations brought about substantial improvement in their properties. These membranes exhibited highly alkaline stability in strong basic and elevated temperature conditions. There is no obvious decreasing for their IEC values and conductivities after treating in 4 M NaOH solution at 80 \u00b0C and 336 h. These membranes possessed good dimensional stability with swelling ratio of 4.4\u20137.9% at 80 \u00b0C. Furthermore, they also showed suitable conductivity and thermal stability. The results indicate that these anion exchange membranes have potential application in alkaline fuel cells. This work could provide a potential strategy for the preparation of highly stable AEMs."
+        ]
+      },
+      {
+        "type": "ce_bibliography",
+        "name": "References",
+        "content": [
+          "[1] M.Z. Jacobson W.G. Colella D.M. Golden Cleaning the air and improving health with hydrogen fuel-cell vehicles Science 308 2005 1901 1905",
+          "[2] M.A. Hickner H. Ghassemi Y.S. Kim B.R. Einsla J.E. McGrath Alternative polymer systems for proton exchange membranes (PEMs) Chem. Rev. 104 2004 4587 4612",
+          "[3] K.D. Kreuer On the development of proton conducting polymer membranes for hydrogen and methanol fuel cells J. Membr. Sci. 185 2001 29 39",
+          "[4] L.E. Karlsson P. Jannsch Polysulfone ionomers for proton-conducting fuel cell membranes: sulfoalkylated polysulfone J. Membr. Sci. 230 2004 61 70",
+          "[5] J.H. Pang H.B. Zhang X.F. Li D.F. Ren Z.H. Jiang Low water swelling and high proton conducting sulfonated poly(arylene ether) with pendant sulfoalkyl groups for proton exchange membranes Macromol. Rapid Commun. 28 2007 2332 2338",
+          "[6] T.J. Peckham S. Holdcroft Structure-morphology-property relationships of non-perfluorinated proton-conducting membranes Adv. Mater. 22 2010 4667 4690",
+          "[7] T. Higashihara K. Matsumoto M. Ueda Sulfonated aromatic hydrocarbon polymers as proton exchange membranes for fuel cells Polymer 50 2009 5341 5357",
+          "[8] C.H. Park C.H. Lee M.D. Guiver Y.M. Lee Sulfonated hydrocarbon membranes for medium-temperature and low-humidity proton exchange membrane fuel cells (PEMFCs) Prog. Polym. Sci. 36 2011 1443 1498",
+          "[9] J. Pan S. Lu Y. Li A. Huang L. Zhuang J. Lu High-performance alkaline polymer electrolyte for fuel cell applications Adv. Funct. Mater. 20 2010 312 319",
+          "[10] M. Tanaka K. Fukasawa E. Nishino S. Yamaguchi K. Yamada H. Tanaka B. Bae K. Miyatake M. Watanabe Anion conductive block poly(arylene ether) s: synthesis, properties, and application in alkaline fuel cells J. Am. Chem. Soc. 133 2011 10646 10654",
+          "[11] O.D. Thomas K.J.W.Y. Soo T.J. Peckham M.P. Kulkarni S. Holdcroft A stable hydroxide-conducting polymer J. Am. Chem. Soc. 134 2012 10753 10756",
+          "[12] G. Couture A. Alaaeddine F. Boschet B. Ameduri Polymeric materials as anion-exchange membranes for alkaline fuel cells Prog. Polym. Sci. 36 2011 1521 1557",
+          "[13] T.A. Sherazi J.Y. Sohn Y.M. Lee M.D. Guiver Polyethylene-based radiation grafted anion-exchange membranes for alkaline fuel cells J. Membr. Sci. 441 2013 148 157",
+          "[14] N.W. Li M.D. Guiver W.H. Binder Towards high conductivity in anion-exchange membranes for alkaline fuel cells ChemSusChem 6 2013 1376 1383",
+          "[15] Q. Li L. Liu Q.Q. Miao B.K. Jin R.K. Bai A novel poly(2,6-dimethyl-1,4-phenylene oxide) with trifunctional ammonium moieties for alkaline anion exchange membranes Chem. Commun. 50 2014 2791 2793",
+          "[16] J. Wang Z. Zhao F. Gong S. Li S. Zhang Synthesis of soluble poly(arylene ether sulfone) ionomers with pendant quaternary ammonium groups for anion exchange membranes Macromolecules 42 2009 8711 8717",
+          "[17] J. Yan M.A. Hickner Anion exchange membranes by bromination of benzylmethyl-containing poly(sulfone) sn exchange membranes by bromination of benzylmethyl-containing poly(sulfone) s Macromolecules 43 2010 2349 2356",
+          "[18] K. Shen J. Pang S. Feng Y. Wang Z. Jiang Synthesis and properties of a novel poly(aryl ether ketone) s with quaternary ammonium pendant groups for anion exchange membranes J. Membr. Sci. 440 2013 20 28",
+          "[19] M.R. Hibbs C.H. Fujimoto C.J. Cornelius Synthesis and characterization of poly(phenylene)-based anion exchange membranes for alkaline fuel cellshe Macromolecules 42 2009 8316 8321",
+          "[20] A.M. Maes T.P. Pandey M.A. Vandiver L.K. Lundquist Y. Yang J.L. Horan A. Krosovsky M.W. Liberatore S. Seifert A.M. Herring Preparation and characterization of an alkaline anion exchange membrane from chlorinated poly(propylene) aminated with branched poly(ethyleneimine) Electrochimica Acta 110 2013 260 266",
+          "[21] Y. Ye Y.A. Elabd Relative chemical stability of imidazolium-based alkaline anion exchange polymerized ionic liquids Macromolecules 44 2011 8494 8503",
+          "[22] J. Ni C. Zhao G. Zhang Y. Zhang J. Wang W. Ma Z. Liu H. Na Novel self-crosslinked poly(aryl ether sulfone) for high alkaline stable andfuel resistant alkaline anion exchange membranes Chem. Commun. 47 2011 8943 8945",
+          "[23] X.C. Lin X.H. Liang S.D. Poynton J.R. Varcoe A.L. Ong J. Ran Y. Li Q.H. Li T.W. Xu Novel alkaline anion exchange membranes containing pendant benzimidazolium groups for alkaline fuel cells J. Membr. Sci. 443 2013 193 200",
+          "[24] M.A. Hossain Y. Lim S. Lee H. Jang S. Choi T. Hong L. Jin W.G. Kim Synthesis and characterization of tetra-imidazolium hydroxides poly(fluorenylene ether sulfone) anion exchange membranes React. Funct. Polym. 73 2013 1299 1305",
+          "[25] D. Chen M.A. Hickner Degradation of imidazolium- and quaternary ammonium-functionalized poly(fluorenyl ether ketone sulfone) anion exchange membranes ACS Appl. Mater. Interfaces 4 2012 5775 5781",
+          "[26] E.A. Weiber P. Jannasch Polysulfones with highly localized imidazolium groups for anion exchange membranes J. Membr. Sci. 481 2015 164 171",
+          "[27] J. Fang M. Lyu X. Wang Y. Wu J. Zhao Synthesis and performance of novel anion exchange membranes based on imidazolium ionic liquids for alkaline fuel cell applications J. Power Sources 284 2015 517 523",
+          "[28] J. Wang S. Li S. Zhang Novel hydroxide-conducting polyelectrolyte composed of an poly(arylene ether sulfone) containing pendant quaternary guanidinium groups for alkaline fuel cell applications Macromolecules 43 2010 3890 3896",
+          "[29] D.S. Kim A. Labouriau M.D. Guiver Y.S. Kim Guanidinium-functionalized anion exchange polymer electrolytes via activated fluorophenyl-amine reaction Chem. Mater. 23 2011 3795 3797",
+          "[30] J.T. Noonan K.M. Hugar H.A. Kostalik E.B. Lobkovsky H.D. Abrunna G.W. Coates Phosphonium-functionalized polyethylene: a new class of base-stable alkaline anion exchange membranes kevin J. Am. Chem. Soc. 134 2012 18161 18164",
+          "[31] Y. Zha M.L. Disabb-Miller Z.D. Johnson M.A. Hickner G.N. Tew Metal-cation-based anion exchange membranes J. Am. Chem. Soc. 134 2012 4493 4496",
+          "[32] F.X. Zhang H.M. Zhang C. Qu Imidazolium functionalized polysulfone anion exchange membrane for fuel cell application J. Mater. Chem. 21 2011 12744 12752",
+          "[33] Y.Q. Yang J. Wang J.F. Zheng S.H. Li S.B. Zhang A stable anion exchange membrane based on imidazolium salt for alkaline fuel cell J. Membr. Sci. 467 2014 48 55",
+          "[34] B. Lin H. Dong Y. Li Z. Si F. Gu F. Yan Alkaline stable C2-substituted imidazolium-based anion-exchange membranes Chem. Mater. 25 2013 1858 1867",
+          "[35] Z. Si Z. Sun F. Gu L. Qiu F. Yan Alkaline stable imidazolium-based ionomers containing poly(arylene ether sulfone) side chains for alkaline anion exchange membranes J. Mater. Chem. 2 2014 4413 4421",
+          "[36] C.R. Yang S.L. Wang W.J. Ma L.H. Jiang G.Q. Sun Comparison of alkaline stability of quaternary ammonium- and 1,2-methylimidazolium-based alkaline anion exchange membranes J. Membr. Sci. 487 2015 12 18",
+          "[37] C.R. Yang S.L. Wang W.J. Ma L.H. Jiang G.Q. Sun Highly alkaline stable N1-alkyl substituted 2-methylimidazolium functionalized alkaline anion exchange membranes J. Mater. Chem. A 3 2015 8559 8565",
+          "[38] J.L. Qiao J. Zhang J.J. Zhang Anion conducting poly(vinyl alcohol)/poly(diallyldimethylammonium chloride) membranes with high durable alkaline stability for polymer electrolyte membrane fuel cell J. Power Sources 237 2013 1 4",
+          "[39] A.H.N. Rao S.Y. Nam T.H. Kim Comb-shaped alkyl imidazolium-functionalized poly(arylene ether sulfone) s as high performance anion-exchange membranes J. Mater. Chem. A 3 2015 8571 8580",
+          "[40] N. Li Q. Zhang C. Wang Y.M. Lee M.D. Guiver Phenyltrimethylammonium functionalized polysulfone anion exchange membranes Macromolecules 45 2012 2411 2419",
+          "[41] B. Lin L. Qiu B. Qiu Y. Peng F. Yan A soluble and conductive polyfluorene ionomer with pendant imidazolium groups for alkaline fuel cell applications Macromolecules 44 2011 9642 9649",
+          "[42] C.Y. Wang N. Li D.W. Shin S.Y. Lee N.R. Kang Y.M. Lee M.D. Guiver Fluorene-based poly(arylene ether sulfone) s containing clustered flexible pendant sulfonic acids as proton exchange membranes Macromolecules 44 2011 7296 7306",
+          "[43] C.Y. Wang D.W. Shin S.Y. Lee N.R. Kang G.P. Robertson Y.M. Lee M.D. Guiver A clustered sulfonated poly(ether sulfone) s based on a new fluorene-based bisphenol monomer J. Mater. Chem. 22 2012 25093 25101",
+          "[44] C.Y. Wang D.W. Shin S.Y. Lee N.R. Kang Y.M. Lee M.D. Guiver Poly(arylene ether sulfone) proton exchange membranes with flexible acid side chains J. Membr. Sci. 405\u2013406 2012 68 78",
+          "[45] S. Xu G. Zhang Y. Zhang C. Zhao W. Ma H. Sun N. Zhang L. Zhang H. Jiang H. Na Synthesis and properties of a novel side-chain-type hydroxide exchange membrane for direct methanol fuel cells (DMFCs) J. Power Sources 209 2012 228 235"
+        ]
+      }
+    ],
+    "Abstract": "Side-chain-type poly(arylene ether sulfone)s containing imidazolium groups on pendant phenyl rings (PAES-Im-xx) are prepared by sequential polycondensation, bromination and Menshutkin reactions. Novel anion exchange membranes based on these ionomers are obtained by casting solution and anion exchange with hydroxide ions. The resultant membranes display highly alkaline stability and their IEC values and conductivities don't have obvious decline in 4 M NaOH solution at 80 \u00b0C for 336 h. All these membranes show conductivities in the range of 25.3\u201335.9 mS/cm at 80 \u00b0C. The membranes possess low water uptake and good dimensional stability. For example, the water uptake and swelling ratio of PAES-Im-34 membrane (IEC = 1.92 mequiv/g) are just 22.3% and 7.9% at 80 \u00b0C, respectively. Moreover, the anion exchange membranes also have good thermal stability. This work could provide a potential strategy for the preparation of highly stable AEMs."
+  },
+  "tables": [
+    {
+      "doi": "10.1016/j.electacta.2015.12.181",
+      "modified_doi": "10.1016@j.electacta.2015.12.181",
+      "table_name": "Table_3",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_3.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_3_metadata.json",
+      "metadata": {
+        "label": "Table 3",
+        "caption": "The alkaline stability of PAES-Im-xx membranes immersing in 4M NaOH solution at 80\u00b0C for 336h.",
+        "notes": [],
+        "metadata": {
+          "row_count": 3,
+          "column_count": 5,
+          "has_merged_cells": true
+        },
+        "doi": "10.1016/j.electacta.2015.12.181",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_3.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181",
+        "extraction_timestamp": "2025-12-08T20:31:32.777624",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Copolymers": "PAES-Im-22",
+          "IEC values (mequiv/g) Before treating": 1.4,
+          "IEC values (mequiv/g) After treating": 1.38,
+          "Conductivity at 80\u00b0C (mS/cm) Before treating": 25.3,
+          "Conductivity at 80\u00b0C (mS/cm) After treating": 25.2
+        },
+        {
+          "Copolymers": "PAES-Im-28",
+          "IEC values (mequiv/g) Before treating": 1.67,
+          "IEC values (mequiv/g) After treating": 1.61,
+          "Conductivity at 80\u00b0C (mS/cm) Before treating": 30.9,
+          "Conductivity at 80\u00b0C (mS/cm) After treating": 29.8
+        },
+        {
+          "Copolymers": "PAES-Im-34",
+          "IEC values (mequiv/g) Before treating": 1.92,
+          "IEC values (mequiv/g) After treating": 1.85,
+          "Conductivity at 80\u00b0C (mS/cm) Before treating": 35.9,
+          "Conductivity at 80\u00b0C (mS/cm) After treating": 34.5
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.electacta.2015.12.181",
+      "modified_doi": "10.1016@j.electacta.2015.12.181",
+      "table_name": "Table_1",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_1.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_1_metadata.json",
+      "metadata": {
+        "label": "Table 1",
+        "caption": "Feed ratios and intrinsic viscosities of PAES-Me-xx copolymers.",
+        "notes": [],
+        "metadata": {
+          "row_count": 3,
+          "column_count": 3,
+          "has_merged_cells": false
+        },
+        "doi": "10.1016/j.electacta.2015.12.181",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_1.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181",
+        "extraction_timestamp": "2025-12-08T20:31:32.775576",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Copolymers": "PAES-Me-22",
+          "Me-DFDPS/DFDPS/BP (molar ratio)": "22/78/100",
+          "Intrinsic viscosity (dL/g)": 0.75
+        },
+        {
+          "Copolymers": "PAES-Me-28",
+          "Me-DFDPS/DFDPS/BP (molar ratio)": "28/72/100",
+          "Intrinsic viscosity (dL/g)": 0.73
+        },
+        {
+          "Copolymers": "PAES-Me-34",
+          "Me-DFDPS/DFDPS/BP (molar ratio)": "34/66/100",
+          "Intrinsic viscosity (dL/g)": 0.66
+        }
+      ]
+    },
+    {
+      "doi": "10.1016/j.electacta.2015.12.181",
+      "modified_doi": "10.1016@j.electacta.2015.12.181",
+      "table_name": "Table_2",
+      "table_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_2.csv",
+      "metadata_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_2_metadata.json",
+      "metadata": {
+        "label": "Table 2",
+        "caption": "IEC values and properties of PAES-Im-xx and PAES-QA membranes.",
+        "notes": [],
+        "metadata": {
+          "row_count": 4,
+          "column_count": 8,
+          "has_merged_cells": true
+        },
+        "doi": "10.1016/j.electacta.2015.12.181",
+        "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181/Table_2.csv",
+        "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.electacta.2015.12.181",
+        "extraction_timestamp": "2025-12-08T20:31:32.776799",
+        "file_type": "table"
+      },
+      "table": [
+        {
+          "Copolymers": "PAES-Im-22",
+          "IEC (mequiv/g)": 1.4,
+          "Water uptake (30\u00b0C)": 7.7,
+          "Water uptake (80\u00b0C)": 10.6,
+          "Swelling ratio (30\u00b0C)": 3.2,
+          "Swelling ratio (80\u00b0C)": 4.4,
+          "Hydroxide conductivity (30\u00b0C)": 6.2,
+          "Hydroxide conductivity (80\u00b0C)": 25.3
+        },
+        {
+          "Copolymers": "PAES-Im-28",
+          "IEC (mequiv/g)": 1.67,
+          "Water uptake (30\u00b0C)": 10.1,
+          "Water uptake (80\u00b0C)": 15.6,
+          "Swelling ratio (30\u00b0C)": 4.3,
+          "Swelling ratio (80\u00b0C)": 6.2,
+          "Hydroxide conductivity (30\u00b0C)": 7.5,
+          "Hydroxide conductivity (80\u00b0C)": 30.9
+        },
+        {
+          "Copolymers": "PAES-Im-34",
+          "IEC (mequiv/g)": 1.92,
+          "Water uptake (30\u00b0C)": 12.5,
+          "Water uptake (80\u00b0C)": 22.3,
+          "Swelling ratio (30\u00b0C)": 5.6,
+          "Swelling ratio (80\u00b0C)": 7.9,
+          "Hydroxide conductivity (30\u00b0C)": 10.2,
+          "Hydroxide conductivity (80\u00b0C)": 35.9
+        },
+        {
+          "Copolymers": "PAES-QA",
+          "IEC (mequiv/g)": 1.9,
+          "Water uptake (30\u00b0C)": 30.0,
+          "Water uptake (80\u00b0C)": 42.5,
+          "Swelling ratio (30\u00b0C)": 12.5,
+          "Swelling ratio (80\u00b0C)": 17.6,
+          "Hydroxide conductivity (30\u00b0C)": 12.8,
+          "Hydroxide conductivity (80\u00b0C)": 36.1
+        }
+      ]
+    }
+  ]
+}

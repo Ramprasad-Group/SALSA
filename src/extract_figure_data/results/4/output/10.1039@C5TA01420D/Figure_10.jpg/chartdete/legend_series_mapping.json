@@ -1,0 +1,236 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "PP-TMA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_6.png",
+    "series_index": 6,
+    "cost": 0.37058860063552856,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        14.892307692307693,
+        201.11923076923077
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        202.0,
+        56.370689392089844,
+        88.06465148925781
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "PP-TMA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_11.png",
+    "series_index": 11,
+    "cost": 0.1893310248851776,
+    "legend_desc": {
+      "hsv": [
+        232.0,
+        145.72489082969432,
+        224.63755458515283
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        232.0,
+        180.18064880371094,
+        226.57130432128906
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 2,
+    "legend_text": "PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_2.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_4.png",
+    "series_index": 4,
+    "cost": 0.2815887928009033,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        27.129761904761907,
+        202.33214285714286
+      ],
+      "marker": "triangle",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        356.0,
+        175.23963928222656,
+        230.2259521484375
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 3,
+    "legend_text": "PP-TMA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_3.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.10273464024066925,
+    "legend_desc": {
+      "hsv": [
+        232.0,
+        140.90829694323145,
+        222.6986899563319
+      ],
+      "marker": "star",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        232.0,
+        180.67990112304688,
+        222.81736755371094
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 4,
+    "legend_text": "PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_4.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_3.png",
+    "series_index": 3,
+    "cost": 0.10268335789442062,
+    "legend_desc": {
+      "hsv": [
+        358.0,
+        168.04347826086956,
+        237.92490118577075
+      ],
+      "marker": "square",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        356.0,
+        199.677001953125,
+        239.56301879882812
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 5,
+    "legend_text": "X-PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_5.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_10.png",
+    "series_index": 10,
+    "cost": 0.20201030373573303,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        145.22145328719722,
+        237.78892733564012
+      ],
+      "marker": "circle",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        358.0,
+        193.04930114746094,
+        235.52735900878906
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 6,
+    "legend_text": "X-PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_6.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_5.png",
+    "series_index": 5,
+    "cost": 0.08477713167667389,
+    "legend_desc": {
+      "hsv": [
+        232.0,
+        136.43153526970954,
+        223.51452282157678
+      ],
+      "marker": "square",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        232.0,
+        110.6246566772461,
+        111.06267547607422
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    }
+  },
+  {
+    "legend_index": 7,
+    "legend_text": "PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_7.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_8.png",
+    "series_index": 8,
+    "cost": 0.2933369278907776,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        7.220338983050848,
+        205.82146892655368
+      ],
+      "marker": "circle",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        356.0,
+        175.4619598388672,
+        230.35366821289062
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 8,
+    "legend_text": "X-PP-DMHDA-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/chartdete/legend/patch_8.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1039@C5TA01420D/Figure_10.jpg/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.10379788279533386,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        156.8207171314741,
+        235.67729083665338
+      ],
+      "marker": "circle",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        358.0,
+        191.4521942138672,
+        234.77194213867188
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  }
+]

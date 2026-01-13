@@ -1,0 +1,106 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "QPPO",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/lineformer/mask_series_2.png",
+    "series_index": 2,
+    "cost": 0.2235606163740158,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        30.658730158730158,
+        176.0873015873016
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        358.0,
+        165.1999969482422,
+        134.0187530517578
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "QPPO-QPOS-3",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.23222947120666504,
+    "legend_desc": {
+      "hsv": [
+        252.0,
+        122.31147540983606,
+        215.0655737704918
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        250.0,
+        184.1216278076172,
+        196.74844360351562
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 2,
+    "legend_text": "QPPO-QPOSS-1",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/legend/patch_2.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/lineformer/mask_series_3.png",
+    "series_index": 3,
+    "cost": 0.1640360802412033,
+    "legend_desc": {
+      "hsv": [
+        350.0,
+        104.09333333333333,
+        213.22666666666666
+      ],
+      "marker": "unknown",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        358.0,
+        170.57333374023438,
+        180.81666564941406
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 3,
+    "legend_text": "QPPO-QPOS-E",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/legend/patch_3.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/4/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.12446024268865585,
+    "legend_desc": {
+      "hsv": [
+        168.0,
+        65.13513513513513,
+        130.21621621621622
+      ],
+      "marker": "star",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        174.0,
+        106.92195892333984,
+        138.2129669189453
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    }
+  }
+]

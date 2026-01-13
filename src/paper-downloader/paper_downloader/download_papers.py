@@ -36,7 +36,7 @@ def parse_arguments():
 
     # NEW flags for No-DB mode
     parser.add_argument('--no_db', default=True, action='store_true', help='Run without Postgres')
-    parser.add_argument('--input_csv', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/records/download_results_20251110_163021.csv', help='CSV with columns: doi,title,pub_year,publisher')
+    parser.add_argument('--input_csv', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/records/download_results_20251205_170459.csv', help='CSV with columns: doi,title,pub_year,publisher')
     parser.add_argument('--download_dir', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers', help='Output directory (No-DB mode)')
     return parser.parse_args()
 
@@ -56,7 +56,8 @@ def setup_environment(args):
     else:
         # No-DB setup
         os.makedirs(args.download_dir, exist_ok=True)
-        os.makedirs(path.dirname(args.log_file), exist_ok=True)
+        # os.makedirs(path.dirname(args.log_file), exist_ok=True)
+        os.makedirs(args.log_file, exist_ok=True)
         log_file = f'{args.log_file}/{utils.formatted_time()}.log'
         log = utils.setup_logger(log_file, logger_name='paper-downloader')
         sample_size = None if args.sample_size == 'None' else int(args.sample_size)

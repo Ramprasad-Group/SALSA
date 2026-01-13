@@ -26,4 +26,4 @@ dependencies:
   - pip:
       - bresenham==0.2.1
       - openmim>=0.3.9
-      - -e .
+      - -e .1`op

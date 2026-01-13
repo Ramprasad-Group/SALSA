@@ -1,0 +1,54 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "PPO-CH2-IM",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12.jpg/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12.jpg/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.1954057663679123,
+    "legend_desc": {
+      "hsv": [
+        240.0,
+        148.5,
+        229.33333333333334
+      ],
+      "marker": "star",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        202.53311157226562,
+        184.11375427246094
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "PPO-CH2-IM",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12.jpg/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12.jpg/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.2064184695482254,
+    "legend_desc": {
+      "hsv": [
+        240.0,
+        161.36190476190475,
+        229.55238095238096
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        212.4686279296875,
+        240.14169311523438
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  }
+]

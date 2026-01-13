@@ -18,8 +18,17 @@ import datetime
 import json
 from openai import OpenAI
 import glob
+import base64
+import mimetypes
+import textwrap
+from PIL import Image
 
-sys.path.append('/home/wschertzer3/paper-downloader')
+sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
+from ui.openai_cost import append_usage, stage_from_env, run_id_from_env
+
+
+
+sys.path.append('/home/wschertzer3/AEM_OCR/src/paper-downloader')
 from paper_downloader import config
 from backend import sett, postgres
 from llm_table_extractor import LLMTableExtractor
@@ -61,6 +70,11 @@ def setup_logging(log_level='INFO', log_file=None):
     
     return logger
 
+def make_client(llm_url, api_key_string):
+    base_url = os.getenv("LLM_BASE_URL", llm_url)
+    api_key = os.getenv("LLM_API_KEY", api_key_string)
+    return OpenAI(base_url=base_url, api_key=api_key)
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Extract figures and tables using LLM for robust parsing")
     parser.add_argument('--no_db', action='store_true', default=True, help='Run without Postgres; use only local CSV info')
@@ -95,6 +109,92 @@ def parse_arguments():
     parser.add_argument('--filter_tables', '-ft', action='store_true', default=False)
 
     return parser.parse_args()
+
+def _load_table_preview(table_path: str,
+                        max_rows: int = 10,
+                        max_chars: int = 4000) -> str:
+    """
+    Load a human-readable preview of the table contents from a CSV/TSV/JSON file.
+
+    Returns a string (e.g., CSV text) truncated to max_chars.
+    Safely handles errors and unexpected formats.
+    """
+    if not table_path or not os.path.exists(table_path):
+        return ""
+
+    try:
+        # Choose behavior based on file extension
+        ext = os.path.splitext(table_path)[1].lower()
+
+        if ext in {".csv", ".tsv"}:
+            sep = "," if ext == ".csv" else "\t"
+            df = pd.read_csv(table_path, sep=sep)
+        elif ext in {".json"}:
+            # Assume a list-of-dicts JSON; adapt if your extractor writes differently
+            import json
+            with open(table_path, "r") as f:
+                data = json.load(f)
+            df = pd.DataFrame(data)
+        else:
+            # Fallback: try generic CSV read
+            df = pd.read_csv(table_path)
+    except Exception as e:
+        print(f"[table preview] Failed to load table from {table_path}: {e}")
+        return ""
+
+    # Limit rows and convert to CSV-like text
+    preview_df = df.head(max_rows)
+    text = preview_df.to_csv(index=False)
+
+    # Truncate if too long
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n...[truncated]..."
+
+    return text
+
+def convert_gif_to_jpg(image_path: str) -> str:
+    """
+    Convert a .gif image to .jpg (first frame if animated).
+    Returns the path to the .jpg.
+    If the file is not a .gif, returns the original path.
+    """
+    if not image_path.lower().endswith(".gif"):
+        return image_path
+
+    if not os.path.exists(image_path):
+        return image_path
+
+    base, _ = os.path.splitext(image_path)
+    jpg_path = base + ".jpg"
+
+    with Image.open(image_path) as im:
+        # If animated GIF, grab the first frame
+        try:
+            im.seek(0)
+        except EOFError:
+            pass
+        # Convert to RGB (GIF is paletted)
+        rgb_im = im.convert("RGB")
+        rgb_im.save(jpg_path, "JPEG", quality=95)
+
+    # remove the original GIF
+    os.remove(image_path)
+
+    return jpg_path
+
+def _image_path_to_data_url(image_path: str) -> str:
+    """
+    Convert a local image file to a data URL for use with OpenAI vision models.
+    """
+    mime_type, _ = mimetypes.guess_type(image_path)
+    # Fallback if mimetype can't be guessed
+    if mime_type is None:
+        mime_type = "image/png"
+
+    with open(image_path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    return f"data:{mime_type};base64,{b64}"
 
 def get_papers_from_database(dois, db):
     """Get paper information from database (same as reparse code)"""
@@ -314,14 +414,33 @@ def debug_publisher_extraction(output_dir, llm_extractor, extract_figures=True, 
         else:
             logger.warning(f"Test file not found for {publisher}: {file_path}")
 
-def figure_caption_test(meta: dict, model: str = "gpt-4o-mini") -> bool:
+def figure_test(meta: dict, model: str = "gpt-4o", use_image: bool = True) -> bool:
     """
-    Use OpenAI to determine if a figure is a plot depicting anionic conductivity vs time
-    based solely on its caption text.
+    Use OpenAI to determine if a figure is a TRUE time-series plot of
+    ionic/hydroxide conductivity (or alkaline stability) vs time,
+    using BOTH caption text and the figure image (if available).
     """
-    caption = meta.get("caption", "")
+    caption = meta.get("caption", "") or ""
+    image_path = meta.get("figure_file_path")
 
-    if not caption or not caption.strip():
+    # convert .gif to .jpg and update metadatadata
+    if image_path and image_path.lower().endswith(".gif") and os.path.exists(image_path):
+        new_path = convert_gif_to_jpg(image_path)
+        meta["figure_file_path"] = new_path
+
+        # Resave the metadata JSON next to the figure
+        meta_json_path = meta.get("figure_file_path").replace('.jpg', '_metadata.json')
+        try:
+            with open(meta_json_path, "w") as f:
+                json.dump(meta, f, indent=2)
+        except Exception as e:
+            print(f"[figure_test] Could not save updated metadata {meta_json_path}: {e}")
+
+        # Update the path for the rest of the test
+        image_path = new_path
+
+    # If we have neither caption nor image, just bail out
+    if not caption.strip() and (not image_path or not os.path.exists(image_path)):
         return False
 
     client = OpenAI(
@@ -329,70 +448,137 @@ def figure_caption_test(meta: dict, model: str = "gpt-4o-mini") -> bool:
         organization=os.getenv("OPENAI_ORGANIZATION")
     )
 
-    prompt = f"""
-                You are a materials science expert. Determine whether the following figure caption describes of hydroxide/ionic conductivity as a function of time or alkaline/chemical stability as a funciton of time.
+    # client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
 
-                Caption:
-                \"\"\"{caption}\"\"\"
+    # Build multimodal content
+    content = [
+        {
+            "type": "text",
+            "text": f"""
+You are a materials scientist specializing in anion exchange membranes.
 
-                Rules:
-                - Return ONLY one word: "YES" if it does desribe hydroxide/ionic conductivity as a function of time or alkaline/chemical stability as a funciton of time.
-                - Return "NO" otherwise.
-                """
+Decide whether this figure is a TRUE time-series plot of
+ionic/hydroxide conductivity (or alkaline stability) versus time (including remaining conductivity).
+
+Use BOTH the caption and the visual contents (axes labels, tick labels, legends).
+
+A figure qualifies ONLY if ALL of the following are true:
+- It shows conductivity / ionic conductivity / hydroxide conductivity OR alkaline stability / retention.
+- The x-axis (or time dimension) is clearly time (e.g. s, min, h, hr, day, d, time).
+- It is not just before/after comparisons, spectra (e.g. FTIR, NMR, XRD), SEM/TEM images, photographs,
+  IEC-dependence, RH-dependence, temperature-dependence, or other non-time axes.
+
+Caption:
+\"\"\"{caption}\"\"\"
+
+Answer strictly with one word:
+- "YES" if the plot shows conductivity / stability versus time.
+- "NO" otherwise.
+""".strip()
+        }
+    ]
+
+    # Attach image if we have one and we're allowed to use it
+    if use_image and image_path and os.path.exists(image_path):
+        try:
+            data_url = _image_path_to_data_url(image_path)
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": data_url},
+                }
+            )
+        except Exception as e:
+            print(f"[vision] Error encoding image {image_path}: {e}")
 
     try:
         response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
+            model=model,  # vision-capable model
+            messages=[
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
             max_tokens=5,
-            temperature=0
+            temperature=0.0,
+        )
+        _log_cost(response,
+            extra={
+                "kind": "filter_figure",
+                "model": model,
+                "used_image": bool(use_image and image_path and os.path.exists(image_path)),
+            },
         )
         result = response.choices[0].message.content.strip().upper()
         return result.startswith("YES")
     except Exception as e:
         print(f"[OpenAI error filtering figure]: {e}")
         return False
-    
-def table_caption_test(meta: dict, model: str = "gpt-4o-mini") -> bool:
+
+def table_test(meta: dict, model: str = "gpt-4o") -> bool:
     """
-    Use OpenAI to determine if a figure is a plot depicting anionic conductivity vs time
-    based solely on its caption text.
+    Use OpenAI to determine whether a table describes
+    hydroxide/ionic conductivity (or alkaline/chemical stability) as a function of time,
+    using BOTH the caption and the extracted table contents.
     """
 
-    caption = meta.get("caption", "")
-    if not caption or not caption.strip():
+    caption = meta.get("caption", "") or ""
+    table_path = meta.get("table_file_path")  # path set by your extractor
+
+    if not caption.strip() and (not table_path or not os.path.exists(table_path)):
+        # Nothing meaningful to go on
         return False
+
+    # Load a compact text preview of the table
+    table_preview = _load_table_preview(table_path) if table_path else ""
 
     client = OpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
         organization=os.getenv("OPENAI_ORGANIZATION")
     )
+    # client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
 
+    # Build prompt with BOTH caption and preview
     prompt = f"""
-                You are a materials science expert. Determine whether the following table caption describes hydroxide/ionic conductivity as a function of time or alkaline/chemical stability as a funciton of time.
-                
+You are a materials science expert working on anion-exchange membranes.
 
-                Caption:
-                \"\"\"{caption}\"\"\"
+Decide whether this table describes hydroxide/ionic conductivity
+OR alkaline/chemical stability as a function of time.
 
-                Rules:
-                - Return ONLY one word: "YES" if it does describe hydroxide/ionic conductivity as a function of time or alkaline/chemical stability as a funciton of time.
-                - Return "NO" otherwise.
-                """
+Use BOTH the caption and the table contents.
+
+Rules:
+- Return ONLY one word:
+  - "YES" if (a) the quantity is conductivity / ionic conductivity / hydroxide conductivity
+    or alkaline/chemical stability/retention, AND
+    (b) the table contains a clear time dimension (e.g. time, h, hr, hours, days, d, etc.).
+  - Return "NO" otherwise.
+
+Caption:
+\"\"\"{caption}\"\"\"
+
+Table contents (preview, CSV-like):
+\"\"\"{table_preview}\"\"\"
+""".strip()
 
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=5,
-            temperature=0
+            temperature=0.0,
+        )
+        _log_cost(
+            response,
+            extra={"kind": "filter_table", "model": model},
         )
         result = response.choices[0].message.content.strip().upper()
         return result.startswith("YES")
     except Exception as e:
-        print(f"[OpenAI error filtering figure]: {e}")
+        print(f"[OpenAI error filtering table]: {e}")
         return False
-    
+
 def filter_figures(output_dir: str):
     """
     Scan output_dir for figure metadata JSON files and delete figures
@@ -411,13 +597,16 @@ def filter_figures(output_dir: str):
             
             image_path = meta.get("figure_file_path")
 
-            if figure_caption_test(meta):
+            if figure_test(meta):
                 kept += 1
             else:
                 removed += 1
-                # Delete figure and metadata
                 if image_path and os.path.exists(image_path):
                     os.remove(image_path)
+                # check for formerly .gif files
+                if '.gif' in image_path:
+                    os.remove(image_path.replace('gif', 'jpg'))
+                
                 os.remove(meta_path)
         except Exception as e:
             print(f"Error processing {meta_path}: {e}")
@@ -442,7 +631,7 @@ def filter_tables(output_dir: str):
             
             image_path = meta.get("table_file_path")
 
-            if table_caption_test(meta):
+            if table_test(meta):
                 kept += 1
             else:
                 removed += 1
@@ -455,6 +644,17 @@ def filter_tables(output_dir: str):
 
     print(f"Kept {kept} relevant tables, removed {removed} irrelevant ones.")
 
+def _log_cost(response, extra: dict):
+        """
+        Writes a JSONL record to <run_dir>/cost/usage.jsonl
+        Requires env var AEM_OCR_RUN_DIR (or falls back to CWD).
+        """
+        append_usage(
+            stage=stage_from_env("extract_tables"),
+            run_id=run_id_from_env("unknown"),
+            resp=response,
+            extra=extra or {},
+        )
 
 def main():
     args = parse_arguments()
@@ -470,9 +670,9 @@ def main():
     logger.info(f"Log file: {log_file_path}")
     
     # Process extraction flags
-    extract_figures = args.extract_figures
     extract_tables = args.extract_tables 
-    
+    extract_figures = args.extract_figures
+
     # Initialize LLM extractor (only if extracting tables)
     llm_extractor = None
     if extract_tables:
@@ -514,8 +714,6 @@ def main():
         logger.error(f"Error reading CSV file: {e}")
         return
     
-    # dois = ['10.1002/app.11736']
-
     # Apply offset and sample size if specified
     if args.offset > 0:
         dois = dois[args.offset:]
@@ -557,7 +755,6 @@ def main():
     publisher_stats = {}
     
     for _, row in tqdm(papers_df.iterrows(), total=len(papers_df), desc="Processing papers"):
-        print("======row======", row)
         doi = row['doi']
         directory_db = row['directory']
         doctype = row['doctype']

@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import logging
 import json
+import time
 
 sys.path.append('/data/sonakshi/paper-downloader')
 from paper_downloader import config
@@ -57,39 +58,43 @@ def extract_elsevier_figures(file_path, output_dir, doi):
                         break
 
             if url:
-                try:
-                    # Clean up the label for filename
-                    clean_label = _clean_figure_label(label)
-                    img_ext = url.split("?")[0].split(".")[-1]
-                    img_name = f"{clean_label}.{img_ext}"
-                    img_path = os.path.join(fig_dir, img_name)
+                max_retries = 5
+                for i in range(max_retries):
+                    try:
+                        # Clean up the label for filename
+                        clean_label = _clean_figure_label(label)
+                        img_ext = url.split("?")[0].split(".")[-1]
+                        img_name = f"{clean_label}.{img_ext}"
+                        img_path = os.path.join(fig_dir, img_name)
 
-                    headers = {
-                        'Accept': 'image/*',
-                        'User-agent': 'Mozilla/5.6 (Windows NT 11.0; rv:68.0 Gecko/20100101 Firefox/70.0'
-                    }
-                    
-                    # Add API key to the URL if it's an Elsevier API URL
-                    if 'api.elsevier.com' in url:
-                        separator = '&' if '?' in url else '?'
-                        url_with_key = f"{url}{separator}APIKey={config.ELS_API_KEY}"
-                    else:
-                        url_with_key = url
-
-                    r = requests.get(url_with_key, headers=headers, timeout=15)
-                    if r.status_code == 200:
-                        content_type = r.headers.get('content-type', '').lower()
-                        if 'image' in content_type or r.content.startswith(b'\xff\xd8') or r.content.startswith(b'\x89PNG'):
-                            with open(img_path, "wb") as f:
-                                f.write(r.content)
-                            logger.info(f"Downloaded {label} -> {img_path}")
-                            _save_figure_metadata(fig_dir, clean_label, label, caption, url, doi)
+                        headers = {
+                            'Accept': 'image/*',
+                            'User-agent': 'Mozilla/5.6 (Windows NT 11.0; rv:68.0 Gecko/20100101 Firefox/70.0)'
+                        }
+                        
+                        # Add API key to the URL if it's an Elsevier API URL
+                        if 'api.elsevier.com' in url:
+                            separator = '&' if '?' in url else '?'
+                            url_with_key = f"{url}{separator}APIKey={config.ELS_API_KEY}"
                         else:
-                            logger.warning(f"Got non-image content for {label}")
-                    else:
-                        logger.warning(f"Failed to download {label} - Status: {r.status_code}")
-                except Exception as e:
-                    logger.error(f"Error downloading {label}: {e}")
+                            url_with_key = url
+
+                        r = requests.get(url_with_key, headers=headers, timeout=(5,60))
+                        if r.status_code == 200:
+                            content_type = r.headers.get('content-type', '').lower()
+                            if 'image' in content_type or r.content.startswith(b'\xff\xd8') or r.content.startswith(b'\x89PNG'):
+                                with open(img_path, "wb") as f:
+                                    f.write(r.content)
+                                logger.info(f"Downloaded {label} -> {img_path}")
+                                _save_figure_metadata(fig_dir, clean_label, label, caption, url, doi)
+                                break
+                            else:
+                                logger.warning(f"Got non-image content for {label}")
+                        else:
+                            logger.warning(f"Failed to download {label} - Status: {r.status_code}")
+                    except Exception as e:
+                        logger.error(f"Error downloading {label}: {e}")
+                        time.sleep(5)
 
             figures.append({"label": label, "caption": caption, "url": url})
         

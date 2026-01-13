@@ -1,0 +1,42 @@
+[
+  {
+    "source": "legend",
+    "patch_bbox": [
+      200.93771362304688,
+      35.70883560180664,
+      231.40460205078125,
+      44.97584915161133,
+      0.9596062302589417
+    ],
+    "label_bbox": [
+      232.7395782470703,
+      33.983802795410156,
+      302.6246643066406,
+      50.37422180175781,
+      0.9900451302528381
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/chartdete/legend/patch_0.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/chartdete/legend/label_0.jpg",
+    "text": "PPO-CH2-IM"
+  },
+  {
+    "source": "legend",
+    "patch_bbox": [
+      200.8407440185547,
+      16.367996215820312,
+      231.34962463378906,
+      26.133237838745117,
+      0.9551089406013489
+    ],
+    "label_bbox": [
+      232.5145263671875,
+      14.951515197753906,
+      328.51751708984375,
+      31.054481506347656,
+      0.984536349773407
+    ],
+    "patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/chartdete/legend/patch_1.jpg",
+    "label_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/3/output/10.1016@j.memsci.2016.07.012/Figure_12_subfig_0.jpg/chartdete/legend/label_1.jpg",
+    "text": "PPO-COC,H10-IM"
+  }
+]

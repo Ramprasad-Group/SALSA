@@ -2,20 +2,20 @@
   "label": "Table 6",
   "caption": "The alkaline stability of QNPS-OHs and F-QNPS-OH-70a.",
   "notes": [
-    "4 M NaOH solution, 20\u00b0C.",
-    "The time at which the membrane broke into pieces after being shaken lightly.",
-    "IEC0 and IEC are the ion exchange capacity of the test before and the test after, respectively.",
-    "The hydroxide conductivity after the alkaline stability test (4 M NaOH, 20\u00b0C, 48h).",
-    "The membrane is brittle, cannot be measured."
+    "a: 4 M NaOH solution, 20\u00b0C.",
+    "b: The time at which the membrane broke into pieces after being shaken lightly.",
+    "c: IEC0 and IEC are the ion exchange capacity of the test before and the test after, respectively.",
+    "d: The hydroxide conductivity after the alkaline stability test (4 M NaOH, 20\u00b0C, 48h).",
+    "e: The membrane is brittle, cannot be measured."
   ],
   "metadata": {
     "row_count": 6,
     "column_count": 5,
-    "has_merged_cells": false
+    "has_merged_cells": true
   },
   "doi": "10.1016/j.memsci.2010.11.058",
   "table_file_path": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058/Table_6.csv",
   "table_directory": "/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/tables/10.1016@j.memsci.2010.11.058",
-  "extraction_timestamp": "2025-11-10T18:13:12.373291",
+  "extraction_timestamp": "2025-12-17T17:20:26.386518",
   "file_type": "table"
 }

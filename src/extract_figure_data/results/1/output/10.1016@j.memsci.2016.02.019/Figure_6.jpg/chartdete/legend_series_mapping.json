@@ -1,0 +1,314 @@
+[
+  {
+    "legend_index": 0,
+    "legend_text": "MEMBRANE-25",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_0.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_8.png",
+    "series_index": 8,
+    "cost": 0.15511207282543182,
+    "legend_desc": {
+      "hsv": [
+        60.0,
+        127.34444444444445,
+        178.4
+      ],
+      "marker": "unknown",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        60.0,
+        212.72901916503906,
+        144.16433715820312
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 1,
+    "legend_text": "MEMBRANE-0",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_1.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_7.png",
+    "series_index": 7,
+    "cost": 0.3347112238407135,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        0.0,
+        183.55555555555554
+      ],
+      "marker": "star",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        238.6959991455078,
+        211.6959991455078
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 2,
+    "legend_text": "MEMBRANE-0",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_2.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_6.png",
+    "series_index": 6,
+    "cost": 0.4178541600704193,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        0.0,
+        160.2032967032967
+      ],
+      "marker": "rect",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        225.85826110839844,
+        184.468505859375
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 3,
+    "legend_text": "MEMBRANE-15",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_3.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_4.png",
+    "series_index": 4,
+    "cost": 0.1491297036409378,
+    "legend_desc": {
+      "hsv": [
+        180.0,
+        131.12087912087912,
+        176.5934065934066
+      ],
+      "marker": "rect",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        180.0,
+        211.0015869140625,
+        144.0940704345703
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 4,
+    "legend_text": "MEMBRANE-5",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_4.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_11.png",
+    "series_index": 11,
+    "cost": 0.1368456780910492,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        154.47916666666666,
+        239.88541666666666
+      ],
+      "marker": "rect",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        0.0,
+        225.3760986328125,
+        251.10916137695312
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 5,
+    "legend_text": "MEMBRANE-25",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_5.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_5.png",
+    "series_index": 5,
+    "cost": 0.13797469437122345,
+    "legend_desc": {
+      "hsv": [
+        60.0,
+        154.94252873563218,
+        164.86206896551724
+      ],
+      "marker": "star",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        60.0,
+        216.99517822265625,
+        142.63987731933594
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    }
+  },
+  {
+    "legend_index": 6,
+    "legend_text": "MEMBRANE-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_6.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_10.png",
+    "series_index": 10,
+    "cost": 0.12501460313796997,
+    "legend_desc": {
+      "hsv": [
+        300.0,
+        150.85714285714286,
+        242.28571428571428
+      ],
+      "marker": "unknown",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        300.0,
+        211.4428253173828,
+        251.14581298828125
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 7,
+    "legend_text": "MEMBRANE-10",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_7.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_2.png",
+    "series_index": 2,
+    "cost": 0.22667932510375977,
+    "legend_desc": {
+      "hsv": [
+        240.0,
+        145.27,
+        235.28
+      ],
+      "marker": "line",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        218.80572509765625,
+        246.46258544921875
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 8,
+    "legend_text": "MEMBRANE-5",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_8.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_0.png",
+    "series_index": 0,
+    "cost": 0.22417771816253662,
+    "legend_desc": {
+      "hsv": [
+        240.0,
+        156.61320754716982,
+        240.6509433962264
+      ],
+      "marker": "unknown",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        240.0,
+        225.4976348876953,
+        248.5086669921875
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 9,
+    "legend_text": "MEMBRANE-20",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_9.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_9.png",
+    "series_index": 9,
+    "cost": 0.11472402513027191,
+    "legend_desc": {
+      "hsv": [
+        300.0,
+        173.46666666666667,
+        245.7111111111111
+      ],
+      "marker": "star",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        300.0,
+        219.82199096679688,
+        253.9296875
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 10,
+    "legend_text": "MEMBRANE-10",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_10.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_3.png",
+    "series_index": 3,
+    "cost": 0.1198408305644989,
+    "legend_desc": {
+      "hsv": [
+        0.0,
+        176.3913043478261,
+        237.58695652173913
+      ],
+      "marker": "rect",
+      "linestyle": "unknown"
+    },
+    "series_desc": {
+      "hsv": [
+        0.0,
+        222.86912536621094,
+        251.490966796875
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  },
+  {
+    "legend_index": 11,
+    "legend_text": "MEMBRANE-15",
+    "legend_patch_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/chartdete/legend/patch_11.jpg",
+    "series_mask_path": "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2016.02.019/Figure_6.jpg/lineformer/mask_series_1.png",
+    "series_index": 1,
+    "cost": 0.2358967810869217,
+    "legend_desc": {
+      "hsv": [
+        180.0,
+        148.33684210526314,
+        171.61052631578949
+      ],
+      "marker": "rect",
+      "linestyle": "solid"
+    },
+    "series_desc": {
+      "hsv": [
+        180.0,
+        219.6811065673828,
+        141.60394287109375
+      ],
+      "marker": "unknown",
+      "linestyle": "dashed"
+    }
+  }
+]

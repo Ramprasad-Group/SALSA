@@ -1,0 +1,121 @@
+{
+  "plot_area": [
+    48.72941970825195,
+    6.097424030303955,
+    286.7161560058594,
+    180.6468963623047,
+    0.9952827095985413
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_0.jpg": [
+    260.21636962890625,
+    185.730224609375,
+    278.97271728515625,
+    193.81985473632812,
+    0.9917138814926147
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_1.jpg": [
+    226.10963439941406,
+    185.5197296142578,
+    244.83750915527344,
+    193.87530517578125,
+    0.9908348321914673
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_2.jpg": [
+    194.07276916503906,
+    185.63595581054688,
+    208.745849609375,
+    193.869140625,
+    0.9870380163192749
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_3.jpg": [
+    91.67994689941406,
+    185.80166625976562,
+    106.22476196289062,
+    193.80841064453125,
+    0.9861955642700195
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_4.jpg": [
+    125.68558502197266,
+    185.8675994873047,
+    140.32444763183594,
+    193.84274291992188,
+    0.9839697480201721
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_5.jpg": [
+    159.87945556640625,
+    185.6404266357422,
+    174.40643310546875,
+    193.95040893554688,
+    0.9821179509162903
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xlabels_6.jpg": [
+    61.88084411621094,
+    186.00343322753906,
+    67.84649658203125,
+    193.71168518066406,
+    0.9560441970825195
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_0.jpg": [
+    36.99570083618164,
+    113.3238525390625,
+    42.95051574707031,
+    121.14543914794922,
+    0.968942403793335
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_1.jpg": [
+    36.70151901245117,
+    88.23121643066406,
+    43.243289947509766,
+    95.77948760986328,
+    0.9680967926979065
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_2.jpg": [
+    36.7210693359375,
+    138.47250366210938,
+    43.03764724731445,
+    146.769287109375,
+    0.9524773359298706
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_3.jpg": [
+    37.27370071411133,
+    163.47792053222656,
+    42.46319580078125,
+    171.27685546875,
+    0.9514079689979553
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_4.jpg": [
+    36.812164306640625,
+    37.29795455932617,
+    43.00261688232422,
+    45.80788803100586,
+    0.9460697174072266
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_5.jpg": [
+    37.00216293334961,
+    62.886104583740234,
+    43.03123092651367,
+    70.77521514892578,
+    0.9225196838378906
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ylabels_6.jpg": [
+    36.826316833496094,
+    12.074897766113281,
+    42.986080169677734,
+    20.327112197875977,
+    0.9193955063819885
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_xtitle_0.jpg": [
+    142.07125854492188,
+    200.00372314453125,
+    191.94952392578125,
+    212.8539581298828,
+    0.9884296655654907
+  ],
+  "/home/wschertzer3/AEM_OCR/src/extract-figure-data/results/1/output/10.1016@j.memsci.2019.117314/Figure_10_subfig_0.jpg/chartdete/cropped_ytitle_0.jpg": [
+    20.3049373626709,
+    79.97842407226562,
+    33.893314361572266,
+    130.17044067382812,
+    0.9648619294166565
+  ]
+}
