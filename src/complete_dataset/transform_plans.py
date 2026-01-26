@@ -17,9 +17,7 @@ import json
 import hashlib
 import re
 from typing import Any, Dict, List, Optional, Tuple
-
 import pandas as pd
-from openai import OpenAI
 
 # ----------------------------
 # Cache helpers
@@ -40,7 +38,17 @@ def load_cached_plan(cache_dir: str, key: str) -> Optional[Dict[str, Any]]:
         return None
     try:
         with open(fp, "r") as f:
-            return json.load(f)
+            obj = json.load(f)
+
+        # Some older cache files may store a JSON string; try decoding again.
+        if isinstance(obj, str):
+            try:
+                obj2 = json.loads(obj)
+                obj = obj2
+            except Exception:
+                return None
+
+        return obj if isinstance(obj, dict) else None
     except Exception:
         return None
 
@@ -148,7 +156,12 @@ def parse_rh_from_text(text: str) -> Optional[str]:
 # ----------------------------
 # Payload builders
 # ----------------------------
-def build_figures_global_plan_payload(doi: str, df_points: pd.DataFrame, figure_snips: List[Dict[str,Any]], max_series: int = 30) -> Dict[str, Any]:
+def build_figures_global_plan_payload(
+    doi: str, 
+    df_points: pd.DataFrame, 
+    figure_snips: List[Dict[str,Any]], 
+    max_series: int = 30
+    ) -> Dict[str, Any]:
     df = df_points.copy()
     # summarize axis names/units
     x_summary = df[["x_name","x_unit"]].drop_duplicates().head(10).to_dict("records")
@@ -185,29 +198,29 @@ def build_table_plan_payload(
     metadata: Dict[str, Any],
     figures: List[Dict[str, Any]],
     full_text: Any,
-) -> Dict[str, Any]:
-    cap = (metadata or {}).get("caption") or (metadata or {}).get("table_caption") or ""
-    fig_snips = []
-    for f in figures[:6]:
-        md = f.get("metadata") or {}
-        fig_cap = md.get("caption") or md.get("figure_caption") or ""
-        fig_snips.append({"figure_name": f.get("figure_name", ""), "caption": fig_cap[:600]})
+    ) -> Dict[str, Any]:
+        cap = (metadata or {}).get("caption") or (metadata or {}).get("table_caption") or ""
+        fig_snips = []
+        for f in figures[:6]:
+            md = f.get("metadata") or {}
+            fig_cap = md.get("caption") or md.get("figure_caption") or ""
+            fig_snips.append({"figure_name": f.get("figure_name", ""), "caption": fig_cap[:600]})
 
-    ft_excerpt = ""
-    if isinstance(full_text, dict):
-        ft_excerpt = json.dumps(full_text, ensure_ascii=False)[:2000]
-    elif isinstance(full_text, str):
-        ft_excerpt = full_text[:2000]
+        ft_excerpt = ""
+        if isinstance(full_text, dict):
+            ft_excerpt = json.dumps(full_text, ensure_ascii=False)[:2000]
+        elif isinstance(full_text, str):
+            ft_excerpt = full_text[:2000]
 
-    return {
-        "doi": doi,
-        "table_name": table_name,
-        "caption": cap[:1200],
-        "columns": table_columns,
-        "head_rows": table_head,
-        "figure_snippets": fig_snips,
-        "full_text_excerpt": ft_excerpt,
-    }
+        return {
+            "doi": doi,
+            "table_name": table_name,
+            "caption": cap[:1200],
+            "columns": table_columns,
+            "head_rows": table_head,
+            "figure_snippets": fig_snips,
+            "full_text_excerpt": ft_excerpt,
+        }
 
 # ----------------------------
 # LLM inference (returns (resp, plan))
@@ -228,71 +241,94 @@ def _parse_json_obj(s: str) -> Dict[str, Any]:
                 return {}
         return {}
 
-def infer_figures_plan(client: OpenAI, model: str, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+def infer_figures_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+
     instructions = """
-Infer ONE global transformation plan for ALL extracted FIGURE datapoints in this DOI.
+    Infer ONE global transformation plan for ALL extracted FIGURE datapoints in this DOI.
 
-Return ONLY valid JSON with keys:
-- scope: {doi, source_kind:"figure"}
-- global: {
-    default_x_semantic: one of ["time","temperature","RH","IEC","water_uptake","swelling","current_density","potential","other"],
-    property_ontology: {canonical_property: [synonyms...]},
-    units: {time_to_h: true/false}
-  }
-- series_overrides: list of objects:
-    {match: "<regex applied to series_label>", constants: {<output field>: "<value>"}}
-  (use overrides to pull RH/temp/etc from series labels when typical)
-- confidence: {x_semantic:0..1, y_semantic:0..1, context:0..1}
-- evidence: brief reasons
+    Return ONLY valid JSON with keys:
+    - scope: {doi, source_kind:"figure"}
+    - global: {
+        default_x_semantic: one of ["time","temperature","RH","IEC","water_uptake","swelling","current_density","potential","other"],
+        property_ontology: {canonical_property: [synonyms...]},
+        units: {time_to_h: true/false}
+    }
+    - series_overrides: list of objects:
+        {match: "<regex applied to series_label>", constants: {<output field>: "<value>"}}
+    (use overrides to pull RH/temp/etc from series labels when typical)
+    - confidence: {x_semantic:0..1, y_semantic:0..1, context:0..1}
+    - evidence: brief reasons
 
-Rules:
-- Do NOT output per-point rows.
-- Prefer using axis label/unit cues + series_label patterns + captions.
-- If unsure, set default_x_semantic="other".
-""".strip()
+    Rules:
+    - Do NOT output per-point rows.
+    - Prefer using axis label/unit cues + series_label patterns + captions.
+    - If unsure, set default_x_semantic="other".
+    """.strip()
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": [{"type":"text","text": instructions + "\n\n" + json.dumps(payload, ensure_ascii=False)}]}],
-        response_format={"type":"json_object"},
-        temperature=0.0,
-        max_tokens=1800,
-    )
-    plan = _parse_json_obj(resp.choices[0].message.content)
-    return resp, plan
-
-def infer_table_transform_plan(client: OpenAI, model: str, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
-    instructions = """
-You infer a TRANSFORMATION PLAN for an extracted TABLE.
-
-Return ONLY valid JSON (no markdown). Required top-level keys:
-- scope: {doi, table_name, source_kind:"table"}
-- column_map: mapping to the normalized schema fields:
-    "Sample Name": {"col": "<column name>"} OR {"const": "<value>"} OR {"empty": true}
-    "time(h)": {"col": "<column name>", "unit_from": "<unit>", "unit_to": "h"} OR {"const": ""} OR {"empty": true}
-    "property": {"col": "<column name>"} OR {"const": "<property name>"}
-    "value": {"col": "<column name>"} OR {"empty": true}
-    optional constants for:
-      "relative humidity(%)","solvent type","solvent concentration (%)","degradation test temp (C)","prop test temp (C)"
-- row_rules: optional instructions (e.g., if table is wide-format, how to unpivot)
-- confidence: 0..1
-- evidence: brief explanation
-
-Rules:
-- Prefer direct column mappings using provided columns.
-- If table is wide-format (multiple conditions across columns), specify row_rules.unpivot.
-- Do NOT fabricate values not supported by the table/caption.
-""".strip()
-
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": [{"type": "text", "text": instructions + "\n\n" + json.dumps(payload, ensure_ascii=False)}]}],
+    text, meta = client.chat(
+        messages=[
+            {
+                "role": "system",
+                "content": instructions
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
+            }
+        ],
         response_format={"type": "json_object"},
         temperature=0.0,
-        max_tokens=1600,
+        max_tokens=5000,
+        return_meta=True,
     )
-    plan = _parse_json_obj(resp.choices[0].message.content)
-    return resp, plan
+    plan = _parse_json_obj(text)
+    return text, plan, meta
+
+def infer_tables_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+    instructions = """
+    You infer a TRANSFORMATION PLAN for an extracted TABLE.
+
+    Return ONLY valid JSON (no markdown). Required top-level keys:
+    - scope: {doi, table_name, source_kind:"table"}
+    - column_map: mapping to the normalized schema fields:
+        "Sample Name": {"col": "<column name>"} OR {"const": "<value>"} OR {"empty": true}
+        "time(h)": {"col": "<column name>", "unit_from": "<unit>", "unit_to": "h"} OR {"const": ""} OR {"empty": true}
+        "property": {"col": "<column name>"} OR {"const": "<property name>"}
+        "value": {"col": "<column name>"} OR {"empty": true}
+        optional constants for:
+        "relative humidity(%)","solvent type","solvent concentration (%)","degradation test temp (C)","prop test temp (C)"
+    - row_rules: optional instructions (e.g., if table is wide-format, how to unpivot)
+    - If the table is wide-format, you MUST use:
+        - row_rules.unpivot = {id_cols: [...], value_cols: [...], var_name: "property", value_name: "value"}
+    - Do NOT return lists under keys named "property" or "value".
+    - confidence: 0..1
+    - evidence: brief explanation
+
+    Rules:
+    - Prefer direct column mappings using provided columns.
+    - If table is wide-format (multiple conditions across columns), specify row_rules.unpivot.
+    - Do NOT fabricate values not supported by the table/caption.
+    """.strip()
+
+    text, meta = client.chat(
+        messages=[
+            {
+                "role": "system",
+                "content": instructions
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
+            }
+        ],
+
+        response_format={"type": "json_object"},
+        temperature=0.0,
+        max_tokens=5000,
+        return_meta=True
+    )
+    plan = _parse_json_obj(text)
+    return text, plan, meta
 
 # ----------------------------
 # Deterministic application
@@ -300,6 +336,9 @@ Rules:
 _OUTPUT_COLUMNS = [
     "Sample Name",
     "time(h)",
+    "x_name",
+    "x_unit",
+    "x_value",
     "relative humidity(%)",
     "solvent type",
     "solvent concentration (%)",
@@ -308,7 +347,11 @@ _OUTPUT_COLUMNS = [
     "property",
     "value",
     "DOI",
+    "source_kind",
+    "source_name",
 ]
+OUTPUT_COLUMNS = _OUTPUT_COLUMNS 
+
 
 def apply_global_figure_plan(df_points: pd.DataFrame, plan: Dict[str, Any], doi: str) -> pd.DataFrame:
     df = df_points.copy()
@@ -329,24 +372,38 @@ def apply_global_figure_plan(df_points: pd.DataFrame, plan: Dict[str, Any], doi:
         return (y_name or "").strip()
 
     # series overrides (regex on series_label)
-    overrides = (plan or {}).get("series_overrides", []) or []
+    if not isinstance(plan, dict):
+        plan = {}
 
-    def constants_for_series(series_label: str) -> Dict[str,str]:
-        out = {}
+    overrides = plan.get("series_overrides", []) or []
+    if not isinstance(overrides, list):
+        overrides = []
+
+    def constants_for_series(series_label: str) -> Dict[str, str]:
+        out: Dict[str, str] = {}
         sl = series_label or ""
+
         for ov in overrides:
+            if not isinstance(ov, dict):
+                continue
             try:
-                if re.match(ov.get("match","$^"), sl):
-                    out.update(ov.get("constants", {}) or {})
+                if re.match(ov.get("match", "$^"), sl):
+                    consts = ov.get("constants", {}) or {}
+                    if isinstance(consts, dict):
+                        out.update({k: str(v) for k, v in consts.items() if v is not None})
             except Exception:
                 continue
+
         # deterministic parsing fallback
         if "relative humidity(%)" not in out:
             rh = parse_rh_from_text(sl)
-            if rh: out["relative humidity(%)"] = rh
+            if rh:
+                out["relative humidity(%)"] = rh
         if "prop test temp (C)" not in out:
             tc = parse_temp_C_from_text(sl)
-            if tc: out["prop test temp (C)"] = tc
+            if tc:
+                out["prop test temp (C)"] = tc
+
         return out
 
     rows = []
@@ -403,16 +460,49 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
     row_rules = (plan or {}).get("row_rules", {}) or {}
     if isinstance(row_rules, dict) and row_rules.get("unpivot"):
         up = row_rules["unpivot"]
-        # expected: {"id_cols":[...], "var_name":"property", "value_name":"value", "value_cols":[...]}
+
+        # If GPT returned: {"property":[...], "value":[...]} treat that as value_cols list
+        if isinstance(up, dict) and "id_cols" not in up and "value_cols" not in up:
+            # common wrong-but-reasonable format
+            if isinstance(up.get("value"), list) and up.get("value"):
+                up = {
+                    "id_cols": ["Membrane"],          # best guess; will validate below
+                    "value_cols": up["value"],
+                    "var_name": "property",
+                    "value_name": "value",
+                }
+
+        # ---- Standard melt expected format ----
         try:
             id_cols = up.get("id_cols", [])
             value_cols = up.get("value_cols", [])
-            var_name = up.get("var_name", "variable")
+            var_name = up.get("var_name", "property")
             value_name = up.get("value_name", "value")
-            df_table = df_table.melt(id_vars=id_cols, value_vars=value_cols, var_name=var_name, value_name=value_name)
-            # if GPT says var_name maps to property const/col, it can map afterwards
+
+            # Validate columns exist; auto-detect id col if needed
+            if not id_cols or any(c not in df_table.columns for c in id_cols):
+                # pick a reasonable ID column: first non-numeric-ish column
+                cand = [c for c in df_table.columns if df_table[c].dtype == object]
+                if cand:
+                    id_cols = [cand[0]]
+
+            # keep only value cols that exist
+            value_cols = [c for c in value_cols if c in df_table.columns]
+
+            if id_cols and value_cols:
+                df_table = df_table.melt(
+                    id_vars=id_cols,
+                    value_vars=value_cols,
+                    var_name=var_name,
+                    value_name=value_name
+                )
+
+                # After melt, set column_map to use var_name/value_name if it was pointing to property/value
+                # (helps when GPT wrote {"col":"property"} / {"col":"value"}.)
+                # We'll handle in resolve() by reading from r.get(spec["col"]).
         except Exception:
             pass
+
 
     # Build each output row deterministically
     for _, r in df_table.iterrows():
@@ -426,6 +516,18 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
                 row[k] = str(const[k])
 
         # Helper to resolve mapping entry
+        def get_cell(row: pd.Series, col: str) -> Any:
+            if not col:
+                return ""
+            if col in row.index:
+                return row[col]
+            # case-insensitive match within the row index
+            lm = {str(c).lower(): c for c in row.index}
+            key = str(col).lower()
+            if key in lm:
+                return row[lm[key]]
+            return ""
+
         def resolve(field: str) -> str:
             spec = col_map.get(field, {})
             if not isinstance(spec, dict):
@@ -435,9 +537,10 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
             if "const" in spec:
                 return "" if spec["const"] is None else str(spec["const"])
             if "col" in spec:
-                s = r.get(spec["col"], "")
+                s = get_cell(r, spec["col"])
                 return "" if s is None else str(s)
             return ""
+
 
         # sample
         row["Sample Name"] = resolve("Sample Name")

@@ -1,16 +1,13 @@
 # AEM_OCR/src/ui/streamlit_app.py
 from __future__ import annotations
-
 import json
 import inspect
 from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
-
 from pipeline import run_full_pipeline
 from discover import discover_run
 from schemas import RunResult
@@ -26,13 +23,82 @@ from intervention import (
     apply_overrides_to_plextract,
 )
 from run_plextract_single import run_plextract_single_figure
-
 import numpy as np
 import cv2
-
 from cropping import save_crops
 from run_plextract_manual import run_plextract_on_manual_crops
+import os
+import subprocess
+from typing import List, Optional
 
+
+def _default_ollama_models_dir() -> Path:
+    """
+    Determine a sane default for Ollama models directory.
+    Priority:
+      1) $OLLAMA_MODELS (your log shows you use /data/william/ollama_models)
+      2) ~/.ollama/models (common on user installs)
+      3) /usr/share/ollama/.ollama/models (common system install)
+    """
+    env = os.environ.get("OLLAMA_MODELS")
+    if env:
+        return Path(env).expanduser()
+
+    candidates = [
+        Path.home() / ".ollama" / "models",
+        Path("/usr/share/ollama/.ollama/models"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    # fallback to user path even if it doesn't exist yet
+    return Path.home() / ".ollama" / "models"
+
+def _ollama_list_models_via_cli() -> List[str]:
+    """
+    Best source of truth: `ollama list` returns the models actually available to the ollama daemon.
+    """
+    try:
+        # Note: OLLAMA_HOST can be set in env to point to a non-default daemon
+        out = subprocess.check_output(["ollama", "list"], text=True, stderr=subprocess.STDOUT)
+        lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        if not lines:
+            return []
+        # Expect header like: NAME ID SIZE MODIFIED
+        # Models in first column, e.g. "llama3:8b"
+        models = []
+        for ln in lines[1:]:
+            parts = ln.split()
+            if parts:
+                models.append(parts[0])
+        return models
+    except Exception:
+        return []
+
+def _ollama_list_models_from_dir(models_dir: Path) -> List[str]:
+    """
+    Fallback: attempt to infer installed models from the local models directory.
+    This is less reliable than `ollama list`, but helps when CLI isn't available.
+    """
+    try:
+        # Typical structure includes "manifests" + "blobs"
+        manifests = models_dir / "manifests"
+        if not manifests.exists():
+            return []
+        # manifests can be nested; filenames represent tags.
+        # We'll return relative leaf paths that look like repo/model:tag-ish.
+        found = []
+        for p in manifests.rglob("*"):
+            if p.is_file():
+                rel = p.relative_to(manifests).as_posix()
+                # Heuristic: keep only reasonably short “tag” paths
+                if len(rel.split("/")) >= 2:
+                    found.append(rel)
+        # Deduplicate + shorten presentation
+        found = sorted(set(found))
+        return found
+    except Exception:
+        return []
 
 def st_image_auto(img, *, full_width=True, **kwargs):
     """
@@ -48,17 +114,14 @@ def st_image_auto(img, *, full_width=True, **kwargs):
         return st.image(img, use_container_width=full_width, **kwargs)
     return st.image(img, use_column_width=full_width, **kwargs)
 
-
 def doi_to_safe(doi: str) -> str:
     return doi.replace("/", "@").strip()
-
 
 @st.cache_data(show_spinner=False)
 def _cached_flagged(run_dir_str: str):
     # cache intervention scan so it doesn't re-run constantly
     run_dir = Path(run_dir_str)
     return find_interventions(run_dir)
-
 
 @st.cache_data(show_spinner=False)
 def _load_csv(csv_path: str) -> pd.DataFrame:
@@ -80,7 +143,6 @@ def completed_dataset_json_path(run_dir: Path, doi: str) -> Path:
     """
     modified = doi_to_safe(doi)
     return run_dir / "complete_dataset" / f"{modified}_complete.json"
-
 
 def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: list[str] | None = None) -> pd.DataFrame:
     rows = []
@@ -114,7 +176,6 @@ def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: li
     
     return df
 
-
 st.set_page_config(page_title="AEM_OCR UI", layout="wide")
 st.title("AEM_OCR")
 
@@ -135,6 +196,61 @@ with st.sidebar:
     run_plextract = st.checkbox("Extract data from figures", value=True)
     run_complete_dataset = st.checkbox("Complete dataset", value=True)
     exclude_full_text = st.checkbox("Exclude full text from context", value=True)
+    
+    st.divider()
+    st.header("LLM")
+
+    provider = st.radio(
+        "Provider",
+        options=["Ollama", "Chat GPT"],
+        index=0,
+        key="llm_provider",
+    )
+
+    # Defaults
+    default_ollama_dir = _default_ollama_models_dir()
+    default_ollama_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+
+    if provider == "Ollama":
+        ollama_models_dir = Path(
+            st.text_input("Ollama models dir", str(default_ollama_dir), key="ollama_models_dir")
+        ).expanduser()
+
+        ollama_host = st.text_input("OLLAMA_HOST", default_ollama_host, key="ollama_host")
+
+        # Try CLI first, then fall back to filesystem scan
+        models = _ollama_list_models_via_cli()
+        if not models:
+            models = _ollama_list_models_from_dir(ollama_models_dir)
+
+        if models:
+            selected_model = st.selectbox("Model", options=models, index=0, key="llm_model")
+        else:
+            selected_model = st.text_input(
+                "Model (no models detected — type one, e.g. llama3:8b)",
+                value="",
+                key="llm_model",
+            )
+            st.caption("Tip: run `ollama pull <model>` then refresh.")
+
+    else:
+        # Keep this flexible: OpenAI model names change; a free-text input avoids hardcoding.
+        openai_base_url = st.text_input(
+            "OpenAI-compatible base URL",
+            value=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            key="openai_base_url",
+        )
+
+        # Optional: allow env-based key; do NOT print it.
+        openai_api_key = st.text_input(
+            "API key (stored only in session)",
+            value=os.environ.get("OPENAI_API_KEY", ""),
+            type="password",
+            key="openai_api_key",
+        )
+
+        suggested = ["gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini"]
+        selected_model = st.selectbox("Model", options=suggested, index=0, key="llm_model")
 
     st.divider()
     st.header("Load an existing run")
@@ -167,6 +283,26 @@ if st.button("Run pipeline", type="primary"):
     else:
         with st.spinner("Running your pipeline end-to-end…"):
             custom_run_id = run_id_input.strip() or None
+
+            # --- Apply LLM configuration for this run ---
+            provider = st.session_state.get("llm_provider", "Ollama")
+            model = st.session_state.get("llm_model", "")
+
+            print("======MODEL======", model)
+
+            if provider == "Ollama":
+                os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                os.environ["AEM_OCR_LLM_MODEL"] = model
+                os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                os.environ["OLLAMA_MODELS"] = st.session_state.get("ollama_models_dir", str(_default_ollama_models_dir()))
+            else:
+                os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"
+                os.environ["AEM_OCR_LLM_MODEL"] = model
+                os.environ["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                # Put key in env for downstream libraries if you use them
+                if st.session_state.get("openai_api_key"):
+                    os.environ["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
 
             rr = run_full_pipeline(
                 dois=dois,
@@ -335,6 +471,7 @@ with tab_xy:
     else:
         # If LLM was skipped, they may still have the combined json
         if ds_json.exists():
+            print("=====ds_json====", ds_json)
             st.info("No *_dataset.csv found (LLM completion may have been skipped), but *_complete.json exists.")
             with st.expander("Show combined *_complete.json", expanded=False):
                 st.json(json.loads(ds_json.read_text()))

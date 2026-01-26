@@ -8,7 +8,7 @@ import os
 import json
 import xml.etree.ElementTree as ET
 import requests
-from openai import OpenAI
+from llm_client import get_llm_client
 from typing import List, Dict, Any, Optional
 import sys
 import logging
@@ -18,35 +18,161 @@ import pandas as pd
 from bs4 import Tag
 from pathlib import Path
 sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
-from ui.openai_cost import append_usage, stage_from_env, run_id_from_env
+from ui.openai_cost import append_usage, run_id_from_env
 
 load_dotenv()
 
 sys.path.append('/home/wschertzer3/paper-downloader/paper_downloader')
 from paper_downloader import config
 
-def make_client(llm_url, api_key_string):
-    base_url = os.getenv("LLM_BASE_URL", llm_url)
-    api_key = os.getenv("LLM_API_KEY", api_key_string)
-    return OpenAI(base_url=base_url, api_key=api_key)
 
 class LLMTableExtractor:
-    def __init__(self, model: str = "gpt-4o"):
+    
+    TABLE_SCHEMA = {
+        "name": "extracted_table",
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["label", "caption", "headers", "data", "notes", "metadata"],
+            "properties": {
+                "label": {"type": "string"},
+                "caption": {"type": "string"},
+                "headers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["row_count", "column_count", "has_merged_cells"],
+                    "properties": {
+                        "row_count": {"type": "integer"},
+                        "column_count": {"type": "integer"},
+                        "has_merged_cells": {"type": "boolean"}
+                    }
+                }
+            }
+        }
+    }
+    def __init__(self):
         """
         Initialize the LLM table extractor
         
         Args:
             model: model to use
         """
-        self.model = model
+        # self.model = model
         self.logger = logging.getLogger('extraction')
         
-        api_key = os.getenv("OPENAI_API_KEY")
-        org_id = os.getenv("OPENAI_ORGANIZATION")
-        self.client = OpenAI(api_key=api_key, organization=org_id)
+        # api_key = os.getenv("OPENAI_API_KEY")
+        # org_id = os.getenv("OPENAI_ORGANIZATION")
+        # self.client = OpenAI(api_key=api_key, organization=org_id)
         # self.client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
-        
+        self.client = get_llm_client()
     
+    def _xml_text(self, elem: Optional[ET.Element]) -> str:
+        """Flatten an XML element to clean text."""
+        if elem is None:
+            return ""
+        # join itertext, normalize whitespace
+        txt = " ".join(" ".join(elem.itertext()).split())
+        return txt.strip()
+
+    def _find_xml_caption(self,
+                        table_elem: ET.Element,
+                        parent_map: Dict[ET.Element, ET.Element],
+                        ns: Dict[str, str]) -> str:
+        """
+        Robust caption finder for Elsevier-ish XML (ce/cals).
+        Tries:
+        - caption/label inside the table (rare)
+        - caption/label in nearest ancestor container (common: ce:table-wrap)
+        - nearby siblings of that container
+        Returns a single string (can be empty).
+        """
+
+        def first(xpath: str, ctx: ET.Element) -> Optional[ET.Element]:
+            return ctx.find(xpath, ns)
+
+        def findall(xpath: str, ctx: ET.Element) -> List[ET.Element]:
+            return ctx.findall(xpath, ns)
+
+        # -------- 1) inside the table itself (sometimes present) --------
+        # Elsevier captions are usually not inside ce:table, but safe to try.
+        caption = first(".//ce:caption", table_elem)
+        label = first(".//ce:label", table_elem)
+        cap_txt = self._xml_text(caption)
+        label_txt = self._xml_text(label)
+
+        if cap_txt:
+            return f"{label_txt} {cap_txt}".strip()
+
+        # -------- 2) climb to nearest likely container (e.g., ce:table-wrap) --------
+        # Walk upward and pick the first ancestor that contains ce:caption or ce:label.
+        cur = table_elem
+        container = None
+        for _ in range(12):  # avoid infinite loops on weird trees
+            parent = parent_map.get(cur)
+            if parent is None:
+                break
+            # common wrappers in publisher XML:
+            # ce:table-wrap, ce:float, ce:float-group, etc.
+            if first(".//ce:caption", parent) is not None or first(".//ce:label", parent) is not None:
+                container = parent
+                break
+            cur = parent
+
+        if container is not None:
+            label = first(".//ce:label", container)
+            caption = first(".//ce:caption", container)
+
+            # Elsevier often uses: <ce:caption><ce:simple-para>...</ce:simple-para></ce:caption>
+            cap_txt = self._xml_text(caption)
+            label_txt = self._xml_text(label)
+            if cap_txt or label_txt:
+                return f"{label_txt} {cap_txt}".strip()
+
+            # fallback: sometimes caption text is split into multiple paras
+            paras = findall(".//ce:caption//ce:simple-para", container)
+            if paras:
+                cap_txt = " ".join(self._xml_text(p) for p in paras if self._xml_text(p))
+                return f"{label_txt} {cap_txt}".strip()
+
+        # -------- 3) fallback: look at siblings of the container (if any) --------
+        # Some XML puts captions in a preceding sibling node.
+        if container is not None:
+            parent = parent_map.get(container)
+            if parent is not None:
+                siblings = list(parent)
+                try:
+                    idx = siblings.index(container)
+                except ValueError:
+                    idx = -1
+
+                # check a few siblings before/after for caption-ish nodes
+                for j in range(max(0, idx - 3), min(len(siblings), idx + 4)):
+                    sib = siblings[j]
+                    cap = first(".//ce:caption", sib)
+                    lab = first(".//ce:label", sib)
+                    cap_txt = self._xml_text(cap)
+                    lab_txt = self._xml_text(lab)
+                    if cap_txt or lab_txt:
+                        return f"{lab_txt} {cap_txt}".strip()
+
+        return ""
+
     def extract_tables_from_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
         Extract tables from a file using hybrid approach:
@@ -114,22 +240,31 @@ class LLMTableExtractor:
                 return []
             
             # Process each table with LLM
+
+            # --- Locate caption ---
+            parent_map = {child: parent for parent in tree.iter() for child in parent}
+            
             all_tables = []
             for i, table_elem in enumerate(table_elements):
+
+                # --- Locate caption (XML) ---
+                caption_text = self._find_xml_caption(table_elem, parent_map, ns)
+                if caption_text is None:
+                    caption_text = ""
+
                 self.logger.debug(f"Processing table {i+1}/{len(table_elements)} with LLM...")
                 
                 # Convert table element to string
                 table_xml = ET.tostring(table_elem, encoding='unicode')
                 
                 # Send individual table to LLM
-                table_result = self.extract_single_table_with_llm_xml(table_xml)
+                table_result = self.extract_single_table_with_llm_xml(table_xml, caption_text)
 
                 if table_result:
                     all_tables.append(table_result)
                     self.logger.debug(f"Successfully processed table {i+1}")
                 else:
                     self.logger.warning(f"Failed to process table {i+1} from xml")
-                    print('===table_result xml====', table_result)
                     quit()
             
             return all_tables
@@ -225,7 +360,6 @@ class LLMTableExtractor:
                     all_tables.append(table_result)
                 else:
                     self.logger.warning(f"Failed to process table {i+1} from html")
-                    print('===table_result html====', table_result)
                     quit()
 
             return all_tables
@@ -287,7 +421,7 @@ class LLMTableExtractor:
             self.logger.debug(f"[Caption Detection Error] {e}")
             return ""
         
-    def extract_single_table_with_llm_xml(self, table_xml: str) -> Dict[str, Any]:
+    def extract_single_table_with_llm_xml(self, table_xml: str, caption_text: str = "") -> Dict[str, Any]:
         """
         Extract a single table using LLM
         
@@ -298,14 +432,13 @@ class LLMTableExtractor:
             Dictionary with table data or None if failed
         """
         try:
-            prompt = self._create_single_table_prompt_xml(table_xml)
+            prompt = self._create_single_table_prompt_xml(table_xml, caption_text)
             
-            response = self.client.chat.completions.create(
-                model=self.model,
+            text, meta = self.client.chat(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at extracting structured table data from XML files. Extract the table data and return it as JSON."
+                        "content": "You are an expert at extracting structured table data from XML files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
                     },
                     {
                         "role": "user",
@@ -313,49 +446,39 @@ class LLMTableExtractor:
                     }
                 ],
                 max_tokens=3000,
-                temperature=0.0
+                response_format={
+                "type": "json_schema",
+                "json_schema": self.TABLE_SCHEMA,
+                },
+                temperature=0.0,
+                return_meta=True,
             )
-            self._log_cost(response,extra={"kind": "table_xml", "max_tokens": 3000, "temperature": 0.0})
+            try:
+                self._log_cost(meta, extra={"kind": "table_xml"})
+            except Exception as e:
+                self.logger.warning(f"[cost] cost could not be calculated: {e}")
             
-            result = response.choices[0].message.content
-            print('====PROMPT====', prompt)
-            print('===RESPONSE====', response)
-            print('====RESULT====', result)
-            result = self._parse_single_table_response(result)
+            result = self._parse_single_table_response(text)
             if result:
                 return result
             else:
-                # retry if result is None
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert at extracting structured table data from XML files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    max_tokens=3000,
-                    temperature=0.0
-                )
-                self._log_cost(response,extra={"kind": "table_xml", "max_tokens": 3000, "temperature": 0.0})
-
-                result = response.choices[0].message.content
-                print('====RETRY RESULT====', result)
-                print('===RETRY RESPONSE====', response)
-                return self._parse_single_table_response(result)
+                self.logger.error(f"Error processing single XML table with LLM: No result")
+                return None
             
         except Exception as e:
             self.logger.error(f"Error processing single XML table with LLM: {e}")
             return None
     
-    def _create_single_table_prompt_xml(self, table_xml: str) -> str:
+    def _create_single_table_prompt_xml(self, table_xml: str, caption_text: str = "") -> str:
         """Create prompt for single table extraction"""
+
+        caption_context = f"{caption_text}" if caption_text else ""
+
         return f"""
         Extract the table data from this XML table element. 
+
+        Caption: 
+        {caption_context}
 
         XML Table:
         {table_xml}
@@ -396,6 +519,8 @@ class LLMTableExtractor:
     
     def _parse_single_table_response(self, response: str) -> Dict[str, Any]:
         """Parse LLM response for single table"""
+
+        print("===RESPONSE===", response)
         try:
             # Extract JSON from response
             start_idx = response.find('{')
@@ -427,12 +552,11 @@ class LLMTableExtractor:
         try:
             prompt = self._create_single_table_html_prompt(table_html, caption_text)
             
-            response = self.client.chat.completions.create(
-                model=self.model,
+            text, meta = self.client.chat(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at extracting structured table data from HTML files. Extract the table data and return it as JSON."
+                        "content": "You are an expert at extracting structured table data from html files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
                     },
                     {
                         "role": "user",
@@ -440,39 +564,24 @@ class LLMTableExtractor:
                     }
                 ],
                 max_tokens=3000,
-                temperature=0.0
+                response_format={
+                "type": "json_schema",
+                "json_schema": self.TABLE_SCHEMA,
+                },
+                temperature=0.0,
+                return_meta=True,
             )
-            self._log_cost(response,extra={"kind": "table_html", "max_tokens": 3000, "temperature": 0.0})
+            try:
+                self._log_cost(meta, extra={"kind": "table_html"})
+            except Exception as e:
+                self.logger.warning(f"[cost] cost could not be calculated: {e}")
             
-            result = response.choices[0].message.content
-            print('====PROMPT====', prompt)
-            print('===RESPONSE====', response)
-            print('====RESULT====', result)
-            result = self._parse_single_table_response(result)
+            result = self._parse_single_table_response(text)
             if result:
                 return result
             else:
-                # retry if result is None
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert at extracting structured table data from html files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    max_tokens=3000,
-                    temperature=0.0
-                )
-                self._log_cost(response,extra={"kind": "table_html", "max_tokens": 3000, "temperature": 0.0})
-                result = response.choices[0].message.content
-                print('====RETRY RESULT====', result)
-                print('===RETRY RESPONSE====', response)
-                return self._parse_single_table_response(result)
+                self.logger.error(f"Error processing single HTML table with LLM: No Results")
+                return None
             
         except Exception as e:
             self.logger.error(f"Error processing single HTML table with LLM: {e}")
@@ -480,10 +589,14 @@ class LLMTableExtractor:
     
     def _create_single_table_html_prompt(self, table_html: str, caption_text: str = "") -> str:
         """Create prompt for single HTML table extraction"""
-        caption_context = f"\n\nTable Caption: {caption_text}" if caption_text else ""
+
+        caption_context = f"{caption_text}" if caption_text else ""
         
         return f"""
-        Extract the table data from this HTML table element.{caption_context}
+        Extract the table data from this HTML table element.
+        
+        Caption: 
+        {caption_context}
 
         HTML Table:
         {table_html}
@@ -514,27 +627,25 @@ class LLMTableExtractor:
         6. Handle merged cells appropriately (If there are merged cells, append merged content to connected cells)
 
         CRITICAL RULE FOR MERGED AND MULTI-ROW HEADERS:
-        - If a parent header spans multiple columns (using namest/nameend),
+        - If a parent header spans multiple columns,
         and there is a second header row that contains labels such as
         "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc.,
-        you MUST combine them into final column headers.
+        you MUST factor them into final column headers.
 
         IMPORTANT: Use the actual caption text provided above, not placeholder text.
         """
     
-    def _log_cost(self, response, extra: dict):
+    def _log_cost(self, text, extra: dict):
         """
         Writes a JSONL record to <run_dir>/cost/usage.jsonl
         Requires env var AEM_OCR_RUN_DIR (or falls back to CWD).
         """
         append_usage(
-            stage=stage_from_env("extract_tables"),
             run_id=run_id_from_env("unknown"),
-            resp=response,
+            resp=text,
             extra=extra or {},
         )
 
-    
     def _parse_llm_response(self, response: str) -> List[Dict[str, Any]]:
         """Parse the LLM response and extract tables"""
         try:
@@ -576,7 +687,6 @@ class LLMTableExtractor:
         Returns:
             List of saved CSV file paths
         """
-        import pandas as pd
         
         saved_files = []
         table_dir = os.path.join(output_dir, 'tables', doi.replace('/', '@'))
@@ -584,7 +694,6 @@ class LLMTableExtractor:
         
         for i, table in enumerate(tables):
             try:
-                print("====TABLE====", table)
                 # Create filename
                 label = table.get('label', f'Table_{i+1}')
                 filename = f"{label.replace(' ', '_').replace('.', '_')}.csv"
@@ -593,9 +702,6 @@ class LLMTableExtractor:
                 # Create DataFrame
                 headers = table.get('headers', [])
                 data = table.get('data', [])
-
-                print("====HEADERS====", headers)
-                print("====DATA====", data)
                 
                 if headers and data:
                     df = pd.DataFrame(data, columns=headers)

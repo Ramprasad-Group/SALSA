@@ -2,13 +2,6 @@
 """
 Complete dataset builder with LLM-generated TRANSFORMATION PLANS (not row-emission).
 
-Key changes vs your current script:
-- GPT is used to infer a compact, generalizable transform PLAN per series_label (figures) and per table.
-- Python applies that plan deterministically to full-resolution data (no per-point GPT rewriting).
-- time(h) is populated ONLY if x_semantic == "time"; otherwise time(h) is "0".
-- Non-time x axes are preserved in extra columns: x_name, x_unit, x_value.
-
-
 Usage:
   python complete_dataset.py --file_path ... --output_dir ... --index_csv_path ... \
       --figures_tables_dir ... --extracted_figures_root ... \
@@ -26,11 +19,11 @@ import json
 from tqdm import tqdm
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from llm_client import get_llm_client
 
-from openai import OpenAI
 
 sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
-from ui.openai_cost import append_usage, stage_from_env, run_id_from_env
+from ui.openai_cost import append_usage, run_id_from_env
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../paper-downloader"))
 sys.path.insert(0, parent_dir)
@@ -38,11 +31,11 @@ from paper_downloader import config, utils
 
 # --- new helper module (in same directory as this script) ---
 from transform_plans import (
-    build_series_plan_payload,
+    build_figures_global_plan_payload,
     build_table_plan_payload,
-    infer_series_transform_plan,
-    infer_table_transform_plan,
-    apply_series_plan_to_points,
+    infer_figures_plan,
+    infer_tables_plan,
+    apply_global_figure_plan,
     apply_table_plan_to_df,
     ensure_plan_cache_dir,
     load_cached_plan,
@@ -73,12 +66,6 @@ parser.add_argument('--figures_tables_dir', default='',
 parser.add_argument('--exclude_full_text', default=False, action='store_true',
                     help="Exclude parsed full text from LLM prompt (reduces token usage drastically)")
 
-parser.add_argument('--openai_api_key', default=os.getenv("OPENAI_API_KEY", ""),
-                    help="OpenAI API key (or set OPENAI_API_KEY env var)")
-parser.add_argument('--openai_base_url', default=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-                    help="OpenAI base URL (default: https://api.openai.com/v1)")
-parser.add_argument('--openai_model', default='gpt-4o', help="Model name (default: gpt-4o)")
-
 # allow skipping LLM completion (still writes combined json)
 parser.add_argument('--skip_llm', action='store_true', help="Skip GPT plan step (will use heuristics only)")
 
@@ -105,20 +92,23 @@ ensure_plan_cache_dir(PLAN_CACHE_DIR)
 # ----------------------------
 # Output schema
 # ----------------------------
-DATASET_COLUMNS = [
-    "Sample Name",
-    "time(h)",
-    "relative humidity(%)",
-    "solvent type",
-    "solvent concentration (%)",
-    "degradation test temp (C)",
-    "prop test temp (C)",
-    "property",
-    "value",
-    "DOI",
-    "source_kind",   # "figure" or "table"
-    "source_name",   # figure_name or table_name
-]
+# DATASET_COLUMNS = [
+#     "Sample Name",
+#     "time(h)",
+#     "relative humidity(%)",
+#     "solvent type",
+#     "solvent concentration (%)",
+#     "degradation test temp (C)",
+#     "prop test temp (C)",
+#     "property",
+#     "value",
+#     "DOI",
+#     "source_kind",
+#     "source_name",
+# ]
+
+from transform_plans import OUTPUT_COLUMNS as DATASET_COLUMNS
+
 
 
 # ----------------------------
@@ -126,7 +116,6 @@ DATASET_COLUMNS = [
 # ----------------------------
 def _log_cost(response, extra: dict):
     append_usage(
-        stage=stage_from_env("complete_dataset_plans"),
         run_id=run_id_from_env("unknown"),
         resp=response,
         extra=extra or {},
@@ -274,60 +263,6 @@ def subsample_series(g: pd.DataFrame, step: int = 10) -> pd.DataFrame:
     keep_pos.add(n - 1)
     return g.iloc[sorted(keep_pos)].copy()
 
-# def collect_extracted_figure_data(modified_doi: str) -> List[Dict[str, Any]]:
-#     root = (args.extracted_figures_root or "").strip()
-#     if root == "":
-#         return []
-
-#     doi_dir = os.path.join(root, modified_doi)
-#     if not os.path.isdir(doi_dir):
-#         log.warning(f"--extracted_figures_root provided, but no dir for DOI: {doi_dir}")
-#         return []
-
-#     extracted: List[Dict[str, Any]] = []
-#     step = 10
-
-#     for fp in Path(doi_dir).glob("**/final/final_dataset.csv"):
-#         try:
-#             df = pd.read_csv(fp)
-#             if df.empty:
-#                 continue
-
-#             keep_cols = ['series_label', 'x_name', 'x_unit', 'x_value', 'y_name', 'y_unit', 'y_value']
-#             missing = [c for c in keep_cols if c not in df.columns]
-#             if missing:
-#                 log.warning(f"Skipping {fp} because missing columns: {missing}")
-#                 continue
-
-#             series_payloads = []
-#             for series_label, g in df.groupby("series_label", dropna=False):
-#                 g_sub = subsample_series(g, step=step)
-#                 for col in ["x_value", "y_value"]:
-#                     g_sub[col] = pd.to_numeric(g_sub[col], errors="coerce").round(6)
-#                     g_sub[col] = g_sub[col].where(g_sub[col].notna(), "")
-
-#                 series_payloads.append({
-#                     "series_label": str(series_label),
-#                     "columns": list(g_sub.columns),
-#                     "rows": g_sub.to_dict(orient="records"),
-#                     # store path so we can reload full-res later
-#                     "source_csv_path": str(fp),
-#                 })
-
-#             extracted.append({
-#                 "modified_doi": modified_doi,
-#                 "path": str(fp),
-#                 "type": "csv",
-#                 "content": {
-#                     "columns": keep_cols,
-#                     "series_payloads": series_payloads,
-#                 },
-#             })
-
-#         except Exception as e:
-#             log.warning(f"Failed to read plextract final_dataset.csv {fp}: {e}")
-
-#     return extracted
 
 def load_all_extracted_figure_points(modified_doi: str) -> pd.DataFrame:
     root = (args.extracted_figures_root or "").strip()
@@ -349,119 +284,92 @@ def load_all_extracted_figure_points(modified_doi: str) -> pd.DataFrame:
             pass
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-
-# ----------------------------
-# OpenAI client
-# ----------------------------
-def make_openai_client() -> OpenAI:
-    if not args.openai_api_key and not args.skip_llm:
-        raise RuntimeError("No OpenAI API key found. Set OPENAI_API_KEY or pass --openai_api_key.")
-    return OpenAI(api_key=args.openai_api_key, base_url=args.openai_base_url)
-
 # ----------------------------
 # Completion using PLANS
 # ----------------------------
 def complete_dataset_from_figures_with_plans(
-    complete_record: Dict[str, Any],
-    client: Optional[OpenAI],
-    model: str,
+    complete_record,
+    client,
 ) -> pd.DataFrame:
     doi = complete_record.get("doi", "")
-    extracted = complete_record.get("extracted_figure_data", [])
+    ef = complete_record.get("extracted_figure_data", {})
 
-    # gather series payloads
-    series_payloads = []
-    for item in extracted:
-        content = item.get("content", {})
-        sps = content.get("series_payloads", [])
-        if isinstance(sps, list) and sps:
-            series_payloads.extend(sps)
-
-    if not series_payloads:
-        log.warning("No extracted_figure_data.series_payloads found for figures. Returning empty df_figs.")
+    # NEW FORMAT: ef is a dict with rows
+    if not isinstance(ef, dict) or not ef.get("rows"):
+        log.warning("No extracted_figure_data.rows found for figures. Returning empty df_figs.")
         return pd.DataFrame(columns=DATASET_COLUMNS)
 
-    # For full-resolution apply: reload each source CSV and filter to that series_label
-    all_rows_out: List[Dict[str, Any]] = []
+    df_points = pd.DataFrame(ef["rows"])
+    if df_points.empty:
+        log.warning("extracted_figure_data.rows present but empty. Returning empty df_figs.")
+        return pd.DataFrame(columns=DATASET_COLUMNS)
 
-    figures = complete_record.get("figures", [])
-    tables = complete_record.get("tables", [])
-    full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
-
-    for sp in series_payloads:
-        series_label = sp.get("series_label", "")
-        rows_sub = sp.get("rows", [])
-        src_csv = sp.get("source_csv_path", "")
-
-        if not series_label or not src_csv:
+    # Build figure snippets (captions) for context
+    figure_snips = []
+    for f in (complete_record.get("figures", []) or [])[:8]:
+        if not isinstance(f, dict):
             continue
+        md = f.get("metadata") or {}
+        cap = md.get("caption") or md.get("figure_caption") or ""
+        figure_snips.append({"figure_name": f.get("figure_name", ""), "caption": str(cap)[:800]})
 
-        # Load full-resolution for this series_label
-        try:
-            df_full = pd.read_csv(src_csv)
-            df_full = df_full[df_full["series_label"].astype(str) == str(series_label)]
-            df_full = df_full[['series_label', 'x_name', 'x_unit', 'x_value', 'y_name', 'y_unit', 'y_value']].copy()
-        except Exception as e:
-            log.warning(f"Could not reload full-res points for series={series_label} from {src_csv}: {e}")
-            # fallback: just use subsampled rows
-            df_full = pd.DataFrame(rows_sub)
+    # Build ONE global payload
+    plan_payload = build_figures_global_plan_payload(
+        doi=doi,
+        df_points=df_points,
+        figure_snips=figure_snips,
+        max_series=30,
+    )
 
-        # Heuristic pre-classification
-        hx = heuristic_axis_semantics(
-            x_name=str(df_full["x_name"].iloc[0]) if "x_name" in df_full and len(df_full) else "",
-            x_unit=str(df_full["x_unit"].iloc[0]) if "x_unit" in df_full and len(df_full) else "",
-        )
+    cache_key = f"figures_global::{doi}"
+    plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
 
-        # Build plan payload
-        plan_payload = build_series_plan_payload(
-            doi=doi,
-            series_label=str(series_label),
-            points_subsample=rows_sub,
-            figures=figures,
-            tables=tables,
-            full_text=full_text,
-            heuristic=hx,
-        )
+    if plan is None:
+        if args.skip_llm or client is None:
+            # heuristic fallback based on most common x axis
+            x_name0 = str(df_points["x_name"].dropna().iloc[0]) if "x_name" in df_points and df_points["x_name"].dropna().shape[0] else ""
+            x_unit0 = str(df_points["x_unit"].dropna().iloc[0]) if "x_unit" in df_points and df_points["x_unit"].dropna().shape[0] else ""
+            hx = heuristic_axis_semantics(x_name=x_name0, x_unit=x_unit0)
+            plan = {
+                "scope": {"doi": doi, "source_kind": "figure"},
+                "global": {
+                    "default_x_semantic": hx.get("x_semantic", "other"),
+                    "property_ontology": {},
+                    "units": {"time_to_h": True},
+                },
+                "series_overrides": [],
+                "confidence": {"x_semantic": hx.get("confidence", 0.5), "y_semantic": 0.0, "context": 0.0},
+                "evidence": {"x_reason": hx.get("reason", "heuristic")},
+            }
+        else:
+            text, plan, meta = infer_figures_plan(client, plan_payload)
+            try:
+                _log_cost(meta, extra={"kind": "figure_plan"})
+            except Exception as e:
+                print(f"[error completing dataset] cannot log cost: {e}")
 
-        cache_key = f"series::{doi}::{series_label}::{hx.get('x_semantic','')}"
-        plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
+        save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
 
-        # Infer (or heuristic-only)
-        if plan is None:
-            if args.skip_llm or client is None:
-                # heuristic-only "plan"
-                plan = {
-                    "scope": {"doi": doi, "series_label": series_label, "source_kind": "figure"},
-                    "semantics": {
-                        "x_semantic": hx.get("x_semantic", "other"),
-                        "y_semantic": "",
-                    },
-                    "constants": {"DOI": doi},
-                    "confidence": {"x_semantic": hx.get("confidence", 0.5)},
-                    "evidence": {"x_reason": hx.get("reason", "heuristic")},
-                }
-            else:
-                resp, plan = infer_series_transform_plan(client, model, plan_payload)
-                _log_cost(resp, extra={"kind": "series_plan", "series_label": series_label, "model": model})
-            save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
+    # Apply plan deterministically to ALL points
+    df_figs = apply_global_figure_plan(df_points=df_points, plan=plan, doi=doi)
 
-        # Apply plan
-        points = df_full.to_dict(orient="records")
-        rows_out = apply_series_plan_to_points(
-            points=points,
-            plan=plan,
-            doi=doi,
-            drop_non_time=args.drop_non_time_figure_rows,
-        )
-        all_rows_out.extend(rows_out)
+    # Optional: drop non-time rows if requested
+    if args.drop_non_time_figure_rows:
+        # keep only rows where time(h) is non-empty
+        df_figs = df_figs[df_figs["time(h)"].astype(str).str.strip() != ""]
 
-    df = pd.DataFrame(all_rows_out).reindex(columns=DATASET_COLUMNS, fill_value="")
-    return df.fillna("").astype(str)
+    # Add provenance
+    if "source_kind" not in df_figs.columns:
+        df_figs["source_kind"] = "figure"
+    if "source_name" not in df_figs.columns:
+        df_figs["source_name"] = ""
+
+    df_figs = df_figs.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
+    return df_figs
 
 def complete_dataset_from_tables_with_plans(
-    complete_record: Dict[str, Any],
-    client: Optional[OpenAI],
-    model: str,
+    complete_record,
+    client,
 ) -> pd.DataFrame:
     doi = complete_record.get("doi", "")
     tables = complete_record.get("tables", [])
@@ -507,8 +415,11 @@ def complete_dataset_from_tables_with_plans(
                     "evidence": {"reason": "skip_llm or no client"},
                 }
             else:
-                resp, plan = infer_table_transform_plan(client, model, plan_payload)
-                _log_cost(resp, extra={"kind": "table_plan", "table_name": table_name, "model": model})
+                text, plan, meta = infer_tables_plan(client, plan_payload)
+                try:
+                    _log_cost(meta, extra={"kind": "table_plan"})
+                except Exception as e:
+                    print(f"[error completing dataset] cannot log cost: {e}")
             save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
 
         rows_out = apply_table_plan_to_df(df_table=df_table, plan=plan, doi=doi)
@@ -518,12 +429,11 @@ def complete_dataset_from_tables_with_plans(
     return df.fillna("").astype(str)
 
 def complete_dataset_with_plans(
-    complete_record: Dict[str, Any],
-    client: Optional[OpenAI],
-    model: str,
+    complete_record,
+    client,
 ) -> pd.DataFrame:
-    df_tables = complete_dataset_from_tables_with_plans(complete_record, client, model)
-    df_figs = complete_dataset_from_figures_with_plans(complete_record, client, model)
+    df_tables = complete_dataset_from_tables_with_plans(complete_record, client)
+    df_figs = complete_dataset_from_figures_with_plans(complete_record, client)
 
     df_all = pd.concat([df_tables, df_figs], ignore_index=True)
     df_all = df_all.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
@@ -534,8 +444,10 @@ def complete_dataset_with_plans(
 # Main
 # ----------------------------
 def main():
+    client = get_llm_client()
+
     df = load_file()
-    client = None if args.skip_llm else make_openai_client()
+    client = None if args.skip_llm else client
 
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
         doi = str(row[args.doi_column]).strip()
@@ -566,7 +478,13 @@ def main():
 
         tables = collect_tables(doi, tables_dir)
         figures = collect_figures(doi, figures_dir)
-        extracted_figure_data = load_all_extracted_figure_points(modified_doi)
+        # extracted_figure_data = load_all_extracted_figure_points(modified_doi)
+        df_fig = load_all_extracted_figure_points(modified_doi)
+        extracted_figure_data = {
+            "type": "plextract_final_dataset",
+            "columns": list(df_fig.columns),
+            "rows": df_fig.replace([np.inf, -np.inf], np.nan).where(pd.notna(df_fig), None).to_dict(orient="records"),
+        }
 
         complete_record = {
             "doi": doi,
@@ -588,9 +506,11 @@ def main():
 
         # Build dataset per DOI
         try:
-            dataset_df = complete_dataset_with_plans(complete_record, client, model=args.openai_model)
+            dataset_df = complete_dataset_with_plans(complete_record, client)
         except Exception as e:
-            log.error(f"Plan-based completion failed for DOI {doi}: {e}")
+            log.exception(f"Plan-based completion failed for DOI {doi}: {e}")
+            # quick type debug
+            log.error(f"types: tables={type(tables)}, figures={type(figures)}, extracted_figure_data={type(extracted_figure_data)}")
             continue
 
         dataset_csv_path = os.path.join(args.output_dir, f"{modified_doi}_dataset.csv")
@@ -600,7 +520,7 @@ def main():
         except Exception as e:
             log.error(f"Failed to write dataset CSV for DOI {doi} to {dataset_csv_path}: {e}")
 
-    print("====Finished completing dataset (plan-based)====")
+    print("====Finished completing dataset====")
 
 if __name__ == "__main__":
     main()

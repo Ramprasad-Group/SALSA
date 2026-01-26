@@ -12,7 +12,6 @@ from typing import Any, Dict, Optional
 @dataclass
 class UsageRecord:
     ts: float
-    stage: str                 # e.g., "extract_figures", "filter_tables", "complete_dataset"
     run_id: str
     doi: Optional[str]
     artifact_id: Optional[str] # figure id / table id / etc
@@ -25,13 +24,11 @@ class UsageRecord:
     total_tokens: int
     extra: Dict[str, Any]
 
-
 def _safe_int(x, default=0) -> int:
     try:
         return int(x)
     except Exception:
         return default
-
 
 def extract_usage_fields(resp: Any) -> Dict[str, int]:
     """
@@ -40,6 +37,35 @@ def extract_usage_fields(resp: Any) -> Dict[str, int]:
       - Chat Completions: resp.usage is an object with prompt_tokens / completion_tokens / total_tokens
     """
     usage = getattr(resp, "usage", None)
+
+    # -------- Case 0: meta dict from LLMClient.chat(return_meta=True) --------
+    if isinstance(resp, dict) and "usage" in resp:
+        u = resp.get("usage") or {}
+
+        # OpenAI: usage might be an object (prompt_tokens/...)
+        if not isinstance(u, dict):
+            prompt_tokens = _safe_int(getattr(u, "prompt_tokens", 0))
+            completion_tokens = _safe_int(getattr(u, "completion_tokens", 0))
+            total_tokens = _safe_int(getattr(u, "total_tokens", prompt_tokens + completion_tokens))
+            return dict(
+                input_tokens=prompt_tokens,
+                cached_tokens=0,
+                output_tokens=completion_tokens,
+                reasoning_tokens=0,
+                total_tokens=total_tokens,
+            )
+
+        # Ollama: usage dict already normalized by our wrapper
+        input_tokens = _safe_int(u.get("input_tokens", 0))
+        output_tokens = _safe_int(u.get("output_tokens", 0))
+        total_tokens = _safe_int(u.get("total_tokens", input_tokens + output_tokens))
+        return dict(
+            input_tokens=input_tokens,
+            cached_tokens=_safe_int(u.get("cached_tokens", 0)),
+            output_tokens=output_tokens,
+            reasoning_tokens=_safe_int(u.get("reasoning_tokens", 0)),
+            total_tokens=total_tokens,
+        )
 
     # -------- Case 1: Responses API (dict-like) --------
     if isinstance(usage, dict):
@@ -91,7 +117,6 @@ DEFAULT_COST_ROOT = Path("/home/wschertzer3/AEM_OCR/src")
 
 def append_usage(
     *,
-    stage: str,
     run_id: str,
     resp: Any,
     doi: Optional[str] = None,
@@ -110,12 +135,11 @@ def append_usage(
     u = extract_usage_fields(resp)
     rec = UsageRecord(
         ts=time.time(),
-        stage=stage,
         run_id=run_id,
         doi=doi,
         artifact_id=artifact_id,
-        model=getattr(resp, "model", None),
-        service_tier=getattr(resp, "service_tier", None),
+        model=(resp.get("model") if isinstance(resp, dict) else getattr(resp, "model", None)),
+        service_tier=(resp.get("service_tier") if isinstance(resp, dict) else getattr(resp, "service_tier", None)),
         input_tokens=u["input_tokens"],
         cached_tokens=u["cached_tokens"],
         output_tokens=u["output_tokens"],
@@ -128,10 +152,6 @@ def append_usage(
         f.write(json.dumps(rec.__dict__, ensure_ascii=False) + "\n")
 
     return out_path
-
-
-def stage_from_env(default: str = "unknown") -> str:
-    return os.getenv("AEM_OCR_STAGE", default)
 
 
 def run_id_from_env(default: str = "unknown") -> str:

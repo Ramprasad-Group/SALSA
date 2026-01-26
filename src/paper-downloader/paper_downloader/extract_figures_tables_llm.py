@@ -16,7 +16,7 @@ from pathlib import Path
 from tqdm import tqdm
 import datetime
 import json
-from openai import OpenAI
+from llm_client import get_llm_client
 import glob
 import base64
 import mimetypes
@@ -24,7 +24,7 @@ import textwrap
 from PIL import Image
 
 sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
-from ui.openai_cost import append_usage, stage_from_env, run_id_from_env
+from ui.openai_cost import append_usage, run_id_from_env
 
 
 
@@ -39,6 +39,10 @@ from parsers.wiley_extractor import extract_wiley_figures, extract_wiley_tables
 from parsers.springer_extractor import extract_springer_figures, extract_springer_tables
 from parsers.rsc_extractor import extract_rsc_figures, extract_rsc_tables
 from parsers.nature_extractor import extract_nature_figures, extract_nature_tables
+
+
+client = get_llm_client()
+
 
 def setup_logging(log_level='INFO', log_file=None):
     """Setup logging configuration"""
@@ -70,10 +74,10 @@ def setup_logging(log_level='INFO', log_file=None):
     
     return logger
 
-def make_client(llm_url, api_key_string):
-    base_url = os.getenv("LLM_BASE_URL", llm_url)
-    api_key = os.getenv("LLM_API_KEY", api_key_string)
-    return OpenAI(base_url=base_url, api_key=api_key)
+# def make_client(llm_url, api_key_string):
+#     base_url = os.getenv("LLM_BASE_URL", llm_url)
+#     api_key = os.getenv("LLM_API_KEY", api_key_string)
+#     return OpenAI(base_url=base_url, api_key=api_key)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Extract figures and tables using LLM for robust parsing")
@@ -414,7 +418,7 @@ def debug_publisher_extraction(output_dir, llm_extractor, extract_figures=True, 
         else:
             logger.warning(f"Test file not found for {publisher}: {file_path}")
 
-def figure_test(meta: dict, model: str = "gpt-4o", use_image: bool = True) -> bool:
+def figure_test(meta: dict, use_image: bool = True) -> bool:
     """
     Use OpenAI to determine if a figure is a TRUE time-series plot of
     ionic/hydroxide conductivity (or alkaline stability) vs time,
@@ -443,10 +447,10 @@ def figure_test(meta: dict, model: str = "gpt-4o", use_image: bool = True) -> bo
     if not caption.strip() and (not image_path or not os.path.exists(image_path)):
         return False
 
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        organization=os.getenv("OPENAI_ORGANIZATION")
-    )
+    # client = OpenAI(
+    #     api_key=os.getenv("OPENAI_API_KEY"),
+    #     organization=os.getenv("OPENAI_ORGANIZATION")
+    # )
 
     # client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
 
@@ -455,28 +459,26 @@ def figure_test(meta: dict, model: str = "gpt-4o", use_image: bool = True) -> bo
         {
             "type": "text",
             "text": f"""
-You are a materials scientist specializing in anion exchange membranes.
+        Decide whether this figure is a TRUE time-series plot of
+        ionic/hydroxide conductivity (or alkaline stability) versus time (including remaining conductivity).
 
-Decide whether this figure is a TRUE time-series plot of
-ionic/hydroxide conductivity (or alkaline stability) versus time (including remaining conductivity).
+        Use BOTH the caption and the visual contents (axes labels, tick labels, legends).
 
-Use BOTH the caption and the visual contents (axes labels, tick labels, legends).
+        A figure qualifies ONLY if ALL of the following are true:
+        - It shows conductivity / ionic conductivity / hydroxide conductivity OR alkaline stability / retention.
+        - The x-axis (or time dimension) is clearly time (e.g. s, min, h, hr, day, d, time).
+        - It is not just before/after comparisons, spectra (e.g. FTIR, NMR, XRD), SEM/TEM images, photographs,
+        IEC-dependence, RH-dependence, temperature-dependence, or other non-time axes.
 
-A figure qualifies ONLY if ALL of the following are true:
-- It shows conductivity / ionic conductivity / hydroxide conductivity OR alkaline stability / retention.
-- The x-axis (or time dimension) is clearly time (e.g. s, min, h, hr, day, d, time).
-- It is not just before/after comparisons, spectra (e.g. FTIR, NMR, XRD), SEM/TEM images, photographs,
-  IEC-dependence, RH-dependence, temperature-dependence, or other non-time axes.
+        Caption:
+        \"\"\"{caption}\"\"\"
 
-Caption:
-\"\"\"{caption}\"\"\"
-
-Answer strictly with one word:
-- "YES" if the plot shows conductivity / stability versus time.
-- "NO" otherwise.
-""".strip()
-        }
-    ]
+        Answer strictly with one word:
+        - "YES" if the plot shows conductivity / stability versus time.
+        - "NO" otherwise.
+        """.strip()
+                }
+            ]
 
     # Attach image if we have one and we're allowed to use it
     if use_image and image_path and os.path.exists(image_path):
@@ -492,31 +494,40 @@ Answer strictly with one word:
             print(f"[vision] Error encoding image {image_path}: {e}")
 
     try:
-        response = client.chat.completions.create(
-            model=model,  # vision-capable model
+        text, meta = client.chat(
             messages=[
+                {
+                    "role": "system", 
+                    "content": "You are an expert at identifying relevant figures. Identify if a figure is relevent, respond only ""YES"" or ""NO""."
+                },
                 {
                     "role": "user",
                     "content": content
                 }
             ],
-            max_tokens=5,
+            max_tokens=80,
             temperature=0.0,
+            return_meta=True
         )
-        _log_cost(response,
-            extra={
-                "kind": "filter_figure",
-                "model": model,
-                "used_image": bool(use_image and image_path and os.path.exists(image_path)),
-            },
-        )
-        result = response.choices[0].message.content.strip().upper()
+        # print('=====FIGURE CONTENT=====', content)
+        print("====FIGURE_TEST====", text, meta)
+        try:
+            _log_cost(meta,
+                extra={
+                    "kind": "filter_figure",
+                    "used_image": bool(use_image and image_path and os.path.exists(image_path)),
+                },
+            )
+        except Exception as e:
+            print(f"[cost] cost could not be calculated: {e}")
+        result = text.strip().upper()
+        print("===TEXT, RESULT===", text, result)
         return result.startswith("YES")
     except Exception as e:
-        print(f"[OpenAI error filtering figure]: {e}")
+        print(f"[error filtering figure]: {e}")
         return False
 
-def table_test(meta: dict, model: str = "gpt-4o") -> bool:
+def table_test(meta: dict) -> bool:
     """
     Use OpenAI to determine whether a table describes
     hydroxide/ionic conductivity (or alkaline/chemical stability) as a function of time,
@@ -533,50 +544,65 @@ def table_test(meta: dict, model: str = "gpt-4o") -> bool:
     # Load a compact text preview of the table
     table_preview = _load_table_preview(table_path) if table_path else ""
 
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        organization=os.getenv("OPENAI_ORGANIZATION")
-    )
+    # client = OpenAI(
+    #     api_key=os.getenv("OPENAI_API_KEY"),
+    #     organization=os.getenv("OPENAI_ORGANIZATION")
+    # )
     # client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
 
-    # Build prompt with BOTH caption and preview
-    prompt = f"""
-You are a materials science expert working on anion-exchange membranes.
+    # Build content with BOTH caption and preview
+    content = f"""
+        Decide whether this table describes hydroxide/ionic conductivity
+        OR alkaline/chemical stability as a function of time.
 
-Decide whether this table describes hydroxide/ionic conductivity
-OR alkaline/chemical stability as a function of time.
+        Use BOTH the caption and the table contents.
 
-Use BOTH the caption and the table contents.
+        Rules:
+        - Return ONLY one word:
+        - "YES" if (a) the quantity is conductivity / ionic conductivity / hydroxide conductivity
+            or alkaline/chemical stability/retention, AND
+            (b) the table contains a clear time dimension (e.g. time, h, hr, hours, days, d, etc.).
+        - Return "NO" otherwise.
 
-Rules:
-- Return ONLY one word:
-  - "YES" if (a) the quantity is conductivity / ionic conductivity / hydroxide conductivity
-    or alkaline/chemical stability/retention, AND
-    (b) the table contains a clear time dimension (e.g. time, h, hr, hours, days, d, etc.).
-  - Return "NO" otherwise.
+        Caption:
+        \"\"\"{caption}\"\"\"
 
-Caption:
-\"\"\"{caption}\"\"\"
-
-Table contents (preview, CSV-like):
-\"\"\"{table_preview}\"\"\"
-""".strip()
+        Table contents (preview, CSV-like):
+        \"\"\"{table_preview}\"\"\"
+        """.strip()
 
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=5,
+        text, meta = client.chat(
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "You are an expert at identifying relevant tables. Identify if a tables is relevent, respond only ""YES"" or ""NO""."
+                },
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
+            max_tokens=80,
             temperature=0.0,
+            return_meta=True,
         )
-        _log_cost(
-            response,
-            extra={"kind": "filter_table", "model": model},
-        )
-        result = response.choices[0].message.content.strip().upper()
+        print('=====TABLE CONTENT=====', content)
+        print("====TABLE_TEST====", text, meta)
+        try:
+            _log_cost(meta,
+                extra={
+                    "kind": "filter_figure",
+                    "used_image": bool(use_image and image_path and os.path.exists(image_path)),
+                },
+            )
+        except Exception as e:
+            print(f"[cost] cost could not be calculated: {e}")
+        result = text.strip().upper()
+        print("===TEXT, RESULT===", text, result)
         return result.startswith("YES")
     except Exception as e:
-        print(f"[OpenAI error filtering table]: {e}")
+        print(f"[error filtering table]: {e}")
         return False
 
 def filter_figures(output_dir: str):
@@ -650,7 +676,6 @@ def _log_cost(response, extra: dict):
         Requires env var AEM_OCR_RUN_DIR (or falls back to CWD).
         """
         append_usage(
-            stage=stage_from_env("extract_tables"),
             run_id=run_id_from_env("unknown"),
             resp=response,
             extra=extra or {},
