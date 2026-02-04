@@ -20,6 +20,8 @@ from tqdm import tqdm
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from llm_client import get_llm_client
+from dataclasses import dataclass
+import hashlib
 
 
 sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
@@ -30,18 +32,17 @@ sys.path.insert(0, parent_dir)
 from paper_downloader import config, utils
 
 # --- new helper module (in same directory as this script) ---
-from transform_plans import (
-    build_figures_global_plan_payload,
-    build_table_plan_payload,
-    infer_figures_plan,
-    infer_tables_plan,
-    apply_global_figure_plan,
-    apply_table_plan_to_df,
-    ensure_plan_cache_dir,
-    load_cached_plan,
-    save_cached_plan,
-    heuristic_axis_semantics,
+from row_emitter import (
+    OUTPUT_COLUMNS as DATASET_COLUMNS,
+    ensure_cache_dir,
+    infer_rows_for_table,
+    infer_rows_for_figure_dataset,
+    subsample_figure_points,
 )
+
+from figure_plan import infer_figure_series_plans, apply_figure_series_plans
+
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--file_path', default='/home/wschertzer3/AEM_OCR/src/doi-inputs/validate_paper_download.csv',
@@ -86,30 +87,8 @@ log = utils.setup_logger(log_file, logger_name='complete_datasets')
 
 Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-PLAN_CACHE_DIR = args.plan_cache_dir.strip() or os.path.join(args.output_dir, "plans")
-ensure_plan_cache_dir(PLAN_CACHE_DIR)
-
-# ----------------------------
-# Output schema
-# ----------------------------
-# DATASET_COLUMNS = [
-#     "Sample Name",
-#     "time(h)",
-#     "relative humidity(%)",
-#     "solvent type",
-#     "solvent concentration (%)",
-#     "degradation test temp (C)",
-#     "prop test temp (C)",
-#     "property",
-#     "value",
-#     "DOI",
-#     "source_kind",
-#     "source_name",
-# ]
-
-from transform_plans import OUTPUT_COLUMNS as DATASET_COLUMNS
-
-
+ROW_CACHE_DIR = args.plan_cache_dir.strip() or os.path.join(args.output_dir, "row_cache")
+ensure_cache_dir(ROW_CACHE_DIR)
 
 # ----------------------------
 # Utilities: cost logging
@@ -206,6 +185,7 @@ def collect_tables(doi: str, tables_dir: str) -> List[Dict[str, Any]]:
 # ----------------------------
 # Agglomeration: Figures
 # ----------------------------
+
 def collect_figures(doi: str, figures_dir: str) -> List[Dict[str, Any]]:
     if not os.path.isdir(figures_dir):
         log.warning(f"Figures directory does not exist for DOI {doi}: {figures_dir}")
@@ -250,61 +230,254 @@ def collect_figures(doi: str, figures_dir: str) -> List[Dict[str, Any]]:
 # ----------------------------
 # Extracted plextract figure data
 # ----------------------------
-def subsample_series(g: pd.DataFrame, step: int = 10) -> pd.DataFrame:
-    g = g.copy()
-    x_num = pd.to_numeric(g["x_value"], errors="coerce")
-    if x_num.notna().any():
-        g = g.assign(_x_num=x_num).sort_values("_x_num", kind="mergesort").drop(columns="_x_num")
-    n = len(g)
-    if n <= 2:
-        return g
-    keep_pos = set(range(0, n, step))
-    keep_pos.add(0)
-    keep_pos.add(n - 1)
-    return g.iloc[sorted(keep_pos)].copy()
 
+# def load_all_extracted_figure_points(modified_doi: str) -> pd.DataFrame:
+#     root = (args.extracted_figures_root or "").strip()
+#     if not root:
+#         return pd.DataFrame()
 
-def load_all_extracted_figure_points(modified_doi: str) -> pd.DataFrame:
+#     doi_dir = os.path.join(root, modified_doi)
+#     if not os.path.isdir(doi_dir):
+#         return pd.DataFrame()
+
+#     dfs = []
+#     for fp in Path(doi_dir).glob("**/final/final_dataset.csv"):
+#         try:
+#             df = pd.read_csv(fp)
+#             keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
+#             if all(c in df.columns for c in keep):
+#                 dfs.append(df[keep].copy())
+#         except Exception:
+#             pass
+#     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+@dataclass
+class FigurePointDataset:
+    name: str          # stable identifier for this final_dataset.csv
+    path: str
+    df: pd.DataFrame
+
+def _stable_name_from_path(fp: Path) -> str:
+    # short stable id, avoids insanely long cache keys
+    h = hashlib.sha1(str(fp).encode("utf-8")).hexdigest()[:10]
+    return f"{fp.parent.parent.name}__{fp.parent.name}__{fp.stem}__{h}"
+    # Example: <some_dir>__final__final_dataset__a1b2c3d4e5
+
+def load_extracted_figure_datasets(modified_doi: str) -> List[FigurePointDataset]:
     root = (args.extracted_figures_root or "").strip()
     if not root:
-        return pd.DataFrame()
+        return []
 
-    doi_dir = os.path.join(root, modified_doi)
-    if not os.path.isdir(doi_dir):
-        return pd.DataFrame()
+    doi_dir = Path(root) / modified_doi
+    if not doi_dir.is_dir():
+        return []
 
-    dfs = []
-    for fp in Path(doi_dir).glob("**/final/final_dataset.csv"):
+    keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
+
+    out: List[FigurePointDataset] = []
+    for fp in doi_dir.glob("**/final/final_dataset.csv"):
         try:
             df = pd.read_csv(fp)
-            keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
-            if all(c in df.columns for c in keep):
-                dfs.append(df[keep].copy())
+            if not all(c in df.columns for c in keep):
+                continue
+            df = df[keep].copy()
+            if df.empty:
+                continue
+            out.append(FigurePointDataset(
+                name=_stable_name_from_path(fp),
+                path=str(fp),
+                df=df
+            ))
         except Exception:
-            pass
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+            continue
+
+    return out
+
 
 # ----------------------------
 # Completion using PLANS
 # ----------------------------
-def complete_dataset_from_figures_with_plans(
-    complete_record,
-    client,
-) -> pd.DataFrame:
+# def complete_dataset_from_figures_with_plans(
+#     complete_record,
+#     client,
+#     ) -> pd.DataFrame:
+#     doi = complete_record.get("doi", "")
+#     ef = complete_record.get("extracted_figure_data", {})
+
+#     # NEW FORMAT: ef is a dict with rows
+#     if not isinstance(ef, dict) or not ef.get("rows"):
+#         log.warning("No extracted_figure_data.rows found for figures. Returning empty df_figs.")
+#         return pd.DataFrame(columns=DATASET_COLUMNS)
+
+#     df_points = pd.DataFrame(ef["rows"])
+#     if df_points.empty:
+#         log.warning("extracted_figure_data.rows present but empty. Returning empty df_figs.")
+#         return pd.DataFrame(columns=DATASET_COLUMNS)
+
+#     # Build figure snippets (captions) for context
+#     figure_snips = []
+#     for f in (complete_record.get("figures", []) or [])[:8]:
+#         if not isinstance(f, dict):
+#             continue
+#         md = f.get("metadata") or {}
+#         cap = md.get("caption") or md.get("figure_caption") or ""
+#         figure_snips.append({"figure_name": f.get("figure_name", ""), "caption": str(cap)[:800]})
+
+#     # Build ONE global payload
+#     plan_payload = build_figures_global_plan_payload(
+#         doi=doi,
+#         df_points=df_points,
+#         figure_snips=figure_snips,
+#         max_series=30,
+#     )
+
+#     cache_key = f"figures_global::{doi}"
+#     plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
+
+#     if plan is None:
+#         if args.skip_llm or client is None:
+#             # heuristic fallback based on most common x axis
+#             x_name0 = str(df_points["x_name"].dropna().iloc[0]) if "x_name" in df_points and df_points["x_name"].dropna().shape[0] else ""
+#             x_unit0 = str(df_points["x_unit"].dropna().iloc[0]) if "x_unit" in df_points and df_points["x_unit"].dropna().shape[0] else ""
+#             hx = heuristic_axis_semantics(x_name=x_name0, x_unit=x_unit0)
+#             plan = {
+#                 "scope": {"doi": doi, "source_kind": "figure"},
+#                 "global": {
+#                     "default_x_semantic": hx.get("x_semantic", "other"),
+#                     "property_ontology": {},
+#                     "units": {"time_to_h": True},
+#                 },
+#                 "series_overrides": [],
+#                 "confidence": {"x_semantic": hx.get("confidence", 0.5), "y_semantic": 0.0, "context": 0.0},
+#                 "evidence": {"x_reason": hx.get("reason", "heuristic")},
+#             }
+#         else:
+#             text, plan, meta = infer_figures_plan(client, plan_payload)
+#             try:
+#                 _log_cost(meta, extra={"kind": "figure_plan"})
+#             except Exception as e:
+#                 print(f"[error completing dataset] cannot log cost: {e}")
+
+#         save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
+
+#     # Apply plan deterministically to ALL points
+#     df_figs = apply_global_figure_plan(df_points=df_points, plan=plan, doi=doi)
+
+#     # Optional: drop non-time rows if requested
+#     if args.drop_non_time_figure_rows:
+#         # keep only rows where time(h) is non-empty
+#         df_figs = df_figs[df_figs["time(h)"].astype(str).str.strip() != ""]
+
+#     # Add provenance
+#     if "source_kind" not in df_figs.columns:
+#         df_figs["source_kind"] = "figure"
+#     if "source_name" not in df_figs.columns:
+#         df_figs["source_name"] = ""
+
+#     df_figs = df_figs.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
+#     return df_figs
+
+# def complete_dataset_from_figures_with_plans(complete_record, client) -> pd.DataFrame:
+#     doi = complete_record.get("doi", "")
+#     full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+
+#     ef = complete_record.get("extracted_figure_data", {})
+#     datasets = (ef or {}).get("datasets", [])
+
+#     if not isinstance(datasets, list) or not datasets:
+#         log.warning("No extracted_figure_data.datasets found for figures. Returning empty df_figs.")
+#         return pd.DataFrame(columns=DATASET_COLUMNS)
+
+#     # Build figure snippets (captions) for context (shared across datasets)
+#     figure_snips = []
+#     for f in (complete_record.get("figures", []) or [])[:8]:
+#         if not isinstance(f, dict):
+#             continue
+#         md = f.get("metadata") or {}
+#         cap = md.get("caption") or md.get("figure_caption") or ""
+#         figure_snips.append({"figure_name": f.get("figure_name", ""), "caption": str(cap)[:800]})
+
+#     all_out = []
+
+#     for ds in datasets:
+#         ds_name = str(ds.get("dataset_name", "")).strip()
+#         rows = ds.get("rows", [])
+#         if not ds_name or not isinstance(rows, list) or not rows:
+#             continue
+
+#         df_points = pd.DataFrame(rows)
+#         if df_points.empty:
+#             continue
+
+#         # Build payload for THIS dataset only
+#         plan_payload = build_figures_plan_payload(
+#             doi=doi,
+#             df_points=df_points,
+#             figure_snips=figure_snips,
+#             max_series=30,
+#             full_text=full_text,
+#         )
+
+#         cache_key = f"figures_global::{doi}::{ds_name}"
+#         plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
+
+#         if plan is None:
+#             if args.skip_llm or client is None:
+#                 x_name0 = str(df_points["x_name"].dropna().iloc[0]) if "x_name" in df_points and df_points["x_name"].dropna().shape[0] else ""
+#                 x_unit0 = str(df_points["x_unit"].dropna().iloc[0]) if "x_unit" in df_points and df_points["x_unit"].dropna().shape[0] else ""
+#                 hx = heuristic_axis_semantics(x_name=x_name0, x_unit=x_unit0)
+#                 plan = {
+#                     "scope": {"doi": doi, "source_kind": "figure", "dataset_name": ds_name},
+#                     "global": {
+#                         "default_x_semantic": hx.get("x_semantic", "other"),
+#                         "property_ontology": {},
+#                         "units": {"time_to_h": True},
+#                     },
+#                     "series_overrides": [],
+#                     "confidence": {"x_semantic": hx.get("confidence", 0.5), "y_semantic": 0.0, "context": 0.0},
+#                     "evidence": {"x_reason": hx.get("reason", "heuristic")},
+#                 }
+#             else:
+#                 text, plan, meta = infer_figures_plan(client, plan_payload)
+#                 try:
+#                     _log_cost(meta, extra={"kind": "figure_plan", "dataset_name": ds_name})
+#                 except Exception as e:
+#                     print(f"[error completing dataset] cannot log cost: {e}")
+
+#             save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
+
+#         # Apply this plan to this dataset
+#         df_figs = apply_figure_plan(df_points=df_points, plan=plan, doi=doi)
+
+#         if args.drop_non_time_figure_rows:
+#             df_figs = df_figs[df_figs["time(h)"].astype(str).str.strip() != ""]
+
+#         # Provenance: keep which extracted dataset produced these rows
+#         df_figs["source_kind"] = "figure"
+#         df_figs["source_name"] = ds_name
+
+#         df_figs = df_figs.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
+#         all_out.append(df_figs)
+
+#     if not all_out:
+#         return pd.DataFrame(columns=DATASET_COLUMNS)
+
+#     return pd.concat(all_out, ignore_index=True)
+
+
+def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
+    
+    # print('=====COMPLETE_RECORD=====', complete_record)
+
     doi = complete_record.get("doi", "")
+    full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+
     ef = complete_record.get("extracted_figure_data", {})
-
-    # NEW FORMAT: ef is a dict with rows
-    if not isinstance(ef, dict) or not ef.get("rows"):
-        log.warning("No extracted_figure_data.rows found for figures. Returning empty df_figs.")
+    datasets = (ef or {}).get("datasets", [])
+    if not isinstance(datasets, list) or not datasets:
         return pd.DataFrame(columns=DATASET_COLUMNS)
 
-    df_points = pd.DataFrame(ef["rows"])
-    if df_points.empty:
-        log.warning("extracted_figure_data.rows present but empty. Returning empty df_figs.")
-        return pd.DataFrame(columns=DATASET_COLUMNS)
-
-    # Build figure snippets (captions) for context
+    # captions/context
     figure_snips = []
     for f in (complete_record.get("figures", []) or [])[:8]:
         if not isinstance(f, dict):
@@ -313,127 +486,199 @@ def complete_dataset_from_figures_with_plans(
         cap = md.get("caption") or md.get("figure_caption") or ""
         figure_snips.append({"figure_name": f.get("figure_name", ""), "caption": str(cap)[:800]})
 
-    # Build ONE global payload
-    plan_payload = build_figures_global_plan_payload(
-        doi=doi,
-        df_points=df_points,
-        figure_snips=figure_snips,
-        max_series=30,
-    )
+    dfs = []
+    for ds in datasets:
+        ds_name = str(ds.get("dataset_name", "")).strip()
+        rows = ds.get("rows", [])
+        if not ds_name or not isinstance(rows, list) or not rows:
+            continue
 
-    cache_key = f"figures_global::{doi}"
-    plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
+        df_points = pd.DataFrame(rows)
+        if df_points.empty:
+            continue
 
-    if plan is None:
+        # df_points = subsample_figure_points(
+        #     df_points,
+        #     sample_col="series_label",
+        #     step=100,
+        # )
+
+        # print('=====DF_POINTS====', df_points)
+
         if args.skip_llm or client is None:
-            # heuristic fallback based on most common x axis
-            x_name0 = str(df_points["x_name"].dropna().iloc[0]) if "x_name" in df_points and df_points["x_name"].dropna().shape[0] else ""
-            x_unit0 = str(df_points["x_unit"].dropna().iloc[0]) if "x_unit" in df_points and df_points["x_unit"].dropna().shape[0] else ""
-            hx = heuristic_axis_semantics(x_name=x_name0, x_unit=x_unit0)
-            plan = {
-                "scope": {"doi": doi, "source_kind": "figure"},
-                "global": {
-                    "default_x_semantic": hx.get("x_semantic", "other"),
-                    "property_ontology": {},
-                    "units": {"time_to_h": True},
-                },
-                "series_overrides": [],
-                "confidence": {"x_semantic": hx.get("confidence", 0.5), "y_semantic": 0.0, "context": 0.0},
-                "evidence": {"x_reason": hx.get("reason", "heuristic")},
-            }
-        else:
-            text, plan, meta = infer_figures_plan(client, plan_payload)
-            try:
-                _log_cost(meta, extra={"kind": "figure_plan"})
-            except Exception as e:
-                print(f"[error completing dataset] cannot log cost: {e}")
+            continue
 
-        save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
+        # df_rows, meta = infer_rows_for_figure_dataset(
+        #     client=client,
+        #     doi=doi,
+        #     dataset_name=ds_name,
+        #     figure_snips=figure_snips,
+        #     df_points=df_points,
+        #     full_text=full_text,
+        #     cache_dir=ROW_CACHE_DIR,
+        #     max_points_per_call=200,
+        # )
 
-    # Apply plan deterministically to ALL points
-    df_figs = apply_global_figure_plan(df_points=df_points, plan=plan, doi=doi)
+        plans, meta = infer_figure_series_plans(
+        client=client,
+        df_points=df_points,
+        output_columns=DATASET_COLUMNS,
+        doi=doi,
+        dataset_name=ds_name,
+        figure_snips=figure_snips,
+        full_text=full_text,
+        cache_dir=ROW_CACHE_DIRi)
 
-    # Optional: drop non-time rows if requested
-    if args.drop_non_time_figure_rows:
-        # keep only rows where time(h) is non-empty
-        df_figs = df_figs[df_figs["time(h)"].astype(str).str.strip() != ""]
+        df_rows = apply_figure_series_plans(
+            df_points=df_points,
+            output_columns=DATASET_COLUMNS,
+            doi=doi,
+            dataset_name=ds_name,
+            plans=plans,
+            source_kind="figure")        
 
-    # Add provenance
-    if "source_kind" not in df_figs.columns:
-        df_figs["source_kind"] = "figure"
-    if "source_name" not in df_figs.columns:
-        df_figs["source_name"] = ""
+        try:
+            _log_cost(meta, extra={"kind": "emit_rows_figure", "dataset_name": ds_name})
+        except Exception:
+            pass
 
-    df_figs = df_figs.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
-    return df_figs
+        if args.drop_non_time_figure_rows:
+            df_rows = df_rows[df_rows["time(h)"].astype(str).str.strip() != ""]
 
-def complete_dataset_from_tables_with_plans(
-    complete_record,
-    client,
-) -> pd.DataFrame:
+        dfs.append(df_rows)
+
+    if not dfs:
+        return pd.DataFrame(columns=DATASET_COLUMNS)
+
+    return pd.concat(dfs, ignore_index=True).reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
+
+# def complete_dataset_from_tables_with_plans(
+#     complete_record,
+#     client,
+#     ) -> pd.DataFrame:
+#     doi = complete_record.get("doi", "")
+#     tables = complete_record.get("tables", [])
+#     figures = complete_record.get("figures", [])
+#     full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+
+#     if not tables:
+#         return pd.DataFrame(columns=DATASET_COLUMNS)
+
+#     all_rows_out: List[Dict[str, Any]] = []
+
+#     for t in tables:
+#         table_name = t.get("table_name", "")
+#         table_records = t.get("table", [])
+#         table_columns = t.get("table_columns", [])
+#         metadata = t.get("metadata", {})
+
+#         if not table_name or not isinstance(table_records, list) or not table_records:
+#             continue
+
+#         df_table = pd.DataFrame(table_records)
+
+#         plan_payload = build_table_plan_payload(
+#             doi=doi,
+#             table_name=table_name,
+#             table_columns=table_columns,
+#             table_head=df_table.head(8).to_dict(orient="records"),
+#             metadata=metadata,
+#             figures=figures,
+#             full_text=full_text,
+#         )
+
+#         cache_key = f"table::{doi}::{table_name}"
+#         plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
+
+#         if plan is None:
+#             if args.skip_llm or client is None:
+#                 plan = {
+#                     "scope": {"doi": doi, "table_name": table_name, "source_kind": "table"},
+#                     "column_map": {},  # means no rows extracted
+#                     "constants": {"DOI": doi},
+#                     "confidence": 0.0,
+#                     "evidence": {"reason": "skip_llm or no client"},
+#                 }
+#             else:
+#                 text, plan, meta = infer_tables_plan(client, plan_payload)
+#                 try:
+#                     _log_cost(meta, extra={"kind": "table_plan"})
+#                 except Exception as e:
+#                     print(f"[error completing dataset] cannot log cost: {e}")
+#             save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
+
+#         rows_out = apply_table_plan_to_df(df_table=df_table, plan=plan, doi=doi)
+#         all_rows_out.extend(rows_out)
+
+#     df = pd.DataFrame(all_rows_out).reindex(columns=DATASET_COLUMNS, fill_value="")
+#     return df.fillna("").astype(str)
+
+def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
     doi = complete_record.get("doi", "")
     tables = complete_record.get("tables", [])
-    figures = complete_record.get("figures", [])
     full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
 
     if not tables:
         return pd.DataFrame(columns=DATASET_COLUMNS)
 
-    all_rows_out: List[Dict[str, Any]] = []
-
+    dfs = []
     for t in tables:
         table_name = t.get("table_name", "")
         table_records = t.get("table", [])
-        table_columns = t.get("table_columns", [])
-        metadata = t.get("metadata", {})
+        metadata = t.get("metadata", {}) or {}
+        caption = (metadata.get("caption") or metadata.get("table_caption") or "")
 
         if not table_name or not isinstance(table_records, list) or not table_records:
             continue
 
         df_table = pd.DataFrame(table_records)
+        if df_table.empty:
+            continue
 
-        plan_payload = build_table_plan_payload(
+        if args.skip_llm or client is None:
+            # If skipping LLM, you can either return empty or do your old heuristic path.
+            continue
+
+        df_rows, meta = infer_rows_for_table(
+            client=client,
             doi=doi,
             table_name=table_name,
-            table_columns=table_columns,
-            table_head=df_table.head(8).to_dict(orient="records"),
-            metadata=metadata,
-            figures=figures,
+            caption=caption,
+            df_table=df_table,
             full_text=full_text,
+            cache_dir=ROW_CACHE_DIR,
+            max_rows_per_call=60,
         )
+        try:
+            _log_cost(meta, extra={"kind": "emit_rows_table", "table_name": table_name})
+        except Exception:
+            pass
 
-        cache_key = f"table::{doi}::{table_name}"
-        plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
+        dfs.append(df_rows)
 
-        if plan is None:
-            if args.skip_llm or client is None:
-                plan = {
-                    "scope": {"doi": doi, "table_name": table_name, "source_kind": "table"},
-                    "column_map": {},  # means no rows extracted
-                    "constants": {"DOI": doi},
-                    "confidence": 0.0,
-                    "evidence": {"reason": "skip_llm or no client"},
-                }
-            else:
-                text, plan, meta = infer_tables_plan(client, plan_payload)
-                try:
-                    _log_cost(meta, extra={"kind": "table_plan"})
-                except Exception as e:
-                    print(f"[error completing dataset] cannot log cost: {e}")
-            save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
+    if not dfs:
+        return pd.DataFrame(columns=DATASET_COLUMNS)
 
-        rows_out = apply_table_plan_to_df(df_table=df_table, plan=plan, doi=doi)
-        all_rows_out.extend(rows_out)
+    return pd.concat(dfs, ignore_index=True).reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
 
-    df = pd.DataFrame(all_rows_out).reindex(columns=DATASET_COLUMNS, fill_value="")
-    return df.fillna("").astype(str)
+# def complete_dataset_with_plans(
+#     complete_record,
+#     client,
+#     ) -> pd.DataFrame:
+#     df_tables = complete_dataset_from_tables_with_plans(complete_record, client)
+#     df_figs = complete_dataset_from_figures_with_plans(complete_record, client)
 
-def complete_dataset_with_plans(
-    complete_record,
-    client,
-) -> pd.DataFrame:
-    df_tables = complete_dataset_from_tables_with_plans(complete_record, client)
-    df_figs = complete_dataset_from_figures_with_plans(complete_record, client)
+#     df_all = pd.concat([df_tables, df_figs], ignore_index=True)
+#     df_all = df_all.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
+#     df_all = df_all.drop_duplicates()
+#     return df_all
+
+def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
+    df_tables = complete_dataset_from_tables_llm(complete_record, client)
+    df_figs = complete_dataset_from_figures_llm(complete_record, client)
+
+    print("====DF_TABLES====", df_tables)
+    print("====DF_FIGS====", df_figs)
 
     df_all = pd.concat([df_tables, df_figs], ignore_index=True)
     df_all = df_all.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
@@ -478,12 +723,19 @@ def main():
 
         tables = collect_tables(doi, tables_dir)
         figures = collect_figures(doi, figures_dir)
-        # extracted_figure_data = load_all_extracted_figure_points(modified_doi)
-        df_fig = load_all_extracted_figure_points(modified_doi)
+        fig_datasets = load_extracted_figure_datasets(modified_doi)
+
         extracted_figure_data = {
-            "type": "plextract_final_dataset",
-            "columns": list(df_fig.columns),
-            "rows": df_fig.replace([np.inf, -np.inf], np.nan).where(pd.notna(df_fig), None).to_dict(orient="records"),
+            "type": "plextract_final_dataset_bundle",
+            "datasets": [
+                {
+                    "dataset_name": ds.name,
+                    "dataset_path": ds.path,
+                    "columns": list(ds.df.columns),
+                    "rows": ds.df.replace([np.inf, -np.inf], np.nan).where(pd.notna(ds.df), None).to_dict(orient="records"),
+                }
+                for ds in fig_datasets
+            ],
         }
 
         complete_record = {
@@ -506,9 +758,11 @@ def main():
 
         # Build dataset per DOI
         try:
-            dataset_df = complete_dataset_with_plans(complete_record, client)
+            # dataset_df = complete_dataset_with_plans(complete_record, client)
+            dataset_df = complete_dataset_llm(complete_record, client)
+
         except Exception as e:
-            log.exception(f"Plan-based completion failed for DOI {doi}: {e}")
+            log.exception(f"Dataset completion failed for DOI {doi}: {e}")
             # quick type debug
             log.error(f"types: tables={type(tables)}, figures={type(figures)}, extracted_figure_data={type(extracted_figure_data)}")
             continue

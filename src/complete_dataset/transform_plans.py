@@ -111,9 +111,16 @@ def to_hours(x: Any, unit: str) -> str:
     if x is None or x == "":
         return ""
     try:
-        xv = float(x)
+        if isinstance(x, str):
+            m = re.search(r"[-+]?\d*\.?\d+", x)
+            if not m:
+                return ""
+            xv = float(m.group(0))
+        else:
+            xv = float(x)
     except Exception:
         return ""
+
     u = (unit or "").strip().lower()
     factor = _TIME_UNIT_TO_H.get(u)
     if factor is None:
@@ -125,10 +132,8 @@ def normalize_property_name(name: str) -> str:
         return ""
     s = name.strip().lower()
     # add/adjust for your ontology
-    if "conduct" in s and ("oh" in s or "hydrox" in s):
-        return "hydroxide conductivity"
-    if ("ionic" in s and "conduct" in s) or ("conductivity" in s and "ion" in s):
-        return "ionic conductivity"
+    if "conduct" in s or ("oh" in s or "hydrox" in s or "ion"):
+        return "anion conductivity"
     if "water uptake" in s or s in {"wu", "wateruptake"}:
         return "water uptake"
     if "swelling" in s:
@@ -156,11 +161,12 @@ def parse_rh_from_text(text: str) -> Optional[str]:
 # ----------------------------
 # Payload builders
 # ----------------------------
-def build_figures_global_plan_payload(
+def build_figures_plan_payload(
     doi: str, 
     df_points: pd.DataFrame, 
     figure_snips: List[Dict[str,Any]], 
-    max_series: int = 30
+    max_series: int = 30,
+    full_text: Optional[str] = None
     ) -> Dict[str, Any]:
     df = df_points.copy()
     # summarize axis names/units
@@ -182,13 +188,20 @@ def build_figures_global_plan_payload(
         if len(series_samples) >= max_series:
             break
 
-    return {
+    
+    payload = {
         "doi": doi,
         "x_axis_pairs": x_summary,
         "y_axis_pairs": y_summary,
         "series_samples": series_samples,
         "figure_snippets": figure_snips[:8],
     }
+
+    # Add full text context (bounded)
+    if full_text:
+        payload["full_text"] = full_text
+
+    return payload
 
 def build_table_plan_payload(
     doi: str,
@@ -200,17 +213,6 @@ def build_table_plan_payload(
     full_text: Any,
     ) -> Dict[str, Any]:
         cap = (metadata or {}).get("caption") or (metadata or {}).get("table_caption") or ""
-        fig_snips = []
-        for f in figures[:6]:
-            md = f.get("metadata") or {}
-            fig_cap = md.get("caption") or md.get("figure_caption") or ""
-            fig_snips.append({"figure_name": f.get("figure_name", ""), "caption": fig_cap[:600]})
-
-        ft_excerpt = ""
-        if isinstance(full_text, dict):
-            ft_excerpt = json.dumps(full_text, ensure_ascii=False)[:2000]
-        elif isinstance(full_text, str):
-            ft_excerpt = full_text[:2000]
 
         return {
             "doi": doi,
@@ -218,8 +220,7 @@ def build_table_plan_payload(
             "caption": cap[:1200],
             "columns": table_columns,
             "head_rows": table_head,
-            "figure_snippets": fig_snips,
-            "full_text_excerpt": ft_excerpt,
+            "full_text": full_text,
         }
 
 # ----------------------------
@@ -241,29 +242,93 @@ def _parse_json_obj(s: str) -> Dict[str, Any]:
                 return {}
         return {}
 
-def infer_figures_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+def infer_figures_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any], Any]:
 
     instructions = """
-    Infer ONE global transformation plan for ALL extracted FIGURE datapoints in this DOI.
+        You infer a transformation plan for an extracted FIGURE time-series (or other x-axis) dataset.
 
-    Return ONLY valid JSON with keys:
-    - scope: {doi, source_kind:"figure"}
-    - global: {
-        default_x_semantic: one of ["time","temperature","RH","IEC","water_uptake","swelling","current_density","potential","other"],
-        property_ontology: {canonical_property: [synonyms...]},
-        units: {time_to_h: true/false}
-    }
-    - series_overrides: list of objects:
-        {match: "<regex applied to series_label>", constants: {<output field>: "<value>"}}
-    (use overrides to pull RH/temp/etc from series labels when typical)
-    - confidence: {x_semantic:0..1, y_semantic:0..1, context:0..1}
-    - evidence: brief reasons
+        Return ONLY valid JSON (no markdown). Required keys:
 
-    Rules:
-    - Do NOT output per-point rows.
-    - Prefer using axis label/unit cues + series_label patterns + captions.
-    - If unsure, set default_x_semantic="other".
-    """.strip()
+        1) scope: {doi, source_kind:"figure"}
+
+        2) x_semantic: what the figure varies over.
+        One of: ["time","temperature","RH","solvent_molarity","solvent_type","IEC","water_uptake","swelling","current_density","potential","other"]
+
+        3) x_source: how to interpret x_value/x_name/x_unit.
+        For figures, x is always from the extracted x columns, so use:
+            {"from_x_axis": true}
+        (You may still set {"empty":true} if x is unusable, but usually from_x_axis is correct.)
+
+        4) x_unit: canonical unit string for x when meaningful:
+        "h" | "C" | "%" | "M" | "V" | "mA/cm2" | "A/cm2" | "".
+        (If x_semantic="time", set x_unit="h" and set units.time_to_h=true.)
+
+        5) y_semantic_map (optional):
+        A mapping from observed y_name patterns to canonical property names.
+        Example:
+        {
+        "anion conductivity": ["oh conductivity","hydroxide conductivity","conductivity"],
+        "water uptake": ["WU","water uptake"],
+        "swelling": ["swelling","SR"]
+        }
+
+        6) constants: values that should apply to ALL points unless overridden.
+        Each field uses {"const":"<value>"} or {"empty":true}.
+        Fields (same as final dataset columns):
+        "relative humidity(%)",
+        "solvent type",
+        "solvent molarity (M)",
+        "degradation test temp (C)",
+        "prop test temp (C)"
+
+        7) derive_from_series_label (optional list of rules):
+        Each rule: {"match":"<regex>", "set": {<field>: "<value or $1,$2 refs>"}}
+        Use this to pull RH/temp/molarity/etc from series_label strings.
+        Examples:
+        - match "(?i)(\\d{1,3})\\s*%\\s*RH" -> set {"relative humidity(%)":"$1"}
+        - match "(?i)(\\d{2,3})\\s*°?C" -> set {"prop test temp (C)":"$1"}
+        - match "(?i)(\\d+(?:\\.\\d+)?)\\s*M\\s*(KOH|NaOH)" -> set {"solvent molarity (M)":"$1","solvent type":"$2"}
+
+        8) units: {time_to_h: true/false}
+        - If x_semantic == "time", set time_to_h true.
+        - Otherwise set false.
+
+        9) confidence: 0..1
+        10) evidence: brief explanation of how you decided x_semantic and constants.
+
+        Rules:
+        - Do NOT output per-point rows.
+        - Prefer axis label/unit cues + series_label patterns + figure captions + full_text.
+        - Do NOT fabricate conditions not supported by captions/full_text/labels.
+        - If unsure, set x_semantic="other", constants empty, and keep confidence low.
+        """.strip()
+
+    parts = []
+
+    parts.append(f"""
+    Based on the extracted figure x and y axis pairs, figure title & caption, and (if available) full paper text, infer a transformation plan for the extracted figure data.
+
+    Extracted Figure Data X Axis Pairs:
+    {json.dumps(payload.get("x_axis_pairs", []), indent=2)}
+
+    Extracted Figure Data Y Axis Pairs:
+    {json.dumps(payload.get("y_axis_pairs", []), indent=2)}
+
+    Extracted Figure Title & Caption:
+    {json.dumps(payload.get("figure_snippets", []), indent=2)}
+    """)
+
+    full_text = payload.get("full_text")
+    if full_text:
+        parts.append(f"""
+    Full Paper Text:
+    {json.dumps(full_text, indent=2)}
+    """)
+
+    content = "\n".join(parts)
+
+    print("===FIGURE CONTENT===", content)
+
 
     text, meta = client.chat(
         messages=[
@@ -273,9 +338,11 @@ def infer_figures_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, 
             },
             {
                 "role": "user",
-                "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
-            }
-        ],
+                "content": content}],
+                
+        #         [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
+        #     }
+        # ],
         response_format={"type": "json_object"},
         temperature=0.0,
         max_tokens=5000,
@@ -285,32 +352,108 @@ def infer_figures_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, 
     return text, plan, meta
 
 def infer_tables_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+    # instructions = """
+    # You infer a TRANSFORMATION PLAN for an extracted TABLE.
+
+    # Return ONLY valid JSON (no markdown). Required top-level keys:
+    # - scope: {doi, table_name, source_kind:"table"}
+    # - column_map: mapping to the normalized schema fields:
+    #     "Sample Name": {"col": "<column name>"} OR {"const": "<value>"} OR {"empty": true}
+    #     "time(h)": {"col": "<column name>", "unit_from": "<unit>", "unit_to": "h"} OR {"const": ""} OR {"empty": true}
+    #     "property": {"col": "<column name>"} OR {"const": "<property name>"}
+    #     "value": {"col": "<column name>"} OR {"empty": true}
+    #     optional constants for:
+    #     "relative humidity(%)","solvent type","solvent molarity (M)","degradation test temp (C)","prop test temp (C)"
+    # - row_rules: optional instructions (e.g., if table is wide-format, how to unpivot)
+    # - If the table is wide-format, you MUST use:
+    #     - row_rules.unpivot = {id_cols: [...], value_cols: [...], var_name: "property", value_name: "value"}
+    # - Do NOT return lists under keys named "property" or "value".
+    # - confidence: 0..1
+    # - evidence: brief explanation
+
+    # Rules:
+    # - Prefer direct column mappings using provided columns.
+    # - If table is wide-format (multiple conditions across columns), specify row_rules.unpivot.
+    # - Do NOT fabricate values not supported by the table/caption.
+    # - 
+    # """.strip()
+    
+    
     instructions = """
-    You infer a TRANSFORMATION PLAN for an extracted TABLE.
+        You infer a transformation plan for an extracted table.
 
-    Return ONLY valid JSON (no markdown). Required top-level keys:
-    - scope: {doi, table_name, source_kind:"table"}
-    - column_map: mapping to the normalized schema fields:
-        "Sample Name": {"col": "<column name>"} OR {"const": "<value>"} OR {"empty": true}
-        "time(h)": {"col": "<column name>", "unit_from": "<unit>", "unit_to": "h"} OR {"const": ""} OR {"empty": true}
-        "property": {"col": "<column name>"} OR {"const": "<property name>"}
-        "value": {"col": "<column name>"} OR {"empty": true}
-        optional constants for:
-        "relative humidity(%)","solvent type","solvent concentration (%)","degradation test temp (C)","prop test temp (C)"
-    - row_rules: optional instructions (e.g., if table is wide-format, how to unpivot)
-    - If the table is wide-format, you MUST use:
-        - row_rules.unpivot = {id_cols: [...], value_cols: [...], var_name: "property", value_name: "value"}
-    - Do NOT return lists under keys named "property" or "value".
-    - confidence: 0..1
-    - evidence: brief explanation
+        Return ONLY valid JSON (no markdown). Required keys:
 
-    Rules:
-    - Prefer direct column mappings using provided columns.
-    - If table is wide-format (multiple conditions across columns), specify row_rules.unpivot.
-    - Do NOT fabricate values not supported by the table/caption.
-    """.strip()
+        1) scope: {doi, table_name, source_kind:"table"}
+
+        2) x_semantic: what the table varies over.
+        One of: ["time","temperature","RH","solvent_molarity","solvent_type","IEC","other"]
+
+        3) - x_source: {"col":"<column>"} OR {"from_header": true} OR {"const":"<value>"} OR {"empty": true}
+        
+        4) - x_unit: "h" | "C" | "%" | "M" | ""
+
+        5) column_map: mapping to normalized output fields. For each field:
+        {"col":"<column>"} OR {"const":"<value>"} OR {"empty":true}
+        Fields:
+        "Sample Name","time(h)","relative humidity(%)","solvent type","solvent molarity (M)",
+        "degradation test temp (C)","prop test temp (C)","property","value"
+
+        6) row_rules (optional):
+        - If wide-format, include:
+            row_rules.unpivot = {id_cols:[...], value_cols:[...], var_name:"property", value_name:"value"}
+
+        7) derive_from_property_label (optional list of rules):
+        Each rule: {"match":"<regex>", "set": {<field>: "<value or $1,$2 group refs>"}}
+        Use this to set time/temp/RH/solvent fields from header strings like "Before", "After", "80% RH", "1 M KOH".
+        Example: match "(?i)before" -> set {"time(h)":"0"}.
+
+        8) confidence: 0..1
+        9) evidence: brief explanation
+
+        Rules:
+        - Prefer direct column mappings when possible.
+        - If the independent variable is temperature/RH/molarity (not time), then time(h) should be empty unless explicitly derivable.
+        - Do NOT fabricate values not supported by table/caption.
+        """.strip()
+
+    parts = []
+
+    parts.append(f"""
+    Based on the extracted table caption, columns, head rows, and (if available) full paper text, infer a transformation plan for the extracted table data:
+
+    Extracted Table Caption:
+    {json.dumps(payload.get("caption", ""), indent=2)}
+
+    Extracted Table Columns:
+    {json.dumps(payload.get("columns", []), indent=2)}
+
+    Extracted Table Head Rows:
+    {json.dumps(payload.get("head_rows", []), indent=2)}
+    """)
+
+    full_text = payload.get("full_text")
+    if full_text:
+        parts.append(f"""
+    Full Paper Text:
+    {json.dumps(full_text, indent=2)}
+    """)
+
+    content = "\n".join(parts)
+    
+    print("===TABLE CONTENT===", content)
 
     text, meta = client.chat(
+        # messages=[
+        #     {
+        #         "role": "system",
+        #         "content": instructions
+        #     },
+        #     {
+        #         "role": "user",
+        #         "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
+        #     }
+        # ],
         messages=[
             {
                 "role": "system",
@@ -318,9 +461,7 @@ def infer_tables_plan(client, payload: Dict[str, Any]) -> Tuple[Any, Dict[str, A
             },
             {
                 "role": "user",
-                "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
-            }
-        ],
+                "content": content}],
 
         response_format={"type": "json_object"},
         temperature=0.0,
@@ -341,7 +482,7 @@ _OUTPUT_COLUMNS = [
     "x_value",
     "relative humidity(%)",
     "solvent type",
-    "solvent concentration (%)",
+    "solvent molarity (M)",
     "degradation test temp (C)",
     "prop test temp (C)",
     "property",
@@ -353,84 +494,140 @@ _OUTPUT_COLUMNS = [
 OUTPUT_COLUMNS = _OUTPUT_COLUMNS 
 
 
-def apply_global_figure_plan(df_points: pd.DataFrame, plan: Dict[str, Any], doi: str) -> pd.DataFrame:
+def apply_figure_plan(df_points: pd.DataFrame, plan: Dict[str, Any], doi: str) -> pd.DataFrame:
     df = df_points.copy()
 
-    # default x semantic decision (time vs other)
-    default_x_sem = ((plan or {}).get("global", {}) or {}).get("default_x_semantic", "other")
+    if not isinstance(plan, dict):
+        plan = {}
 
-    # property ontology
-    ont = ((plan or {}).get("global", {}) or {}).get("property_ontology", {}) or {}
+    # --- semantics ---
+    x_sem = (plan.get("x_semantic")
+             or ((plan.get("global") or {}).get("default_x_semantic"))
+             or "other")
+    x_sem = x_sem or "other"
+
+    # y ontology: new key or old key
+    ont = (plan.get("y_semantic_map")
+           or ((plan.get("global") or {}).get("property_ontology"))
+           or {})
+    if not isinstance(ont, dict):
+        ont = {}
+
+    # constants + derive rules (new)
+    constants = plan.get("constants", {}) or {}
+    if not isinstance(constants, dict):
+        constants = {}
+    derive_rules = plan.get("derive_from_series_label", []) or []
+    if not isinstance(derive_rules, list):
+        derive_rules = []
+
+    ENV_FIELDS = [
+        "relative humidity(%)",
+        "solvent type",
+        "solvent molarity (M)",
+        "degradation test temp (C)",
+        "prop test temp (C)",
+    ]
 
     def normalize_prop(y_name: str) -> str:
         yn = (y_name or "").strip().lower()
         for canon, syns in ont.items():
-            for s in syns:
+            for s in (syns or []):
                 if (s or "").strip().lower() in yn:
                     return canon
-        # fallback: keep original but cleaned
         return (y_name or "").strip()
 
-    # series overrides (regex on series_label)
-    if not isinstance(plan, dict):
-        plan = {}
-
-    overrides = plan.get("series_overrides", []) or []
-    if not isinstance(overrides, list):
-        overrides = []
-
-    def constants_for_series(series_label: str) -> Dict[str, str]:
-        out: Dict[str, str] = {}
-        sl = series_label or ""
-
-        for ov in overrides:
-            if not isinstance(ov, dict):
+    def _apply_derive_rules(label: str, rules: Any, row_out: Dict[str, str]) -> None:
+        if not isinstance(rules, list) or not label:
+            return
+        supported = set(_OUTPUT_COLUMNS)
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            pat = rule.get("match")
+            sets = rule.get("set")
+            if not pat or not isinstance(sets, dict):
                 continue
             try:
-                if re.match(ov.get("match", "$^"), sl):
-                    consts = ov.get("constants", {}) or {}
-                    if isinstance(consts, dict):
-                        out.update({k: str(v) for k, v in consts.items() if v is not None})
-            except Exception:
+                m = re.search(pat, label)
+            except re.error:
+                continue
+            if not m:
                 continue
 
-        # deterministic parsing fallback
-        if "relative humidity(%)" not in out:
+            last = m.lastindex or 0
+            for k, templ in sets.items():
+                if k not in supported or templ is None:
+                    continue
+                v = str(templ)
+                for gi in range(1, 10):
+                    v = v.replace(f"${gi}", m.group(gi) if gi <= last else "")
+                row_out[k] = v
+
+    def _apply_global_constants(row_out: Dict[str, str]) -> None:
+        """
+        Apply plan["constants"] in table-style:
+          constants[field] can be {"const": "..."} or {"empty": true}
+        """
+        for k in ENV_FIELDS:
+            spec = constants.get(k, {})
+            if not isinstance(spec, dict):
+                continue
+            if spec.get("empty") is True:
+                # explicitly empty means force blank
+                row_out[k] = ""
+            elif "const" in spec and spec["const"] is not None:
+                row_out[k] = str(spec["const"])
+
+    def _deterministic_fallback_parse(series_label: str, row_out: Dict[str, str]) -> None:
+        """
+        Final guardrail: parse RH/temp from label if still missing.
+        """
+        sl = series_label or ""
+        if not row_out.get("relative humidity(%)"):
             rh = parse_rh_from_text(sl)
             if rh:
-                out["relative humidity(%)"] = rh
-        if "prop test temp (C)" not in out:
+                row_out["relative humidity(%)"] = rh
+        if not row_out.get("prop test temp (C)"):
             tc = parse_temp_C_from_text(sl)
             if tc:
-                out["prop test temp (C)"] = tc
-
-        return out
+                row_out["prop test temp (C)"] = tc
 
     rows = []
     for _, r in df.iterrows():
         row = {k: "" for k in _OUTPUT_COLUMNS}
         row["DOI"] = doi
         row["source_kind"] = "figure"
-        row["source_name"] = ""  # optionally fill if you can associate
+        row["source_name"] = ""  # you can set to dataset_name upstream if you have it
 
-        row["Sample Name"] = str(r.get("series_label",""))
-        row["x_name"] = str(r.get("x_name",""))
-        row["x_unit"] = str(r.get("x_unit",""))
-        row["x_value"] = "" if pd.isna(r.get("x_value","")) else str(r.get("x_value",""))
+        # provenance / identity
+        row["Sample Name"] = str(r.get("series_label", "") or "")
+        row["x_name"] = str(r.get("x_name", "") or "")
+        row["x_unit"] = str(r.get("x_unit", "") or "")
+        xv = r.get("x_value", "")
+        row["x_value"] = "" if pd.isna(xv) else str(xv)
 
-        # time only if semantic says time AND unit convertible
-        if default_x_sem == "time":
-            row["time(h)"] = to_hours(r.get("x_value",""), str(r.get("x_unit","")))
-        else:
-            row["time(h)"] = ""
-
-        row["property"] = normalize_prop(str(r.get("y_name","")))
-        yv = r.get("y_value","")
+        # property/value
+        row["property"] = normalize_property_name(
+            normalize_prop(str(r.get("y_name", "") or ""))
+        )
+        yv = r.get("y_value", "")
         row["value"] = "" if pd.isna(yv) or yv == "" else str(yv)
 
-        consts = constants_for_series(row["Sample Name"])
-        for k,v in consts.items():
-            row[k] = str(v)
+        # apply global constants (table-style)
+        _apply_global_constants(row)
+
+        # apply derive rules from series label (table-style)
+        _apply_derive_rules(row["Sample Name"], derive_rules, row)
+
+        # deterministic fallback parse (final guardrail)
+        _deterministic_fallback_parse(row["Sample Name"], row)
+
+        # time only if x_semantic says time AND unit convertible
+        if x_sem == "time":
+            row["time(h)"] = to_hours(r.get("x_value", ""), str(r.get("x_unit", "")))
+        else:
+            row["time(h)"] = ""
 
         rows.append(row)
 
@@ -448,13 +645,129 @@ def _get_col(df: pd.DataFrame, colname: str) -> Optional[pd.Series]:
         return df[lower_map[colname.lower()]]
     return None
 
+def _norm_col(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s)
+    # normalize common unicode variants
+    s = s.replace("\u2212", "-")   # unicode minus
+    s = s.replace("\u2013", "-")   # en-dash
+    s = s.replace("\u2014", "-")   # em-dash
+    s = s.replace("\u00b9", "1").replace("\u2071", "1")  # ¹ etc (optional)
+    # collapse whitespace
+    s = re.sub(r"\s+", " ", s).strip().lower()
+    return s
+
+def _col_lookup(df: pd.DataFrame) -> Dict[str, str]:
+    """
+    Returns mapping: normalized_col -> actual_col (first occurrence wins).
+    """
+    m = {}
+    for c in df.columns:
+        k = _norm_col(c)
+        if k and k not in m:
+            m[k] = c
+    return m
+
+def _resolve_cols(df: pd.DataFrame, cols: List[str]) -> List[str]:
+    """
+    Map requested column names to actual df columns using normalized matching.
+    Keeps only those that resolve.
+    """
+    lut = _col_lookup(df)
+    out = []
+    for c in cols or []:
+        key = _norm_col(c)
+        if key in lut:
+            out.append(lut[key])
+        else:
+            # fallback: substring match
+            for nk, real in lut.items():
+                if key and (key in nk or nk in key):
+                    out.append(real)
+                    break
+    # de-dup preserving order
+    seen = set()
+    dedup = []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            dedup.append(c)
+    return dedup
+
 def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
+
+    ALLOWED_X_SEMANTICS = {
+        "time", "temperature", "RH", "solvent_molarity", "solvent_type", "IEC", "other"
+    }
+
+    def _apply_derive_rules(prop_label: str, rules: Any, row_out: Dict[str, str]) -> None:
+        """
+        Apply derive_from_property_label rules to row_out based on prop_label.
+        Supports $1, $2, ... backrefs.
+        Ignores unknown fields.
+        """
+        if not isinstance(rules, list) or not prop_label:
+            return
+
+        supported = set(_OUTPUT_COLUMNS)
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            pat = rule.get("match")
+            sets = rule.get("set")
+            if not pat or not isinstance(sets, dict):
+                continue
+            try:
+                m = re.search(pat, prop_label)
+            except re.error:
+                continue
+            if not m:
+                continue
+
+            for k, templ in sets.items():
+                if k not in supported:
+                    continue
+                if templ is None:
+                    continue
+                v = str(templ)
+                # $1..$9 substitutions
+                last = m.lastindex or 0
+                for gi in range(1, 10):
+                    v = v.replace(f"${gi}", m.group(gi) if gi <= last else "")
+                row_out[k] = v
+
+    def _x_value_from_source(r: pd.Series, x_source: Any) -> str:
+        if not isinstance(x_source, dict):
+            return ""
+        if x_source.get("empty") is True:
+            return ""
+        if "const" in x_source:
+            return "" if x_source["const"] is None else str(x_source["const"])
+        if "col" in x_source:
+            v = get_cell(r, x_source["col"])
+            return "" if v is None else str(v)
+        # from_header handled via derive rules (no direct value here)
+        return ""
+
+    ENV_FIELDS = [
+        "relative humidity(%)",
+        "solvent type",
+        "solvent molarity (M)",
+        "degradation test temp (C)",
+        "prop test temp (C)",
+    ]
+
     if df_table is None or df_table.empty:
         return out
 
     col_map = (plan or {}).get("column_map", {}) or {}
-    const = (plan or {}).get("constants", {}) or {}
+
+    derive_rules = (plan or {}).get("derive_from_property_label", []) or []
+    x_sem = (plan or {}).get("x_semantic", "other") or "other"
+    x_source = (plan or {}).get("x_source", {}) or {}
+    x_unit = (plan or {}).get("x_unit", "") or ""
 
     # Optional: wide-format unpivot
     row_rules = (plan or {}).get("row_rules", {}) or {}
@@ -479,15 +792,15 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
             var_name = up.get("var_name", "property")
             value_name = up.get("value_name", "value")
 
-            # Validate columns exist; auto-detect id col if needed
-            if not id_cols or any(c not in df_table.columns for c in id_cols):
-                # pick a reasonable ID column: first non-numeric-ish column
+            # Resolve id/value cols robustly (unicode/spacing/case)
+            id_cols = _resolve_cols(df_table, id_cols)
+            value_cols = _resolve_cols(df_table, value_cols)
+
+            # Auto-detect id col if still missing
+            if not id_cols:
                 cand = [c for c in df_table.columns if df_table[c].dtype == object]
                 if cand:
                     id_cols = [cand[0]]
-
-            # keep only value cols that exist
-            value_cols = [c for c in value_cols if c in df_table.columns]
 
             if id_cols and value_cols:
                 df_table = df_table.melt(
@@ -497,9 +810,17 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
                     value_name=value_name
                 )
 
-                # After melt, set column_map to use var_name/value_name if it was pointing to property/value
-                # (helps when GPT wrote {"col":"property"} / {"col":"value"}.)
-                # We'll handle in resolve() by reading from r.get(spec["col"]).
+                # If we successfully melted, the correct sources are the melt outputs
+                # After melt, the only correct sources are the melt output columns.
+                if var_name in df_table.columns:
+                    col_map.setdefault("property", {})
+                    if isinstance(col_map["property"], dict):
+                        col_map["property"]["col"] = var_name
+
+                if value_name in df_table.columns:
+                    col_map.setdefault("value", {})
+                    if isinstance(col_map["value"], dict):
+                        col_map["value"]["col"] = value_name
         except Exception:
             pass
 
@@ -508,24 +829,40 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
     for _, r in df_table.iterrows():
         row = {k: "" for k in _OUTPUT_COLUMNS}
         row["DOI"] = doi
-
-        # constants
-        for k in ["relative humidity(%)", "solvent type", "solvent concentration (%)",
-                  "degradation test temp (C)", "prop test temp (C)"]:
-            if k in const and const[k] is not None:
-                row[k] = str(const[k])
+        row["source_kind"] = "table"
 
         # Helper to resolve mapping entry
-        def get_cell(row: pd.Series, col: str) -> Any:
-            if not col:
+        def get_cell(row: pd.Series, col) -> Any:
+            if col is None or col == "":
                 return ""
+
+            # If plan provides multiple candidate columns, try them in order.
+            if isinstance(col, list):
+                for c in col:
+                    v = get_cell(row, c)
+                    if v is None:
+                        continue
+                    if str(v).strip() != "":
+                        return v
+                return ""
+
+            # Allow integer positional indexing
+            if isinstance(col, int):
+                try:
+                    return row.iloc[col]
+                except Exception:
+                    return ""
+
+            # Normal string lookup + case-insensitive fallback
+            col = str(col)
             if col in row.index:
                 return row[col]
-            # case-insensitive match within the row index
+
             lm = {str(c).lower(): c for c in row.index}
-            key = str(col).lower()
+            key = col.lower()
             if key in lm:
                 return row[lm[key]]
+
             return ""
 
         def resolve(field: str) -> str:
@@ -541,35 +878,59 @@ def apply_table_plan_to_df(df_table: pd.DataFrame, plan: Dict[str, Any], doi: st
                 return "" if s is None else str(s)
             return ""
 
+        # apply column_map const/col for env fields
+        for k in ENV_FIELDS:
+            if not row[k]:
+                row[k] = resolve(k) or ""
 
         # sample
         row["Sample Name"] = resolve("Sample Name")
 
-        # property
-        prop = resolve("property")
-        row["property"] = normalize_property_name(prop)
+        # raw property/val
+        raw_prop = resolve("property")
+        raw_value = resolve("value")
+
+        # 5) Apply derive_from_property_label rules using the *raw* property label
+        # (this is where Before/After -> time, RH, molarity patterns, etc. happen)
+        _apply_derive_rules(raw_prop, derive_rules, row)
+
+        # Normalize property AFTER derivation
+        row["property"] = normalize_property_name(raw_prop)
 
         # value
-        val = resolve("value")
-        if val == "" or val is None:
+        if raw_value == "" or raw_value is None:
             row["value"] = ""
         else:
             try:
-                row["value"] = str(float(val))
+                row["value"] = str(float(raw_value))
             except Exception:
-                row["value"] = str(val)
+                row["value"] = str(raw_value)
 
         # time(h) with conversion if specified
         t_spec = col_map.get("time(h)", {})
-        if isinstance(t_spec, dict) and "col" in t_spec:
-            raw_t = r.get(t_spec["col"], "")
-            unit_from = (t_spec.get("unit_from") or "").strip().lower()
-            # treat blank unit_from as "h" only if column name implies hour
-            if not unit_from:
-                unit_from = "h"
-            row["time(h)"] = to_hours(raw_t, unit_from)
-        else:
-            row["time(h)"] = resolve("time(h)")  # const/empty
+        if not row.get("time(h)"):  # only fill if derive didn't set it
+            if isinstance(t_spec, dict) and "col" in t_spec:
+                raw_t = get_cell(r,t_spec["col"])
+                unit_from = (t_spec.get("unit_from") or "").strip().lower() or "h"
+                row["time(h)"] = to_hours(raw_t, unit_from)
+            else:
+                if not row.get("time"):
+                    row["time(h)"] = resolve("time(h)")
+
+        # x_semantic/x_source fallback for tables where x is time/temp/RH/molarity
+        if not row.get("time(h)"):
+            xv = _x_value_from_source(r, x_source)
+
+            if x_sem == "time":
+                row["time(h)"] = to_hours(xv, x_unit or "h")
+            elif x_sem == "temperature" and not row.get("prop test temp (C)"):
+                row["prop test temp (C)"] = xv
+            elif x_sem == "RH" and not row.get("relative humidity(%)"):
+                row["relative humidity(%)"] = xv
+            elif x_sem == "solvent_molarity" and not row.get("solvent molarity (M)"):
+                row["solvent molarity (M)"] = xv
+            elif x_sem == "solvent_type" and not row.get("solvent type"):
+                row["solvent type"] = xv
 
         # x_* are not meaningful for tables; leave blank
         row["x_name"] = ""

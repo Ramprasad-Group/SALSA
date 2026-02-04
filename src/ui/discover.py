@@ -17,47 +17,23 @@ def _find_metadata_sidecar(img_path: Path) -> Path | None:
     meta = img_path.with_name(img_path.stem + "_metadata.json")
     return meta if meta.exists() else None
 
-# def _find_final_dataset_csv(plextract_workdir: Path) -> Dict[str, Dict[str, List[Path]]]:
-#     """
-#     Returns mapping:
-#       { safe_doi: { fig_stem: [paths...] } }
+def _find_completed_dataset_csv(complete_dataset_dir: Path) -> dict[str, Path]:
+    """
+    Returns: { safe_doi : path_to_completed_dataset_csv }
+    Expects files like:
+      <run_dir>/complete_dataset/<safe_doi>_dataset.csv
+    """
+    out: dict[str, Path] = {}
+    if not complete_dataset_dir.exists():
+        return out
 
-#     We scan:
-#       plextract_workdir/results/<run_id>/output/<safe_doi>/**/*
-#     and attach csv/json that contain the figure stem in their name.
-#     """
-#     out: Dict[str, Dict[str, List[Path]]] = {}
-#     results_root = plextract_workdir / "results"
-#     if not results_root.exists():
-#         return out
+    for fp in complete_dataset_dir.glob("*_dataset.csv"):
+        # Example filename: 10.1039@C6TA05090E_dataset.csv
+        safe_doi = fp.name[:-len("_dataset.csv")]
+        if safe_doi:
+            out[safe_doi] = fp
 
-#     # choose latest numeric run id (plextract uses 0,1,2,...)
-#     run_dirs = [p for p in results_root.iterdir() if p.is_dir() and p.name.isdigit()]
-#     if not run_dirs:
-#         return out
-#     run_dirs.sort(key=lambda p: int(p.name), reverse=True)
-#     latest = run_dirs[0]
-
-#     output_root = latest / "output"
-#     if not output_root.exists():
-#         return out
-
-#     for doi_dir in output_root.iterdir():
-#         if not doi_dir.is_dir():
-#             continue
-#         safe_doi = doi_dir.name
-#         out.setdefault(safe_doi, {})
-#         # gather candidate artifacts
-#         for p in doi_dir.rglob("*"):
-#             if not p.is_file():
-#                 continue
-#             if p.suffix.lower() not in {".csv", ".json"}:
-#                 continue
-#             # we don’t know the exact naming; store everything, later match by fig stem substring
-#             # keep only reasonably small-ish artifacts (avoid huge intermediates if any)
-#             out[safe_doi].setdefault("__all__", []).append(p)
-
-#     return out
+    return out
 
 def _find_final_dataset_csv(plextract_workdir: Path) -> Dict[str, Dict[str, Path]]:
     """
@@ -137,15 +113,15 @@ def _scan_plextract_artifacts(plextract_workdir: Path) -> Dict[str, List[Path]]:
 
     return out
 
-
-
 def discover_run(run_dir: Path) -> RunResult:
     reparsed = run_dir / "reparsed"
     figures_tables = run_dir / "figures_tables"
     plextract_workdir = run_dir / "plextract_work"
+    complete_dataset_dir = run_dir / "complete_dataset" 
 
     final_csv_map = _find_final_dataset_csv(plextract_workdir)
     plex_artifacts = _scan_plextract_artifacts(plextract_workdir)
+    completed_map = _find_completed_dataset_csv(complete_dataset_dir)
 
 
     dois: list[DoiResult] = []
@@ -166,6 +142,11 @@ def discover_run(run_dir: Path) -> RunResult:
                 fulltext_path=fulltext,
                 extra=meta,
             )
+            
+            # completed dataset
+            completed_csv = completed_map.get(safe_doi)
+            if completed_csv:
+                dr.extra["completed_dataset_csv"] = str(completed_csv)
 
             # figures
             fig_dir = figures_tables / "figures" / safe_doi

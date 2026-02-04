@@ -30,6 +30,47 @@ from run_plextract_manual import run_plextract_on_manual_crops
 import os
 import subprocess
 from typing import List, Optional
+import re
+from datetime import datetime
+
+#-------------------
+#-----WORKSPACE-----
+#-------------------
+
+_WORKSPACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+def _list_subdirs(p: Path) -> list[str]:
+    if not p.exists():
+        return []
+    return sorted([x.name for x in p.iterdir() if x.is_dir()])
+
+def _is_safe_workspace_name(name: str) -> bool:
+    """
+    Restrict workspace names so users can't do path traversal like ../../etc.
+    """
+    name = (name or "").strip()
+    if not name:
+        return False
+    if "/" in name or "\\" in name:
+        return False
+    return bool(_WORKSPACE_RE.match(name))
+
+def _ensure_workspace(root: Path, name: str) -> Path:
+    """
+    Create (if needed) and return <root>/<name>.
+    """
+    ws = (root / name).resolve()
+    # Enforce that ws is inside root even after resolve()
+    root_res = root.resolve()
+    if root_res not in ws.parents and ws != root_res:
+        raise ValueError(f"Workspace path escapes root: {ws}")
+    ws.mkdir(parents=True, exist_ok=True)
+    return ws
+
+def _default_workspace_name() -> str:
+    # nice default when user hasn't chosen anything yet
+    return datetime.now().strftime("workspace_%Y%m%d")
+
 
 
 def _default_ollama_models_dir() -> Path:
@@ -181,12 +222,74 @@ st.title("AEM_OCR")
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
-    st.header("Paths")
-    scripts_root = Path(st.text_input("AEM_OCR/src", "/home/wschertzer3/AEM_OCR/src")).resolve()
-    run_root = Path(st.text_input("UI run workspace", str(scripts_root / "ui_runs"))).resolve()
-    run_root.mkdir(parents=True, exist_ok=True)
+
+    # Set workspace variables
+    scripts_root = Path("AEM_OCR/src", "/home/wschertzer3/AEM_OCR/src").resolve()
+    workspaces_root = Path(str(scripts_root / "ui_runs"))
+    workspaces_root.mkdir(parents=True, exist_ok=True)
 
     st.divider()
+
+    # Choose/create workspace
+    st.header("Workspace")
+
+    # # List existing workspaces (subdirs of workspaces_root)
+    # existing_workspaces = _list_subdirs(workspaces_root)
+
+    # # Keep selection in session_state
+    # if "workspace_name" not in st.session_state:
+    #     st.session_state["workspace_name"] = (
+    #         existing_workspaces[0] if existing_workspaces else _default_workspace_name()
+    #     )
+
+    # List existing workspaces
+    existing_workspaces = _list_subdirs(workspaces_root)
+
+    # Apply pending selection (but DON'T write workspace_name)
+    pending = st.session_state.pop("pending_workspace_name", None)
+
+    # Determine what we want selected this run
+    desired = pending or st.session_state.get("workspace_name")
+    if desired not in existing_workspaces:
+        desired = existing_workspaces[0] if existing_workspaces else _default_workspace_name()
+
+    options = existing_workspaces if existing_workspaces else [desired]
+    index = options.index(desired) if desired in options else 0
+
+    st.selectbox(
+        "Active workspace",
+        options=options,
+        index=index,
+        key="workspace_name",
+    )
+
+
+    # Allow creation of a new workspace
+    new_ws = st.text_input("Create new workspace", value="", key="new_workspace_name")
+    col_ws_a, col_ws_b = st.columns([1, 1])
+
+    with col_ws_a:
+        if st.button("Create workspace"):
+            if not _is_safe_workspace_name(new_ws):
+                st.error("Invalid workspace name. Use letters/numbers plus _ . - (max 64 chars).")
+            else:
+                _ensure_workspace(workspaces_root, new_ws)
+                st.session_state["pending_workspace_name"] = new_ws
+                st.rerun()
+
+    with col_ws_b:
+        if st.button("Refresh workspaces"):
+            st.rerun()
+
+    # Now this is always the true selected value
+    active_workspace_name = st.session_state["workspace_name"]
+    active_workspace_dir = _ensure_workspace(workspaces_root, active_workspace_name)
+
+    run_root = active_workspace_dir
+
+    st.divider()
+
+    # Select stages
     st.header("Stages")
     run_download_doi = st.checkbox("Download DOIs", value=True)
     run_extract_figures = st.checkbox("Extract figures", value=True)
@@ -207,16 +310,13 @@ with st.sidebar:
         key="llm_provider",
     )
 
-    # Defaults
+    # SET OLLAMA DIR AND HOST
     default_ollama_dir = _default_ollama_models_dir()
-    default_ollama_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+    default_ollama_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11435")
 
     if provider == "Ollama":
-        ollama_models_dir = Path(
-            st.text_input("Ollama models dir", str(default_ollama_dir), key="ollama_models_dir")
-        ).expanduser()
-
-        ollama_host = st.text_input("OLLAMA_HOST", default_ollama_host, key="ollama_host")
+        ollama_models_dir = Path(str(default_ollama_dir))
+        ollama_host = default_ollama_host
 
         # Try CLI first, then fall back to filesystem scan
         models = _ollama_list_models_via_cli()
@@ -227,7 +327,7 @@ with st.sidebar:
             selected_model = st.selectbox("Model", options=models, index=0, key="llm_model")
         else:
             selected_model = st.text_input(
-                "Model (no models detected — type one, e.g. llama3:8b)",
+                "Model (no models detected)",
                 value="",
                 key="llm_model",
             )
@@ -249,16 +349,64 @@ with st.sidebar:
             key="openai_api_key",
         )
 
-        suggested = ["gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini"]
+        suggested = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
         selected_model = st.selectbox("Model", options=suggested, index=0, key="llm_model")
+
+    # st.divider()
+    # st.header("Load an existing run")
+    # existing = sorted([p.name for p in run_root.iterdir() if p.is_dir()], reverse=True)
+    # pick = st.selectbox("Run ID", options=[""] + existing)
+    # if st.button("Load run") and pick:
+    #     rr = discover_run(run_root / pick)
+    #     st.session_state["rr"] = rr
 
     st.divider()
     st.header("Load an existing run")
-    existing = sorted([p.name for p in run_root.iterdir() if p.is_dir()], reverse=True)
-    pick = st.selectbox("Run ID", options=[""] + existing)
-    if st.button("Load run") and pick:
-        rr = discover_run(run_root / pick)
-        st.session_state["rr"] = rr
+
+    # Choose which workspace to browse when loading runs
+    load_ws_options = _list_subdirs(workspaces_root)
+    # if not load_ws_options:
+    #     st.info("No workspaces exist yet. Create one above, then run the pipeline.")
+    # else:
+    #     if "load_workspace" not in st.session_state:
+    #         st.session_state["load_workspace"] = active_workspace_name if active_workspace_name in load_ws_options else load_ws_options[0]
+
+    #     load_workspace_name = st.selectbox(
+    #         "Browse workspace",
+    #         options=load_ws_options,
+    #         index=load_ws_options.index(st.session_state["load_workspace"])
+    #             if st.session_state["load_workspace"] in load_ws_options else 0,
+    #         key="load_workspace_selectbox",
+    #     )
+    #     st.session_state["load_workspace"] = load_workspace_name
+
+    #     load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
+
+    if load_ws_options:
+        # ensure state is valid
+        if st.session_state.get("load_workspace") not in load_ws_options:
+            st.session_state["load_workspace"] = (
+                active_workspace_name if active_workspace_name in load_ws_options else load_ws_options[0]
+            )
+
+        load_workspace_name = st.selectbox(
+            "Browse workspace",
+            options=load_ws_options,
+            key="load_workspace",   # <-- single source of truth
+        )
+
+        load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
+        
+        
+        existing_runs = sorted([p.name for p in load_workspace_dir.iterdir() if p.is_dir()], reverse=True)
+        pick = st.selectbox("Run ID", options=[""] + existing_runs, key="load_run_id")
+
+        if st.button("Load run") and pick:
+            rr = discover_run(load_workspace_dir / pick)
+            st.session_state["rr"] = rr
+    else:
+        st.info("No workspaces exist yet. Create one above, then run the pipeline.")
+
 
 # ---------------- Run pipeline ----------------
 st.subheader("Input DOIs")
@@ -293,7 +441,7 @@ if st.button("Run pipeline", type="primary"):
             if provider == "Ollama":
                 os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
                 os.environ["AEM_OCR_LLM_MODEL"] = model
-                os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11435")
                 os.environ["OLLAMA_MODELS"] = st.session_state.get("ollama_models_dir", str(_default_ollama_models_dir()))
             else:
                 os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"
@@ -302,6 +450,11 @@ if st.button("Run pipeline", type="primary"):
                 # Put key in env for downstream libraries if you use them
                 if st.session_state.get("openai_api_key"):
                     os.environ["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+            if custom_run_id:
+                target = run_root / custom_run_id
+                if target.exists():
+                    st.warning(f"Run directory already exists and may be overwritten: {target}")
 
 
             rr = run_full_pipeline(

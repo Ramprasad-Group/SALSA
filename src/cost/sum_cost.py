@@ -6,15 +6,39 @@ from collections import defaultdict
 # Update if you use other models
 PRICES_PER_1M = {
     # standard pricing (not priority tier)
-    "gpt-4o": {"in": 2.50, "out": 10.00, "cached_in": 2.50},  # set cached_in if you enable caching pricing later
+    "gpt-4o": {"in": 2.50, "out": 10.00, "cached_in": 2.50},
+    "gpt-4o-mini": {"in": 0.15, "out": 0.60, "cached_in": 0.075},
+    "gpt-4.1-mini": {"in": 0.4, "out":1.60, "cached_in":0.10},
+    "gpt-4.1-nano": {"in": 0.10, "out":0.4, "cached_in":0.025},
+    "gpt-4.1": {"in": 2.00, "out":8.00, "cached_in":0.5},
+    "gpt-5-nano": {"in": 0.05, "out":0.40, "cached_in":0.005},
+    "gpt-5-mini": {"in": 0.25, "out":2.00, "cached_in":0.025},
+    "gpt-5": {"in": 1.25, "out":10.00, "cached_in":0.125}
+
 }
 
 def canonical_model(name: str) -> str:
     # Your logs show "gpt-4o-2024-08-06" → treat as "gpt-4o"
     if not name:
         return "unknown"
-    if name.startswith("gpt-4o"):
+    elif name.startswith("gpt-4o-mini"):
+        return "gpt-4o-mini"
+    elif name.startswith("gpt-4o"):
         return "gpt-4o"
+    elif name.startswith("gpt-4.1-mini"):
+        return "gpt-4.1-mini"
+    elif name.startswith("gpt-4.1-nano"):
+        return "gpt-4.1-nano"
+    elif name.startswith("gpt-4.1"):
+        return "gpt-4.1"
+    elif name.startswith("gpt-5-mini"):
+        return "gpt-5-mini"
+    elif name.startswith("gpt-5-nano"):
+        return "gpt-5-nano"
+    elif name.startswith("gpt-5"):
+        return "gpt-5"
+    else:
+        return "unknown"
     return name
 
 def main(path: str):

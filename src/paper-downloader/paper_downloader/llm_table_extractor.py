@@ -28,44 +28,6 @@ from paper_downloader import config
 
 class LLMTableExtractor:
     
-    TABLE_SCHEMA = {
-        "name": "extracted_table",
-        "schema": {
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["label", "caption", "headers", "data", "notes", "metadata"],
-            "properties": {
-                "label": {"type": "string"},
-                "caption": {"type": "string"},
-                "headers": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": 1
-                },
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    }
-                },
-                "notes": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                },
-                "metadata": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["row_count", "column_count", "has_merged_cells"],
-                    "properties": {
-                        "row_count": {"type": "integer"},
-                        "column_count": {"type": "integer"},
-                        "has_merged_cells": {"type": "boolean"}
-                    }
-                }
-            }
-        }
-    }
     def __init__(self):
         """
         Initialize the LLM table extractor
@@ -79,7 +41,7 @@ class LLMTableExtractor:
         # api_key = os.getenv("OPENAI_API_KEY")
         # org_id = os.getenv("OPENAI_ORGANIZATION")
         # self.client = OpenAI(api_key=api_key, organization=org_id)
-        # self.client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
+        # self.client = make_client(llm_url='http://127.0.0.1:11435/v1', api_key_string='ollama')
         self.client = get_llm_client()
     
     def _xml_text(self, elem: Optional[ET.Element]) -> str:
@@ -308,12 +270,14 @@ class LLMTableExtractor:
 
             # Deduplicate
             table_containers = list(dict.fromkeys(table_containers))
+            print(f"Found {len(table_containers)} potential table containers (expanded search)")
             self.logger.debug(f"Found {len(table_containers)} potential table containers (expanded search)")
 
             # If nothing found, fall back to all <table>
             if not table_containers:
                 table_containers = soup.find_all("table")
 
+            print(f"Found {len(table_containers)} potential table containers")
             self.logger.debug(f"Found {len(table_containers)} potential table containers")
             all_tables = []
 
@@ -321,6 +285,7 @@ class LLMTableExtractor:
             for i, container in enumerate(table_containers):
                 # Determine if this is an actual <table> or a wrapper
                 table_elem = container if container.name == "table" else container.find("table")
+                # print('===table_elem===', table_elem)
                 if not table_elem:
                     continue
 
@@ -432,13 +397,51 @@ class LLMTableExtractor:
             Dictionary with table data or None if failed
         """
         try:
+            
+            instructions = """
+                You are an expert at extracting structured table data from XML files.
+                Extract the table data and return it as JSON.
+
+                Return ONLY valid JSON in this exact format:
+                {
+                "label": "Table 1",
+                "caption": "Full table caption text",
+                "headers": ["Column 1", "Column 2", "Column 3"],
+                "data": [
+                    ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
+                    ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
+                ],
+                "notes": ["Any footnotes or notes"],
+                "metadata": {
+                    "row_count": 2,
+                    "column_count": 3,
+                    "has_merged_cells": false
+                }
+                }
+
+                Extract:
+                - Label
+                - Caption
+                - Headers
+                - Data
+
+                Rules: 
+                - Use the actual caption text provided above, not placeholder text.
+                - Clean up text content (remove XML tags, preserve data values).
+                - Do not return anything aside from the final json content. No explanations or anything that is not json
+                - If a parent header spans multiple columns,and there is a second header row that contains labels such as
+                    "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc., you MUST factor them into final column headers. 
+                """
+
+                
+
             prompt = self._create_single_table_prompt_xml(table_xml, caption_text)
             
             text, meta = self.client.chat(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at extracting structured table data from XML files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
+                        "content": instructions
                     },
                     {
                         "role": "user",
@@ -446,10 +449,6 @@ class LLMTableExtractor:
                     }
                 ],
                 max_tokens=3000,
-                response_format={
-                "type": "json_schema",
-                "json_schema": self.TABLE_SCHEMA,
-                },
                 temperature=0.0,
                 return_meta=True,
             )
@@ -477,44 +476,11 @@ class LLMTableExtractor:
         return f"""
         Extract the table data from this XML table element. 
 
-        Caption: 
-        {caption_context}
+        Caption: {caption_context}, 
+    
 
-        XML Table:
-        {table_xml}
+        XML Table: {table_xml}
 
-        Return ONLY valid JSON in this exact format:
-        {{
-            "label": "Table 1",
-            "caption": "Full table caption text",
-            "headers": ["Column 1", "Column 2", "Column 3"],
-            "data": [
-                ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
-                ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
-            ],
-            "notes": ["Any footnotes or notes"],
-            "metadata": {{
-                "row_count": 2,
-                "column_count": 3,
-                "has_merged_cells": false
-            }}
-        }}
-
-        Extract:
-        1. Label
-        2. Caption
-        3. Headers
-        4. Data
-        5. Clean up text content (remove XML tags, preserve data values)
-        6. Handle merged cells appropriately (If there are merged cells, append merged content to connected cells)
-
-        CRITICAL RULE FOR MERGED AND MULTI-ROW HEADERS:
-        - If a parent header spans multiple columns (using namest/nameend),
-        and there is a second header row that contains labels such as
-        "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc.,
-        you MUST combine them into final column headers.
-
-        IMPORTANT: Use the actual caption text provided above, not placeholder text.
         """
     
     def _parse_single_table_response(self, response: str) -> Dict[str, Any]:
@@ -550,13 +516,51 @@ class LLMTableExtractor:
             Dictionary with table data or None if failed
         """
         try:
+
+            instructions = """
+                You are an expert at extracting structured table data from HTML files.
+                Extract the table data and return it as JSON.
+
+                Return ONLY valid JSON in this exact format:
+                {
+                "label": "Table 1",
+                "caption": "Full table caption text",
+                "headers": ["Column 1", "Column 2", "Column 3"],
+                "data": [
+                    ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
+                    ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
+                ],
+                "notes": ["Any footnotes or notes"],
+                "metadata": {
+                    "row_count": 2,
+                    "column_count": 3,
+                    "has_merged_cells": false
+                }
+                }
+
+                Extract:
+                - Label
+                - Caption
+                - Headers
+                - Data
+
+                Rules: 
+                - Use the actual caption text provided above, not placeholder text.
+                - Clean up text content (remove HTML tags, preserve data values).
+                - Do not return anything aside from the final json content. No explanations or anything that is not json
+                - If a parent header spans multiple columns,and there is a second header row that contains labels such as
+                    "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc., you MUST factor them into final column headers. 
+                """
+
+
             prompt = self._create_single_table_html_prompt(table_html, caption_text)
+
             
             text, meta = self.client.chat(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at extracting structured table data from html files. Extract the table data and return it as JSON. Return ONLY valid JSON. No explanations."
+                        "content": instructions
                     },
                     {
                         "role": "user",
@@ -564,10 +568,6 @@ class LLMTableExtractor:
                     }
                 ],
                 max_tokens=3000,
-                response_format={
-                "type": "json_schema",
-                "json_schema": self.TABLE_SCHEMA,
-                },
                 temperature=0.0,
                 return_meta=True,
             )
@@ -600,40 +600,42 @@ class LLMTableExtractor:
 
         HTML Table:
         {table_html}
-
-        Return ONLY valid JSON in this exact format:
-        {{
-            "label": "Table 1",
-            "caption": "Full table caption text",
-            "headers": ["Column 1", "Column 2", "Column 3"],
-            "data": [
-                ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
-                ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
-            ],
-            "notes": ["Any footnotes or notes"],
-            "metadata": {{
-                "row_count": 2,
-                "column_count": 3,
-                "has_merged_cells": false
-            }}
-        }}
-
-        Extract:
-        1. Label
-        2. Caption
-        3. Headers
-        4. Data
-        5. Clean up text content (remove HTML tags, preserve data values)
-        6. Handle merged cells appropriately (If there are merged cells, append merged content to connected cells)
-
-        CRITICAL RULE FOR MERGED AND MULTI-ROW HEADERS:
-        - If a parent header spans multiple columns,
-        and there is a second header row that contains labels such as
-        "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc.,
-        you MUST factor them into final column headers.
-
-        IMPORTANT: Use the actual caption text provided above, not placeholder text.
         """
+        
+
+        # Return ONLY valid JSON in this exact format:
+        # {{
+        #     "label": "Table 1",
+        #     "caption": "Full table caption text",
+        #     "headers": ["Column 1", "Column 2", "Column 3"],
+        #     "data": [
+        #         ["Row 1 Col 1", "Row 1 Col 2", "Row 1 Col 3"],
+        #         ["Row 2 Col 1", "Row 2 Col 2", "Row 2 Col 3"]
+        #     ],
+        #     "notes": ["Any footnotes or notes"],
+        #     "metadata": {{
+        #         "row_count": 2,
+        #         "column_count": 3,
+        #         "has_merged_cells": false
+        #     }}
+        # }}
+
+        # Extract:
+        # 1. Label
+        # 2. Caption
+        # 3. Headers
+        # 4. Data
+        # 5. Clean up text content (remove HTML tags, preserve data values)
+        # 6. Handle merged cells appropriately (If there are merged cells, append merged content to connected cells)
+
+        # CRITICAL RULE FOR MERGED AND MULTI-ROW HEADERS:
+        # - If a parent header spans multiple columns,
+        # and there is a second header row that contains labels such as
+        # "Before" / "After", "30°C" / "80°C", "Cal."/"Exp", "in-plane"/"through-plane", etc.,
+        # you MUST factor them into final column headers.
+
+        # IMPORTANT: Use the actual caption text provided above, not placeholder text.
+        # """
     
     def _log_cost(self, text, extra: dict):
         """
