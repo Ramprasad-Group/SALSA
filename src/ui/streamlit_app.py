@@ -223,8 +223,8 @@ st.title("AEM_OCR")
 # ---------------- Sidebar ----------------
 with st.sidebar:
 
-    # Set workspace variables
-    scripts_root = Path("AEM_OCR/src", "/home/wschertzer3/AEM_OCR/src").resolve()
+    # Set workspace variables – resolve relative to this file, not cwd
+    scripts_root = (Path(__file__).resolve().parent / "..").resolve()
     workspaces_root = Path(str(scripts_root / "ui_runs"))
     workspaces_root.mkdir(parents=True, exist_ok=True)
 

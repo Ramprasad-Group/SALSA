@@ -23,12 +23,12 @@ import mimetypes
 import textwrap
 from PIL import Image
 
-sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, _SRC_ROOT)
+sys.path.insert(0, _PAPER_DL)
 from ui.openai_cost import append_usage, run_id_from_env
 
-
-
-sys.path.append('/home/wschertzer3/AEM_OCR/src/paper-downloader')
 from paper_downloader import config
 from backend import sett, postgres
 from llm_table_extractor import LLMTableExtractor
@@ -82,14 +82,15 @@ def setup_logging(log_level='INFO', log_file=None):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Extract figures and tables using LLM for robust parsing")
     parser.add_argument('--no_db', action='store_true', default=True, help='Run without Postgres; use only local CSV info')
-    parser.add_argument('--csv_path', 
-                       default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/reparsed/index.csv',
+    _logs = os.path.join(_PAPER_DL, "paper_downloader", "logs")
+    parser.add_argument('--csv_path',
+                       default=os.path.join(_logs, 'papers', 'reparsed', 'index.csv'),
                        help='Path to CSV file containing DOIs')
-    parser.add_argument('--output_dir', 
-                       default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables',
+    parser.add_argument('--output_dir',
+                       default=os.path.join(_logs, 'figures_tables'),
                        help='Base output directory for figures and tables')
     parser.add_argument('--structured_files_dir',
-                       default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files',
+                       default=os.path.join(_logs, 'papers', 'structured_files'),
                        help='Directory containing structured files')
     parser.add_argument('--sample_size', type=int, default=None,
                        help='Number of DOIs to process (for testing)')
@@ -102,7 +103,7 @@ def parse_arguments():
     parser.add_argument('--log_level', default='INFO', 
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                        help='Logging level (default: INFO)')
-    parser.add_argument('--log_file', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/',
+    parser.add_argument('--log_file', default=os.path.join(_logs, 'figures_tables'),
                        help='Log file directory')
     parser.add_argument('--debug_publishers', action='store_true',
                        help='Debug mode: test extraction on sample files for each publisher')

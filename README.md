@@ -1,88 +1,135 @@
-# Extract Line Chart Data and Metadata
+# AEM_OCR — Extract Line Chart Data and Metadata
 
-A wrapper for LineFormer and ChartDete, offering an improved approach over the original code from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data) for extracting data from line charts.
-
----
-
-## Table of Contents
-
-- [Setup](#setup)
-- [How to Use](#how-to-use)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
+A pipeline for extracting numerical data from line charts in scientific papers, with specialized focus on materials science and electrochemistry. Built on [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete), extending the approach from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
 
 ---
 
-## Setup
+## Quick Start
 
-Follow these steps to set up your environment and dependencies:
+```bash
+# 1. Clone with submodules
+git clone --recurse-submodules https://github.com/Ramprasad-Group/AEM_OCR
+cd AEM_OCR
 
-1.  **Clone the Repository with Submodules:**
-    Ensure you clone the repository including its submodules, as this project relies on external tools.
-    ```bash
-    git clone --recurse-submodules https://github.com/Ramprasad-Group/AEM_OCR
-    ```
-2.  **Create and Activate Conda Environment:**
-    Navigate into the cloned repository and create a new Conda environment using the provided `environment.yml` file.
-    ```bash
-    cd AEM_OCR # Or the name of your cloned directory if different
-    conda env create -f environment.yml
-    conda activate AEM_OCR # Assuming the environment name is AEM_OCR from the yml file
-    ```
-3.  **Make Setup Script Executable:**
-    Grant execution permissions to the setup script.
-    ```bash
-    chmod +x src/scripts/setup.sh
-    ```
-4.  **Run Setup Script:**
-    Execute the setup bash script to finalize the environment configuration.
-    ```bash
-    bash src/scripts/setup.sh
-    ```
+# 2. Create conda environment
+conda env create -f environment.yml
+conda activate AEM_OCR
 
-## How to Use
+# 3. Run setup (installs submodules, mmdet stack, patches)
+bash src/setup-scripts/setup.sh
 
-Once the setup is complete, you can use the tool as follows:
+# 4. Launch the UI
+streamlit run src/ui/streamlit_app.py
+```
 
-1.  **Place Figures:**
-    Put all the line chart images you wish to process into the `src/input` directory.
-2.  **Run the Extraction Script:**
-    Execute the main Python script to start the data extraction process.
-    ```bash
-    python src/plextract/main.py
-    ```
-    The extracted data will be saved in an output directory, typically `src/output`.
+Or use `make`:
+
+```bash
+make setup          # Steps 2 + 3
+conda activate AEM_OCR
+make ui             # Step 4
+```
+
+### Prerequisites
+
+- **Git LFS** — model checkpoints are stored with LFS. Install it if not already:
+  ```bash
+  git lfs install
+  ```
+- **Conda** (Miniconda or Anaconda)
+- **CUDA 11.7** (optional, for GPU acceleration). CPU-only works but is slower.
+
+### LLM Configuration
+
+The dataset-completion and figure-filtering stages require an LLM. Configure via environment variables before launching the UI:
+
+| Variable | Description | Example |
+|---|---|---|
+| `AEM_OCR_LLM_PROVIDER` | `ollama` or `openai` | `openai` |
+| `AEM_OCR_LLM_MODEL` | Model name | `gpt-4o` |
+| `OPENAI_API_KEY` | API key (OpenAI only) | `sk-...` |
+| `OLLAMA_HOST` | Ollama endpoint (Ollama only) | `http://127.0.0.1:11434` |
+
+---
+
+## How It Works
+
+The pipeline has three stages:
+
+1. **Paper Acquisition** (`src/paper-downloader/`) — Download papers by DOI, extract figures and tables from structured files (XML/HTML).
+
+2. **Figure Data Extraction** (`src/extract_figure_data/plextract.py`) — For each figure:
+   - **ChartDete**: detect chart elements (axes, legends, plot areas)
+   - **LineFormer**: extract line series as polylines
+   - **TrOCR**: OCR axis labels, titles, and legend text
+   - **Legend matching**: pair legend entries to line series (Hungarian algorithm)
+   - **Coordinate correction**: transform pixel coordinates to data space
+   - Export labeled (x, y) datasets
+
+3. **Dataset Completion** (`src/complete_dataset/complete_dataset.py`) — Merge extracted figure data with table data, use an LLM to map columns to a target output schema, produce final CSVs.
+
+---
 
 ## Project Structure
-```bash
-├── extern # Directory for holding external github repositories used here
-    └── ChartDete # external github repo used to analye elements of a chart
-    └── LineFormer # external github repo used to draw lines over the series on a line chart
-├── src/
-│ ├── input/ # Directory for placing input line chart images
-│ ├── output/ # Directory where extracted data will be saved
-│ ├── plextract/ # Main application logic for extraction
-│ │ └── main.py # Entry point for running the extraction
-    └── helpers # helpers for main.py
-  ├── results/
-│ ├── scripts/
-│   └── setup.sh # Script to handle additional setup tasks
-├── environment.yml # Conda environment definition
-├── pyproject.toml
-├── .gitmodules # Git submodule configuration
-└── README.md # This README file
+
 ```
+AEM_OCR/
+├── extern/                          # Git submodules
+│   ├── ChartDete/                   # Chart element detector (Cascade R-CNN + Swin-T)
+│   └── LineFormer/                  # Line extraction transformer
+├── src/
+│   ├── extract_figure_data/         # Core extraction pipeline
+│   │   ├── plextract.py             # Main orchestrator
+│   │   ├── run_chartdete.py         # ChartDete wrapper
+│   │   ├── run_lineformer.py        # LineFormer wrapper
+│   │   ├── run_ocr.py              # TrOCR wrapper
+│   │   ├── match_legend.py          # Legend-to-series matching
+│   │   ├── correct_coordinates.py   # Pixel → data coordinate transform
+│   │   └── finalize_labels.py       # Export datasets + plots
+│   ├── complete_dataset/            # LLM-driven dataset completion
+│   │   └── complete_dataset.py
+│   ├── ui/                          # Streamlit interactive UI
+│   │   └── streamlit_app.py
+│   ├── paper-downloader/            # Paper acquisition + parsing
+│   ├── llm_client.py               # Unified OpenAI / Ollama client
+│   └── setup-scripts/              # Setup and patch scripts
+│       ├── setup.sh
+│       ├── patch_config.py
+│       └── patch_lineformer.py
+├── huggingface/                     # Model configs + checkpoints (Git LFS)
+├── environment.yml                  # Conda environment
+├── pyproject.toml                   # Package metadata (plextract)
+├── Makefile                         # make setup / make ui
+└── README.md
+```
+
+## Main Entry Points
+
+| Command | Description |
+|---|---|
+| `streamlit run src/ui/streamlit_app.py` | Interactive web UI (recommended) |
+| `python src/extract_figure_data/plextract.py --input <dir>` | Run figure extraction standalone |
+| `python src/complete_dataset/complete_dataset.py` | Run dataset completion standalone |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `CHARTDETE_DEVICE` | auto (cuda/cpu) | Device for ChartDete inference |
+| `LINEFORMER_DEVICE` | auto (cuda/cpu) | Device for LineFormer inference |
+| `CHARTDETE_HF_DIR` | `./huggingface` | Directory for ChartDete model files |
+| `LINEFORMER_HF_DIR` | `./huggingface` | Directory for LineFormer model files |
+| `AEM_OCR_LLM_PROVIDER` | `ollama` | LLM provider (`ollama` or `openai`) |
+| `AEM_OCR_LLM_MODEL` | — | Model name (required for LLM features) |
+
+---
 
 ## Contributing
 
 Contributions are welcome! If you find a bug or have an idea for an enhancement, please open an issue or submit a pull request.
 
-## License
-
 ## Acknowledgements
 
--   Inspired by and built upon the work from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
--   Utilizes [LineFormer](link_to_lineformer_if_available) and [ChartDete](link_to_chartdete_if_available) for core functionalities.
--   This work was supported as part of the UNCAGE-ME, an Energy Frontier Research Center funded by the U.S. Department of Energy Office of Science, Basic Energy Sciences at the Georgia Institute of Technology under award # DE-SC0012577.
+- Built upon [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data)
+- Uses [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete)
+- This work was supported as part of UNCAGE-ME, an Energy Frontier Research Center funded by the U.S. Department of Energy Office of Science, Basic Energy Sciences at the Georgia Institute of Technology under award # DE-SC0012577.

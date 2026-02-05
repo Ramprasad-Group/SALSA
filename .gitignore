@@ -1,4 +1,7 @@
-/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/*
-/home/wschertzer3/AEM_OCR/src/results/*
 src/paper-downloader/paper_downloader/logs/
+src/extract_figure_data/results/
+src/ui_runs/
 ui_runs/
+__pycache__/
+*.egg-info/
+.env

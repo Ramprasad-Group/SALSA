@@ -30,14 +30,15 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Download papers from a database of records into a directory")
     # EXISTING flags...
     parser.add_argument('--debug', type=bool, default=True, help='Store output in the dev database if True')
-    parser.add_argument('--log_file', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers', help='Path to log file')
+    _logs = os.path.join(os.path.abspath(os.path.dirname(__file__)), "logs")
+    parser.add_argument('--log_file', default=os.path.join(_logs, 'papers'), help='Path to log file')
     parser.add_argument('--sample_size', default=1, help='Download sample size')
     parser.add_argument('--update_dvc', type=bool, default=False, help='Update version of data if True')
 
     # NEW flags for No-DB mode
     parser.add_argument('--no_db', default=True, action='store_true', help='Run without Postgres')
-    parser.add_argument('--input_csv', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/records/download_results_20251205_170459.csv', help='CSV with columns: doi,title,pub_year,publisher')
-    parser.add_argument('--download_dir', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers', help='Output directory (No-DB mode)')
+    parser.add_argument('--input_csv', default=os.path.join(_logs, 'records', 'download_results.csv'), help='CSV with columns: doi,title,pub_year,publisher')
+    parser.add_argument('--download_dir', default=os.path.join(_logs, 'papers'), help='Output directory (No-DB mode)')
     return parser.parse_args()
 
 def setup_environment(args):

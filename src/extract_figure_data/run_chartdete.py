@@ -59,12 +59,12 @@ from mmdet.apis import init_detector, inference_detector  # noqa: E402
 
 
 def _auto_device() -> str:
-    # try:
-    #     import torch  # imported late on purpose
-    #     if torch.cuda.is_available():
-    #         return "cuda:0"
-    # except Exception:
-    #     pass
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda:0"
+    except Exception:
+        pass
     return "cpu"
 
 
