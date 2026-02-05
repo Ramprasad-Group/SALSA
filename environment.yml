@@ -5,20 +5,17 @@ channels:
   - conda-forge
 
 dependencies:
-  - python=3.8
+  - python=3.10
   - pip
   - numpy=1.24.*
   - pandas=2.0.*
   - scipy=1.9.*
   - matplotlib=3.7.*
   - scikit-image=0.21.*
-  - opencv
-  - tesseract
   - pytorch=1.13.1
   - torchvision=0.14.1
   - pytorch-cuda=11.7
   - huggingface_hub
-  - tokenizers
   - transformers=4.45.*
   - cmake
   - graphviz
@@ -26,4 +23,5 @@ dependencies:
   - pip:
       - bresenham==0.2.1
       - openmim>=0.3.9
+      - opencv-python-headless>=4.7
       - -e .
