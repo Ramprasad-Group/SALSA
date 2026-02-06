@@ -23,10 +23,22 @@ MMDET_PIN="${MMDET_PIN:-mmdet==2.28.2}"
 MMENGINE_PIN="${MMENGINE_PIN:-}"
 
 # Detect Torch version (major.minor)
+# Try importing torch first; fall back to pip metadata if the import fails
+# (e.g. missing Intel runtime libs on first install).
 TORCH_VER="$(python - <<'PY'
-import torch, re
-v = torch.__version__.split('+')[0]
-print(re.match(r'^\d+\.\d+', v).group(0))
+import re, sys
+try:
+    import torch
+    v = torch.__version__
+except Exception:
+    from importlib.metadata import version
+    v = version("torch")
+v = v.split("+")[0]
+m = re.match(r"^\d+\.\d+", v)
+if not m:
+    print("ERROR: cannot determine torch version", file=sys.stderr)
+    sys.exit(1)
+print(m.group(0))
 PY
 )"
 

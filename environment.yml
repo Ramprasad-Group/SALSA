@@ -15,6 +15,7 @@ dependencies:
   - pytorch=1.13.1
   - torchvision=0.14.1
   - pytorch-cuda=11.7
+  - intel-openmp
   - huggingface_hub
   - transformers=4.45.*
   - cmake
