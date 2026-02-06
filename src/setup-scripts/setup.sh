@@ -14,32 +14,8 @@ echo "==> Initialising git submodules..."
 git -C "$REPO_ROOT" submodule update --init --recursive
 
 # ------------------------------------------------------------------
-# 2. Install ChartDete as editable so its custom mmdet heads are available
-# ------------------------------------------------------------------
-if [ -d "$REPO_ROOT/extern/ChartDete" ] && [ "$(ls -A "$REPO_ROOT/extern/ChartDete")" ]; then
-    echo "==> Installing ChartDete as editable package..."
-    python -m pip install -e "$REPO_ROOT/extern/ChartDete"
-else
-    echo "WARNING: extern/ChartDete is empty. Submodule init may have failed."
-    exit 1
-fi
-
-# ------------------------------------------------------------------
-# 3. Patch configuration files
-# ------------------------------------------------------------------
-CHARTDETE_CONFIG="$REPO_ROOT/extern/ChartDete/configs/cascade_rcnn_swin-t_fpn_LGF_VCE_PCE_coco_focalsmoothloss.py"
-if [ -f "$CHARTDETE_CONFIG" ]; then
-    echo "==> Patching ChartDete config..."
-    python "$SCRIPT_DIR/patch_config.py" "$CHARTDETE_CONFIG"
-fi
-
-if [ -f "$REPO_ROOT/extern/LineFormer/infer.py" ]; then
-    echo "==> Patching LineFormer infer.py..."
-    python "$SCRIPT_DIR/patch_lineformer.py"
-fi
-
-# ------------------------------------------------------------------
-# 4. Install MMDetection 2.x stack (mmcv-full + mmdet)
+# 2. Install MMDetection 2.x stack (mmcv-full + mmdet)
+#    Must come before ChartDete, whose setup.py imports torch + mmdet.
 # ------------------------------------------------------------------
 CUDA_TAG="${CUDA_TAG:-cu117}"
 MMCV_PIN="${MMCV_PIN:-mmcv-full==1.7.2}"
@@ -65,6 +41,32 @@ fi
 
 python -m pip install -U -f "$BASE_URL" ${MMCV_PIN}
 python -m pip install -U ${MMDET_PIN}
+
+# ------------------------------------------------------------------
+# 3. Install ChartDete as editable so its custom mmdet heads are available
+#    --no-build-isolation ensures setup.py sees the env's torch/mmdet.
+# ------------------------------------------------------------------
+if [ -d "$REPO_ROOT/extern/ChartDete" ] && [ "$(ls -A "$REPO_ROOT/extern/ChartDete")" ]; then
+    echo "==> Installing ChartDete as editable package..."
+    python -m pip install --no-build-isolation -e "$REPO_ROOT/extern/ChartDete"
+else
+    echo "WARNING: extern/ChartDete is empty. Submodule init may have failed."
+    exit 1
+fi
+
+# ------------------------------------------------------------------
+# 4. Patch configuration files
+# ------------------------------------------------------------------
+CHARTDETE_CONFIG="$REPO_ROOT/extern/ChartDete/configs/cascade_rcnn_swin-t_fpn_LGF_VCE_PCE_coco_focalsmoothloss.py"
+if [ -f "$CHARTDETE_CONFIG" ]; then
+    echo "==> Patching ChartDete config..."
+    python "$SCRIPT_DIR/patch_config.py" "$CHARTDETE_CONFIG"
+fi
+
+if [ -f "$REPO_ROOT/extern/LineFormer/infer.py" ]; then
+    echo "==> Patching LineFormer infer.py..."
+    python "$SCRIPT_DIR/patch_lineformer.py"
+fi
 
 # ------------------------------------------------------------------
 # 5. Install the plextract package in editable mode
