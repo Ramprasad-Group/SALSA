@@ -137,8 +137,11 @@ def _default_ollama_models_dir() -> Path:
         Path("/opt/ollama/models"),
     ]
     for c in candidates:
-        if c.exists():
-            return c
+        try:
+            if c.exists():
+                return c
+        except (PermissionError, OSError):
+            continue
 
     # 5. Fallback – create the user-local directory
     fallback = Path.home() / ".ollama" / "models"
