@@ -1,5 +1,4 @@
-/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/*
-/home/wschertzer3/AEM_OCR/src/results/*
 src/paper-downloader/paper_downloader/logs/
 src/cost/usage.jsonl
-ui_runs/
+src/ui_runs/
+src/ui_runs/__pychache*

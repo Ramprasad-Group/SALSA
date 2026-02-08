@@ -113,7 +113,7 @@ def extract_usage_fields(resp: Any) -> Dict[str, int]:
         total_tokens=0,
     )
 
-DEFAULT_COST_ROOT = Path("/home/wschertzer3/AEM_OCR/src")
+DEFAULT_COST_ROOT = Path(__file__).resolve().parent.parent  # <repo>/src
 
 def append_usage(
     *,

@@ -29,8 +29,8 @@ from typing import Optional, Tuple, Dict
 import pandas as pd
 
 # Local project imports (no DB modules!)
-sys.path.append("/data/sonakshi/paper-downloader")
-sys.path.append("/data/sonakshi/foundational-llm-models")
+_PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, _PAPER_DL)
 import paper_downloader.LimeSoup as LimeSoup
 from paper_downloader import utils, config
 
@@ -103,10 +103,12 @@ def write_json(path_: Path, obj: Dict):
 # ---------------------------
 def main():
     ap = argparse.ArgumentParser(description="Re-parse structured files locally (no DB).")
-    ap.add_argument("--csv_path", default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/records/download_results_20251205_192922.csv', help="CSV containing DOIs (and optional filter column).")
-    ap.add_argument("--structured_root", default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/structured_files',
+    _logs = os.path.join(_PAPER_DL, "paper_downloader", "logs")
+    ap.add_argument("--csv_path", default=os.path.join(_logs, "records", "download_results.csv"),
+                    help="CSV containing DOIs (and optional filter column).")
+    ap.add_argument("--structured_root", default=os.path.join(_logs, "papers", "structured_files"),
                     help="Root directory where structured files are stored (publisher subfolders).")
-    ap.add_argument("--output_dir", default="/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/reparsed",
+    ap.add_argument("--output_dir", default=os.path.join(_logs, "papers", "reparsed"),
                     help="Directory to write per-DOI JSON and index.csv.")
     ap.add_argument("--filter_column", default="note",
                     help="CSV column used to filter rows (default: note).")

@@ -437,10 +437,13 @@ def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0):
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Run local chart digitization pipeline.")
+    # Resolve repo root so defaults work regardless of cwd
+    _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
     ap.add_argument(
         "--input",
         type=str,
-        default="/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/figures_tables/figures", # /home/wschertzer3/AEM_OCR/src/extract-figure-data/test
+        default=os.path.join(_repo_root, "src", "paper-downloader", "paper_downloader", "logs", "figures_tables", "figures"),
         help="Directory containing input images",
     )
     ap.add_argument(
@@ -453,7 +456,7 @@ def parse_args():
     ap.add_argument(
         "--log_file",
         type=str,
-        default="/home/wschertzer3/AEM_OCR/src/extract_figure_data/results/",
+        default=os.path.join(_repo_root, "src", "extract_figure_data", "results"),
         help="default location for log file"
     )
 

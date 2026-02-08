@@ -75,8 +75,7 @@ class LineFormer:
             If True, snapshot repo when files not found.
         """
         self.hf_dir = Path(hf_dir or os.environ.get("LINEFORMER_HF_DIR", "./huggingface")).resolve()
-        # self.device = device or os.environ.get("LINEFORMER_DEVICE", _auto_device())
-        self.device = "cpu"
+        self.device = device or os.environ.get("LINEFORMER_DEVICE", _auto_device())
 
 
         # Default filenames to mirror the original Modal version

@@ -17,12 +17,14 @@ import traceback
 import pandas as pd
 from bs4 import Tag
 from pathlib import Path
-sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, _SRC_ROOT)
 from ui.openai_cost import append_usage, run_id_from_env
 
 load_dotenv()
 
-sys.path.append('/home/wschertzer3/paper-downloader/paper_downloader')
+_PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, _PAPER_DL)
 from paper_downloader import config
 
 

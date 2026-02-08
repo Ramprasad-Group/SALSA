@@ -26,7 +26,9 @@ from llm_client import LLMConfig, get_llm_client
 
 
 
-sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_SRC_ROOT = os.path.join(_REPO_ROOT, "src")
+sys.path.insert(0, _SRC_ROOT)
 from ui.openai_cost import append_usage, run_id_from_env
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../paper-downloader"))
@@ -47,15 +49,15 @@ from figure_plan import infer_figure_series_plans, apply_figure_series_plans
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--file_path', default='/home/wschertzer3/AEM_OCR/src/doi-inputs/validate_paper_download.csv',
+parser.add_argument('--file_path', default=os.path.join(_SRC_ROOT, 'doi-inputs', 'validate_paper_download.csv'),
                     help='Path to CSV/Excel file containing DOIs')
-parser.add_argument('--output_dir', default='/home/wschertzer3/AEM_OCR/src/complete-dataset/logs/records',
+parser.add_argument('--output_dir', default=os.path.join(_SRC_ROOT, 'complete-dataset', 'logs', 'records'),
                     help='Directory to write combined JSONs and completed CSVs')
-parser.add_argument('--index_csv_path', default='/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/logs/papers/reparsed/index.csv',
+parser.add_argument('--index_csv_path', default=os.path.join(_SRC_ROOT, 'paper-downloader', 'paper_downloader', 'logs', 'papers', 'reparsed', 'index.csv'),
                     help="CSV where downloaded files metadata is stored")
 parser.add_argument('--doi_column', default='DOI',
                     help='Name of DOI column in file')
-parser.add_argument('--log_file', dest='log_file', default='/home/wschertzer3/AEM_OCR/src/complete-dataset/logs/records',
+parser.add_argument('--log_file', dest='log_file', default=os.path.join(_SRC_ROOT, 'complete-dataset', 'logs', 'records'),
                     help='Path to log file directory')
 
 parser.add_argument('--extracted_figures_root', default='',

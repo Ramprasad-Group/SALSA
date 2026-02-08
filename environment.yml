@@ -3,27 +3,23 @@ channels:
   - pytorch
   - nvidia
   - conda-forge
-
+  - defaults
 dependencies:
   - python=3.8
-  - pip
-  - numpy=1.24.*
-  - pandas=2.0.*
-  - scipy=1.9.*
-  - matplotlib=3.7.*
-  - scikit-image=0.21.*
   - opencv
-  - tesseract
-  - pytorch=1.13.1
-  - torchvision=0.14.1
-  - pytorch-cuda=11.7
-  - huggingface_hub
-  - tokenizers
-  - transformers=4.45.*
-  - cmake
-  - graphviz
-
+  - tesseract=5.2.0
+  - pillow
+  - numpy=1.24.3
+  - pandas=2.0.3
+  - matplotlib=3.7.3
+  - scikit-image=0.21.0
+  - streamlit=1.31.1
+  - transformers
+  - plotly
+  - pip
   - pip:
       - bresenham==0.2.1
       - openmim>=0.3.9
-      - -e .1`op
+      - opencv-python-headless>=4.7
+      - streamlit-drawable-canvas
+      - -e .

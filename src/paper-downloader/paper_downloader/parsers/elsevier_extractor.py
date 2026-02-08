@@ -13,7 +13,7 @@ import logging
 import json
 import time
 
-sys.path.append('/data/sonakshi/paper-downloader')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from paper_downloader import config
 
 def extract_elsevier_figures(file_path, output_dir, doi):

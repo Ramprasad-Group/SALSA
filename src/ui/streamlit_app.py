@@ -74,10 +74,6 @@ def _default_workspace_name() -> str:
 def _default_ollama_models_dir() -> Path:
     """
     Determine a sane default for Ollama models directory.
-    Priority:
-      1) $OLLAMA_MODELS (your log shows you use /data/william/ollama_models)
-      2) ~/.ollama/models (common on user installs)
-      3) /usr/share/ollama/.ollama/models (common system install)
     """
     env = os.environ.get("OLLAMA_MODELS")
     if env:
@@ -221,8 +217,8 @@ st.title("AEM_OCR")
 # ---------------- Sidebar ----------------
 with st.sidebar:
 
-    # Set workspace variables
-    scripts_root = Path("AEM_OCR/src", "/home/wschertzer3/AEM_OCR/src").resolve()
+    # Set workspace variables – resolve relative to this file, not cwd
+    scripts_root = (Path(__file__).resolve().parent / "..").resolve()
     workspaces_root = Path(str(scripts_root / "ui_runs"))
     workspaces_root.mkdir(parents=True, exist_ok=True)
 
