@@ -42,6 +42,9 @@ def _clean_label(s: str) -> str:
     return s if s else "unlabeled"
 
 def _normalize_unit_text(u: str) -> Optional[str]:
+    """
+    Normalize structure of unit text
+    """
     if u is None: return None
     t = u.strip().replace(" ", "")
     t = t.replace("·","/")  # normalize "S·cm^-1" style to slash where possible (heuristic)

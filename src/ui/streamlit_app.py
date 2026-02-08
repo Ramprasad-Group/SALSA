@@ -71,8 +71,6 @@ def _default_workspace_name() -> str:
     # nice default when user hasn't chosen anything yet
     return datetime.now().strftime("workspace_%Y%m%d")
 
-
-
 def _default_ollama_models_dir() -> Path:
     """
     Determine a sane default for Ollama models directory.

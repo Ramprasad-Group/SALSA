@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 from llm_client import get_llm_client
 from dataclasses import dataclass
 import hashlib
+from llm_client import LLMConfig, get_llm_client
+
 
 
 sys.path.append('/home/wschertzer3/AEM_OCR/src/ui')
@@ -73,10 +75,6 @@ parser.add_argument('--skip_llm', action='store_true', help="Skip GPT plan step 
 # plan caching
 parser.add_argument('--plan_cache_dir', default='',
                     help="Optional override for plan cache directory. Default: <output_dir>/plans")
-
-# If you ONLY care about time-series degradation curves, you can drop non-time figure rows:
-parser.add_argument('--drop_non_time_figure_rows', action='store_true',
-                    help="If set, figure datapoints whose x axis is not time will be excluded.")
 
 args = parser.parse_args()
 
@@ -484,7 +482,7 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
             continue
         md = f.get("metadata") or {}
         cap = md.get("caption") or md.get("figure_caption") or ""
-        figure_snips.append({"figure_name": f.get("figure_name", ""), "caption": str(cap)[:800]})
+        figure_snips.append({"figure_name": f.get("figure_name", ""), "caption": str(cap)})
 
     dfs = []
     for ds in datasets:
@@ -497,53 +495,32 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
         if df_points.empty:
             continue
 
-        # df_points = subsample_figure_points(
-        #     df_points,
-        #     sample_col="series_label",
-        #     step=100,
-        # )
+        df_points = subsample_figure_points(
+            df_points,
+            sample_col="series_label",
+            step=100,
+        )
 
-        # print('=====DF_POINTS====', df_points)
+        print('=====DF_POINTS====', df_points)
 
         if args.skip_llm or client is None:
             continue
 
-        # df_rows, meta = infer_rows_for_figure_dataset(
-        #     client=client,
-        #     doi=doi,
-        #     dataset_name=ds_name,
-        #     figure_snips=figure_snips,
-        #     df_points=df_points,
-        #     full_text=full_text,
-        #     cache_dir=ROW_CACHE_DIR,
-        #     max_points_per_call=200,
-        # )
-
-        plans, meta = infer_figure_series_plans(
-        client=client,
-        df_points=df_points,
-        output_columns=DATASET_COLUMNS,
-        doi=doi,
-        dataset_name=ds_name,
-        figure_snips=figure_snips,
-        full_text=full_text,
-        cache_dir=ROW_CACHE_DIRi)
-
-        df_rows = apply_figure_series_plans(
-            df_points=df_points,
-            output_columns=DATASET_COLUMNS,
+        df_rows, meta = infer_rows_for_figure_dataset(
+            client=client,
             doi=doi,
             dataset_name=ds_name,
-            plans=plans,
-            source_kind="figure")        
+            figure_snips=figure_snips,
+            df_points=df_points,
+            full_text=full_text,
+            cache_dir=ROW_CACHE_DIR,
+            max_points_per_call=200,
+        )
 
         try:
             _log_cost(meta, extra={"kind": "emit_rows_figure", "dataset_name": ds_name})
         except Exception:
             pass
-
-        if args.drop_non_time_figure_rows:
-            df_rows = df_rows[df_rows["time(h)"].astype(str).str.strip() != ""]
 
         dfs.append(df_rows)
 
@@ -551,67 +528,6 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
         return pd.DataFrame(columns=DATASET_COLUMNS)
 
     return pd.concat(dfs, ignore_index=True).reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
-
-# def complete_dataset_from_tables_with_plans(
-#     complete_record,
-#     client,
-#     ) -> pd.DataFrame:
-#     doi = complete_record.get("doi", "")
-#     tables = complete_record.get("tables", [])
-#     figures = complete_record.get("figures", [])
-#     full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
-
-#     if not tables:
-#         return pd.DataFrame(columns=DATASET_COLUMNS)
-
-#     all_rows_out: List[Dict[str, Any]] = []
-
-#     for t in tables:
-#         table_name = t.get("table_name", "")
-#         table_records = t.get("table", [])
-#         table_columns = t.get("table_columns", [])
-#         metadata = t.get("metadata", {})
-
-#         if not table_name or not isinstance(table_records, list) or not table_records:
-#             continue
-
-#         df_table = pd.DataFrame(table_records)
-
-#         plan_payload = build_table_plan_payload(
-#             doi=doi,
-#             table_name=table_name,
-#             table_columns=table_columns,
-#             table_head=df_table.head(8).to_dict(orient="records"),
-#             metadata=metadata,
-#             figures=figures,
-#             full_text=full_text,
-#         )
-
-#         cache_key = f"table::{doi}::{table_name}"
-#         plan = load_cached_plan(PLAN_CACHE_DIR, cache_key)
-
-#         if plan is None:
-#             if args.skip_llm or client is None:
-#                 plan = {
-#                     "scope": {"doi": doi, "table_name": table_name, "source_kind": "table"},
-#                     "column_map": {},  # means no rows extracted
-#                     "constants": {"DOI": doi},
-#                     "confidence": 0.0,
-#                     "evidence": {"reason": "skip_llm or no client"},
-#                 }
-#             else:
-#                 text, plan, meta = infer_tables_plan(client, plan_payload)
-#                 try:
-#                     _log_cost(meta, extra={"kind": "table_plan"})
-#                 except Exception as e:
-#                     print(f"[error completing dataset] cannot log cost: {e}")
-#             save_cached_plan(PLAN_CACHE_DIR, cache_key, plan)
-
-#         rows_out = apply_table_plan_to_df(df_table=df_table, plan=plan, doi=doi)
-#         all_rows_out.extend(rows_out)
-
-#     df = pd.DataFrame(all_rows_out).reindex(columns=DATASET_COLUMNS, fill_value="")
-#     return df.fillna("").astype(str)
 
 def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
     doi = complete_record.get("doi", "")
@@ -661,18 +577,6 @@ def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
 
     return pd.concat(dfs, ignore_index=True).reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
 
-# def complete_dataset_with_plans(
-#     complete_record,
-#     client,
-#     ) -> pd.DataFrame:
-#     df_tables = complete_dataset_from_tables_with_plans(complete_record, client)
-#     df_figs = complete_dataset_from_figures_with_plans(complete_record, client)
-
-#     df_all = pd.concat([df_tables, df_figs], ignore_index=True)
-#     df_all = df_all.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
-#     df_all = df_all.drop_duplicates()
-#     return df_all
-
 def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
     df_tables = complete_dataset_from_tables_llm(complete_record, client)
     df_figs = complete_dataset_from_figures_llm(complete_record, client)
@@ -689,7 +593,15 @@ def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
 # Main
 # ----------------------------
 def main():
-    client = get_llm_client()
+    # client = get_llm_client()
+
+    client = get_llm_client(
+        override=LLMConfig(
+            provider="openai",
+            model="gpt-4.1-mini",
+            api_key=os.environ["OPENAI_API_KEY"],
+        )
+    )
 
     df = load_file()
     client = None if args.skip_llm else client

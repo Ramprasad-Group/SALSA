@@ -274,6 +274,8 @@ def infer_figure_series_plans(
         return_meta=True,
     )
 
+    print("====FIGURE TEXT====", text)
+
     obj = json.loads(text) if isinstance(text, str) else (text or {})
     if cache_dir and cache_key:
         with open(fp, "w") as f:

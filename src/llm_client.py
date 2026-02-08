@@ -173,13 +173,31 @@ class LLMClient:
 
 _global_client: Optional[LLMClient] = None
 
-def get_llm_client(force_new: bool = False) -> LLMClient:
+# def get_llm_client(force_new: bool = False) -> LLMClient:
+#     """
+#     Singleton-style: build once per process. Great for Streamlit + CLI.
+#     Set force_new=True if you need to re-read env in the same process.
+#     """
+#     global _global_client
+#     if _global_client is None or force_new:
+#         cfg = load_llm_config()
+#         _global_client = LLMClient(cfg)
+#     return _global_client
+
+def get_llm_client(
+    *,
+    force_new: bool = False,
+    override: Optional[LLMConfig] = None) -> LLMClient:
     """
-    Singleton-style: build once per process. Great for Streamlit + CLI.
-    Set force_new=True if you need to re-read env in the same process.
+    If override is provided, do NOT use the global singleton.
     """
     global _global_client
+
+    if override is not None:
+        return LLMClient(override)
+
     if _global_client is None or force_new:
         cfg = load_llm_config()
         _global_client = LLMClient(cfg)
+
     return _global_client
