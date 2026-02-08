@@ -73,21 +73,161 @@ def _default_workspace_name() -> str:
 
 def _default_ollama_models_dir() -> Path:
     """
-    Determine a sane default for Ollama models directory.
+    Programmatically discover the Ollama models directory.
+
+    Resolution order:
+    1. ``OLLAMA_MODELS`` environment variable (explicit override).
+    2. Ask the running ``ollama`` daemon via ``ollama show --modelpath`` (most
+       authoritative – reflects the daemon's *actual* storage location).
+    3. Parse the systemd unit file for an ``Environment=OLLAMA_MODELS=…`` line.
+    4. Probe well-known filesystem candidates.
+    5. Fall back to ``~/.ollama/models`` and create it if it doesn't exist.
     """
+    # 1. Environment variable
     env = os.environ.get("OLLAMA_MODELS")
     if env:
-        return Path(env).expanduser()
+        p = Path(env).expanduser()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
 
+    # 2. Ask the CLI – ``ollama show --modelpath <any-model>`` prints the
+    #    blob-storage root.  We don't need a real model name; even when the
+    #    command fails it can reveal the base path in its error text.  A
+    #    lighter alternative is to inspect ``ollama list`` output and derive
+    #    the path, but ``OLLAMA_MODELS`` from the daemon env is more direct.
+    try:
+        # ``ollama`` respects OLLAMA_HOST, so this talks to the right daemon.
+        out = subprocess.check_output(
+            ["ollama", "list"], text=True, stderr=subprocess.STDOUT, timeout=5
+        )
+        # If ``ollama list`` succeeds the daemon is up; the daemon's storage
+        # dir is authoritative.  Try to read it from the process environment.
+        models_dir = _ollama_models_dir_from_proc()
+        if models_dir and models_dir.is_dir():
+            return models_dir
+    except Exception:
+        pass
+
+    # 3. systemd unit file (common on Linux when Ollama was installed via the
+    #    official installer script).
+    for unit_path in (
+        Path("/etc/systemd/system/ollama.service"),
+        Path("/lib/systemd/system/ollama.service"),
+    ):
+        try:
+            if unit_path.is_file():
+                text = unit_path.read_text()
+                for line in text.splitlines():
+                    line = line.strip()
+                    if line.startswith("Environment=") and "OLLAMA_MODELS" in line:
+                        # e.g. Environment="OLLAMA_MODELS=/data/ollama/models"
+                        _, _, val = line.partition("OLLAMA_MODELS=")
+                        val = val.strip().strip('"').strip("'")
+                        if val:
+                            p = Path(val)
+                            if p.is_dir():
+                                return p
+        except Exception:
+            pass
+
+    # 4. Well-known candidates
     candidates = [
         Path.home() / ".ollama" / "models",
         Path("/usr/share/ollama/.ollama/models"),
+        Path("/opt/ollama/models"),
     ]
     for c in candidates:
         if c.exists():
             return c
-    # fallback to user path even if it doesn't exist yet
-    return Path.home() / ".ollama" / "models"
+
+    # 5. Fallback – create the user-local directory
+    fallback = Path.home() / ".ollama" / "models"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+def _ollama_models_dir_from_proc() -> Optional[Path]:
+    """
+    Try to read ``OLLAMA_MODELS`` from the running ``ollama`` daemon process's
+    environment on Linux (``/proc/<pid>/environ``).  Returns *None* on failure.
+    """
+    try:
+        pids = subprocess.check_output(
+            ["pgrep", "-x", "ollama"], text=True, timeout=3
+        ).split()
+        for pid in pids:
+            env_file = Path(f"/proc/{pid}/environ")
+            if env_file.exists():
+                env_bytes = env_file.read_bytes()
+                for entry in env_bytes.split(b"\x00"):
+                    if entry.startswith(b"OLLAMA_MODELS="):
+                        val = entry.split(b"=", 1)[1].decode()
+                        p = Path(val)
+                        if p.is_dir():
+                            return p
+    except Exception:
+        pass
+    return None
+
+
+def _default_ollama_host() -> str:
+    """
+    Programmatically discover the Ollama host endpoint.
+
+    Resolution order:
+    1. ``OLLAMA_HOST`` environment variable.
+    2. ``OLLAMA_HOST`` from the running daemon's process environment (Linux).
+    3. ``OLLAMA_HOST`` from the systemd unit file.
+    4. Default: ``http://127.0.0.1:11434`` (standard Ollama port).
+    """
+    # 1. Environment variable
+    env = os.environ.get("OLLAMA_HOST")
+    if env:
+        host = env.strip()
+        if not host.startswith("http"):
+            host = "http://" + host
+        return host
+
+    # 2. Daemon process environment (Linux)
+    try:
+        pids = subprocess.check_output(
+            ["pgrep", "-x", "ollama"], text=True, timeout=3
+        ).split()
+        for pid in pids:
+            env_file = Path(f"/proc/{pid}/environ")
+            if env_file.exists():
+                env_bytes = env_file.read_bytes()
+                for entry in env_bytes.split(b"\x00"):
+                    if entry.startswith(b"OLLAMA_HOST="):
+                        val = entry.split(b"=", 1)[1].decode().strip()
+                        if not val.startswith("http"):
+                            val = "http://" + val
+                        return val
+    except Exception:
+        pass
+
+    # 3. systemd unit file
+    for unit_path in (
+        Path("/etc/systemd/system/ollama.service"),
+        Path("/lib/systemd/system/ollama.service"),
+    ):
+        try:
+            if unit_path.is_file():
+                text = unit_path.read_text()
+                for line in text.splitlines():
+                    line = line.strip()
+                    if line.startswith("Environment=") and "OLLAMA_HOST" in line:
+                        _, _, val = line.partition("OLLAMA_HOST=")
+                        val = val.strip().strip('"').strip("'")
+                        if val:
+                            if not val.startswith("http"):
+                                val = "http://" + val
+                            return val
+        except Exception:
+            pass
+
+    # 4. Standard default
+    return "http://127.0.0.1:11434"
 
 def _ollama_list_models_via_cli() -> List[str]:
     """
@@ -306,7 +446,7 @@ with st.sidebar:
 
     # SET OLLAMA DIR AND HOST
     default_ollama_dir = _default_ollama_models_dir()
-    default_ollama_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11435")
+    default_ollama_host = _default_ollama_host()
 
     if provider == "Ollama":
         ollama_models_dir = Path(str(default_ollama_dir))
@@ -435,7 +575,7 @@ if st.button("Run pipeline", type="primary"):
             if provider == "Ollama":
                 os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
                 os.environ["AEM_OCR_LLM_MODEL"] = model
-                os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11435")
+                os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", _default_ollama_host())
                 os.environ["OLLAMA_MODELS"] = st.session_state.get("ollama_models_dir", str(_default_ollama_models_dir()))
             else:
                 os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"

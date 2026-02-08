@@ -31,8 +31,8 @@ def load_llm_config() -> LLMConfig:
         return LLMConfig(provider="openai", model=model, base_url=base_url, api_key=api_key)
 
     # default: ollama
-    # accept OLLAMA_HOST as either "127.0.0.1:11435" or "http://127.0.0.1:11435"
-    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11435").strip()
+    # accept OLLAMA_HOST as either "127.0.0.1:11434" or "http://127.0.0.1:11434"
+    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip()
     if not host.startswith("http"):
         host = "http://" + host
     base_url = host.rstrip("/") + "/v1"
@@ -59,7 +59,7 @@ class LLMClient:
 
         # Works for:
         # - OpenAI (base_url=https://api.openai.com/v1)
-        # - Ollama (base_url=http://127.0.0.1:11435/v1)
+        # - Ollama (base_url=http://127.0.0.1:11434/v1)
 
         self._client = OpenAI(api_key=cfg.api_key, base_url=cfg.base_url)
 
