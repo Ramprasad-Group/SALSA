@@ -1,8 +1,12 @@
 import sqlalchemy as sa
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sshtunnel import SSHTunnelForwarder
 from typing import Union
+
+try:
+    from sshtunnel import SSHTunnelForwarder
+except ImportError:
+    SSHTunnelForwarder = None
 
 # import pylogg
 # log = pylogg.New('postgres')
@@ -14,6 +18,11 @@ def ssh_tunnel(host: str, port: int, user: str, pswd: str,
                fwd_host: str, fwd_port: int) -> Union[SSHTunnelForwarder, None]:
     """Create a SSH tunnel to a remove host and port. """
 
+    if SSHTunnelForwarder is None:
+        raise ImportError(
+            "sshtunnel is required for SSH tunneling. "
+            "Install it with: pip install sshtunnel"
+        )
     if len(host) > 0:
         server = SSHTunnelForwarder((host, port),
             ssh_username=user,
