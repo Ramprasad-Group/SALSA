@@ -2,6 +2,7 @@
 from __future__ import annotations
 import csv
 import subprocess
+import sys
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -173,7 +174,7 @@ def run_full_pipeline(
     # --- 1) download_records_multiple_dois_webofscience.py ---
     # writes download_results_*.csv into --log_file directory.
     _run([
-        "python", str(p_download_records),
+        sys.executable, str(p_download_records),
         "--file_path", str(doi_csv),
         "--doi_column", "DOI",
         "--no_db",
@@ -186,7 +187,7 @@ def run_full_pipeline(
     # --- 2) download_papers.py (no_db) ---
     # Writes structured_files under --download_dir/structured_files
     _run([
-        "python", str(p_download_papers),
+        sys.executable, str(p_download_papers),
         "--no_db",
         "--input_csv", str(results_csv),
         "--download_dir", str(papers_dir),
@@ -199,7 +200,7 @@ def run_full_pipeline(
     # --- 3) reparse_filtered_dois.py ---
     # Produces reparsed/index.csv and per-doi parsed.json
     _run([
-        "python", str(p_reparse),
+        sys.executable, str(p_reparse),
         "--csv_path", str(results_csv),
         "--structured_root", str(structured_root),
         "--output_dir", str(reparsed_dir),
@@ -210,7 +211,7 @@ def run_full_pipeline(
 
     # --- 4) extract_figures_tables_llm.py ---
     cmd = [
-        "python", str(p_extract_ft),
+        sys.executable, str(p_extract_ft),
         "--no_db",
         "--csv_path", str(index_csv),
         "--structured_files_dir", str(structured_root),
@@ -230,7 +231,7 @@ def run_full_pipeline(
     # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
     if run_plextract:
         _run([
-            "python", str(p_plextract),
+            sys.executable, str(p_plextract),
             "--input", str(figures_tables_dir / "figures"),
             "--workdir", str(plextract_workdir),
         ])
@@ -248,7 +249,7 @@ def run_full_pipeline(
         #   - index_csv (reparsed/index.csv)
         # We set output_dir to run-scoped folder.
         cmd = [
-            "python", str(p_complete_dataset),
+            sys.executable, str(p_complete_dataset),
             "--file_path", str(doi_csv),
             "--doi_column", "DOI",
             "--index_csv_path", str(index_csv),
