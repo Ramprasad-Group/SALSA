@@ -60,7 +60,7 @@ python -m pip install -U ${MMDET_PIN}
 # ------------------------------------------------------------------
 if [ -d "$REPO_ROOT/extern/ChartDete" ] && [ "$(ls -A "$REPO_ROOT/extern/ChartDete")" ]; then
     echo "==> Installing ChartDete as editable package..."
-    python -m pip install --no-build-isolation -e "$REPO_ROOT/extern/ChartDete"
+    python -m pip install "$REPO_ROOT/extern/ChartDete" --no-build-isolation --no-deps
 else
     echo "WARNING: extern/ChartDete is empty. Submodule init may have failed."
     exit 1

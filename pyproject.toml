@@ -8,7 +8,7 @@ name = "plextract"
 version = "0.0.1"
 description = "Plot/legend OCR & extraction pipeline"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 authors = [{name="Your Name"}]
 dependencies = [
   # put your runtime Python deps here (NOT torch/cuda)

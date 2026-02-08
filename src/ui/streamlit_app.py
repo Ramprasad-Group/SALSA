@@ -76,10 +76,6 @@ def _default_workspace_name() -> str:
 def _default_ollama_models_dir() -> Path:
     """
     Determine a sane default for Ollama models directory.
-    Priority:
-      1) $OLLAMA_MODELS (your log shows you use /data/william/ollama_models)
-      2) ~/.ollama/models (common on user installs)
-      3) /usr/share/ollama/.ollama/models (common system install)
     """
     env = os.environ.get("OLLAMA_MODELS")
     if env:
