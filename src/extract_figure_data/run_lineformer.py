@@ -89,6 +89,16 @@ class LineFormer:
         if download_if_missing and (not self.config_path.exists() or not self.ckpt_path.exists()):
             self._ensure_snapshot(hf_repo)
 
+        # If the checkpoint exists but is a Git-LFS pointer (not the real
+        # binary weights), delete the pointer and re-download from HF.
+        if download_if_missing and self.ckpt_path.exists() and self._is_lfs_pointer(self.ckpt_path):
+            print(
+                f"[LineFormer] {self.ckpt_path} is a Git-LFS pointer, not the "
+                "actual weights. Re-downloading from Hugging Face …"
+            )
+            self.ckpt_path.unlink()
+            self._ensure_snapshot(hf_repo)
+
         if not self.config_path.exists():
             raise FileNotFoundError(
                 f"LineFormer config not found at {self.config_path}. "
@@ -99,9 +109,27 @@ class LineFormer:
                 f"LineFormer checkpoint not found at {self.ckpt_path}. "
                 "Set LINEFORMER_CKPT or pass ckpt_path, and ensure the HF snapshot contains this file."
             )
+        if self._is_lfs_pointer(self.ckpt_path):
+            raise RuntimeError(
+                f"Checkpoint at {self.ckpt_path} is still a Git-LFS pointer after "
+                "re-download. Pull LFS objects with 'git lfs pull' or download the "
+                "checkpoint manually from Hugging Face."
+            )
 
         # Load model once
         load_model(str(self.config_path), str(self.ckpt_path), self.device)
+
+    @staticmethod
+    def _is_lfs_pointer(path: Path) -> bool:
+        """Return True if *path* is a Git-LFS pointer file instead of real content."""
+        try:
+            if path.stat().st_size > 1024:
+                return False
+            with open(path, "rb") as f:
+                header = f.read(64)
+            return header.startswith(b"version https://git-lfs")
+        except OSError:
+            return False
 
     def _ensure_snapshot(self, hf_repo: str) -> None:
         """Download the Hugging Face snapshot into self.hf_dir (idempotent)."""
