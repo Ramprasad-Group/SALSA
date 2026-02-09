@@ -28,6 +28,7 @@ _PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, _PAPER_DL)
 from ui.openai_cost import append_usage, run_id_from_env
+from ui.custom_instructions import load_instructions_from_env_or_path
 
 from paper_downloader import config
 from backend import sett, postgres
@@ -42,6 +43,9 @@ from parsers.nature_extractor import extract_nature_figures, extract_nature_tabl
 
 
 client = get_llm_client()
+
+# --- Load custom instructions (set via AEM_OCR_CUSTOM_INSTRUCTIONS env var) ---
+_custom_instructions = load_instructions_from_env_or_path()
 
 
 def setup_logging(log_level='INFO', log_file=None):
@@ -456,26 +460,23 @@ def figure_test(meta: dict, use_image: bool = True) -> bool:
     # client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
 
     # Build multimodal content
+    figure_criteria = _custom_instructions.get("figure_filter_criteria", "")
     content = [
         {
             "type": "text",
             "text": f"""
-        Decide whether this figure is a TRUE time-series plot of
-        ionic/hydroxide conductivity (or alkaline stability) versus time (including remaining conductivity).
+        Decide whether this figure should be kept, based on the criteria below.
 
         Use BOTH the caption and the visual contents (axes labels, tick labels, legends).
 
-        A figure qualifies ONLY if ALL of the following are true:
-        - It shows conductivity / ionic conductivity / hydroxide conductivity OR alkaline stability / retention.
-        - The x-axis (or time dimension) is clearly time (e.g. s, min, h, hr, day, d, time).
-        - It is not just before/after comparisons, spectra (e.g. FTIR, NMR, XRD), SEM/TEM images, photographs,
-        IEC-dependence, RH-dependence, temperature-dependence, or other non-time axes.
+        Filtering criteria:
+        {figure_criteria}
 
         Caption:
         \"\"\"{caption}\"\"\"
 
         Answer strictly with one word:
-        - "YES" if the plot shows conductivity / stability versus time.
+        - "YES" if the figure matches the criteria above.
         - "NO" otherwise.
         """.strip()
                 }
@@ -552,24 +553,22 @@ def table_test(meta: dict) -> bool:
     # client = make_client(llm_url='http://127.0.0.1:11434/v1', api_key_string='ollama')
 
     # Build content with BOTH caption and preview
+    table_criteria = _custom_instructions.get("table_filter_criteria", "")
     content = f"""
-        Decide whether this table describes hydroxide/ionic conductivity
-        OR alkaline/chemical stability as a function of time.
+        Decide whether this table should be kept, based on the criteria below.
 
         Use BOTH the caption and the table contents.
 
-        Rules:
-        - Return ONLY one word:
-        - "YES" if (a) the quantity is conductivity / ionic conductivity / hydroxide conductivity
-            or alkaline/chemical stability/retention, AND
-            (b) the table contains a clear time dimension (e.g. time, h, hr, hours, days, d, etc.).
-        - Return "NO" otherwise.
+        Filtering criteria:
+        {table_criteria}
 
         Caption:
         \"\"\"{caption}\"\"\"
 
         Table contents (preview, CSV-like):
         \"\"\"{table_preview}\"\"\"
+
+        Answer strictly with one word: "YES" or "NO".
         """.strip()
 
     try:
@@ -703,7 +702,9 @@ def main():
     llm_extractor = None
     if extract_tables:
         try:
-            llm_extractor = LLMTableExtractor()
+            llm_extractor = LLMTableExtractor(
+                custom_table_extraction_rules=_custom_instructions.get("table_extraction_rules", ""),
+            )
             logger.info("LLM extractor initialized")
         except Exception as e:
             logger.error(f"Failed to initialize LLM extractor: {e}")

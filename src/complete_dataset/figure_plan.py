@@ -174,10 +174,24 @@ def create_figure_plan_prompt(
     return "INPUT_PAYLOAD_JSON:\n" + json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def figure_plan_instructions(output_columns: List[str], doi: str, dataset_name: str) -> str:
+def figure_plan_instructions(
+    output_columns: List[str],
+    doi: str,
+    dataset_name: str,
+    *,
+    missing_value_defaults: Optional[Dict[str, str]] = None,
+    extra_rules: str = "",
+) -> str:
     """
     System message for plan inference.
     """
+    defaults = missing_value_defaults or DEFAULTS
+    missing_lines = "\n".join(f'- {k}: "{v}"' for k, v in defaults.items())
+
+    extra_block = ""
+    if extra_rules and extra_rules.strip():
+        extra_block = "\n\nAdditional rules:\n" + extra_rules.strip()
+
     return f"""
 You are an expert at interpreting extracted scientific figure data (already digitized into points).
 
@@ -199,14 +213,9 @@ Hard rules:
 - If uncertain, use Not Found defaults and lower confidence.
 
 Missing-value defaults (exact strings):
-- prop test temp (C): "25 Not Found"
-- degradation test temp (C): "None Not Found"
-- time(h): "0 Not Found"
-- relative humidity(%): "100 Not Found"
-- solvent type: "None Not Found"
-- solvent molarity (M): "None Not Found"
+{missing_lines}
 
-Output must be valid JSON matching the provided JSON schema.
+Output must be valid JSON matching the provided JSON schema.{extra_block}
 """.strip()
 
 
@@ -235,7 +244,10 @@ def infer_figure_series_plans(
     dataset_name: str,
     figure_snips: List[Dict[str, Any]],
     full_text: Any,
-    cache_dir: Optional[str] = None) -> Tuple[List[SeriesPlan], Any]:
+    cache_dir: Optional[str] = None,
+    missing_value_defaults: Optional[Dict[str, str]] = None,
+    extra_rules: str = "",
+) -> Tuple[List[SeriesPlan], Any]:
     """
     Calls the LLM once per dataset to infer series plans.
     Cache optional; if you already have a cache utility you can plug it in.
@@ -248,7 +260,13 @@ def infer_figure_series_plans(
         figure_snips=figure_snips,
         full_text=full_text,
     )
-    instructions = figure_plan_instructions(output_columns, doi=doi, dataset_name=dataset_name)
+    instructions = figure_plan_instructions(
+        output_columns,
+        doi=doi,
+        dataset_name=dataset_name,
+        missing_value_defaults=missing_value_defaults,
+        extra_rules=extra_rules,
+    )
     schema = build_figure_plan_json_schema(output_columns)
 
     # Optional caching hook (simple file cache)

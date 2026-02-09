@@ -8,19 +8,32 @@ from typing import Literal, Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 OUTPUT_COLUMNS = [
-  "Sample Name", 
+  "Sample Name",
   "time(h)",
-  "relative humidity(%)", 
-  "solvent type", 
+  "relative humidity(%)",
+  "solvent type",
   "solvent molarity (M)",
   "degradation test temp (C)",
   "prop test temp (C)",
   "property",
-  "value", 
-  "DOI", 
-  "source_kind", 
+  "value",
+  "DOI",
+  "source_kind",
   "source_name",
 ]
+
+# These module-level defaults can be overridden at runtime via custom instructions
+MISSING_VALUE_DEFAULTS = {
+    "prop test temp (C)": "25 Not Found",
+    "degradation test temp (C)": "None Not Found",
+    "time(h)": "0 Not Found",
+    "relative humidity(%)": "100 Not Found",
+    "solvent type": "None Not Found",
+    "solvent molarity (M)": "None Not Found",
+}
+
+DATASET_COMPLETION_RULES = """\
+- Measurements taken before or at the beginning of stability tests MUST have time(h) = 0"""
 
 # ----------------------------
 # Small cache (same approach as your plan cache)
@@ -73,23 +86,22 @@ def _df_to_records_clean(df: pd.DataFrame) -> List[Dict[str, Any]]:
     df2 = df2.where(pd.notna(df2), None)
     return df2.to_dict(orient="records")
 
-def _coerce_rows_schema(rows: List[Dict[str, Any]], doi: str, source_kind: str, source_name: str) -> pd.DataFrame:
+def _coerce_rows_schema(rows: List[Dict[str, Any]], doi: str, source_kind: str, source_name: str,
+                        columns: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Light sanitation only: enforce columns, fill blanks, set provenance if missing.
-    No “plan application”; we assume LLM already did the mapping.
+    No "plan application"; we assume LLM already did the mapping.
     """
+    cols = columns or OUTPUT_COLUMNS
     fixed: List[Dict[str, Any]] = []
     for r in rows or []:
-        rr = {k: "" for k in OUTPUT_COLUMNS}
+        rr = {k: "" for k in cols}
         if isinstance(r, dict):
-            for k in OUTPUT_COLUMNS:
+            for k in cols:
                 v = r.get(k, "")
                 rr[k] = "" if v is None else str(v)
-        # rr["DOI"] = rr["DOI"] or doi
-        # rr["source_kind"] = rr["source_kind"] or source_kind
-        # rr["source_name"] = rr["source_name"] or source_name
         fixed.append(rr)
-    return pd.DataFrame(fixed).reindex(columns=OUTPUT_COLUMNS, fill_value="").fillna("").astype(str)
+    return pd.DataFrame(fixed).reindex(columns=cols, fill_value="").fillna("").astype(str)
 
 def subsample_figure_points(
     df: pd.DataFrame,
@@ -289,6 +301,14 @@ def build_rows_json_schema(
         },
     }
 
+def _build_missing_value_block(defaults: Dict[str, str]) -> str:
+    """Build the missing-value rules section of the system prompt."""
+    lines = []
+    for col, default in defaults.items():
+        lines.append(f'- {col}: "{default}"')
+    return "\n        ".join(lines)
+
+
 def infer_rows_for_table(
     client,
     doi: str,
@@ -297,13 +317,22 @@ def infer_rows_for_table(
     df_table: pd.DataFrame,
     full_text: Optional[Any],
     cache_dir: str,
-    max_rows_per_call: int = 60) -> Tuple[pd.DataFrame, Any]:
+    max_rows_per_call: int = 60,
+    *,
+    output_columns: Optional[List[str]] = None,
+    missing_value_defaults: Optional[Dict[str, str]] = None,
+    extra_rules: str = "",
+) -> Tuple[pd.DataFrame, Any]:
     """
     Returns (df_rows, meta). Sends a table to the LLM in one call and asks
     it to directly emit normalized dataset rows with exactly OUTPUT_COLUMNS.
     """
+    cols = output_columns or OUTPUT_COLUMNS
+    defaults = missing_value_defaults or MISSING_VALUE_DEFAULTS
+    custom_rules = extra_rules.strip() if extra_rules else DATASET_COMPLETION_RULES.strip()
+
     if df_table is None or df_table.empty:
-        return pd.DataFrame(columns=OUTPUT_COLUMNS), None
+        return pd.DataFrame(columns=cols), None
 
     # Convert the whole table to JSON-safe records (list[dict])
     records = _df_to_records_clean(df_table)
@@ -330,34 +359,11 @@ def infer_rows_for_table(
         )
         return df_out, None
 
-    # instructions = f"""
-    #     You are an expert at converting tables from one form to another without losing any content. 
-    #     Convert the table from the given form to the form specified by {json.dumps(OUTPUT_COLUMNS, indent=2)} and return it as JSON.
+    missing_block = _build_missing_value_block(defaults)
 
-    #     Return ONLY valid JSON in this exact format:
-    #     {{
-    #     "rows": [ ... ]
-    #     }}
-
-    #     Each output row MUST have exactly these columns:
-    #     {json.dumps(OUTPUT_COLUMNS, indent=2)}
-
-    #     Rules: 
-    #     - Use the actual caption text provided above, not placeholder text.
-    #     - Do not return anything aside from the final json content. No explanations or anything that is not json
-    #     - You may ONLY use information present in: (1) the provided table contents, (2) the table caption, (3) full text (if it is available).
-    #     - Always fill provenance:
-    #         - DOI = "{doi}"
-    #         - source_kind = "table"
-    #         - source_name = "{table_name}"
-    #     - If you cannot find the "prop test temp (C)", fill in "25 Not Found"
-    #     - If you cannot find the "degradation test temp (C)", fill in "None Not Found"
-    #     - If you cannot find the "time(h)", fill in "0 Not Found"
-    #     - If you cannot find the "relative humidity(%)", fill in "100 Not Found"
-    #     - If you cannot find the "solvent type", fill in "None Not Found"
-    #     - If you cannnot find the "solvent molarity (M)", fill in "None Not Found"
-    #     - IMPORTANT: Measurements taken before or at the beginning of stability tests are at time(h) = 0
-    #     """.strip()
+    custom_rules_block = ""
+    if custom_rules:
+        custom_rules_block = f"\n        {custom_rules}"
 
     instructions = f"""
         You are an expert at converting scientific tables into structured tabular datasets.
@@ -369,7 +375,7 @@ def infer_rows_for_table(
 
         Output schema:
         Convert the data into rows with EXACTLY the following output_columns:
-        {json.dumps(OUTPUT_COLUMNS, indent=2)}
+        {json.dumps(cols, indent=2)}
 
         Return ONLY valid JSON in this exact format:
         {{
@@ -400,27 +406,19 @@ def infer_rows_for_table(
         - source_name = "{table_name}"
 
         Missing-value rules (use EXACT strings):
-        - prop test temp (C): "25 Not Found"
-        - degradation test temp (C): "None Not Found"
-        - time(h): "0 Not Found"
-        - relative humidity(%): "100 Not Found"
-        - solvent type: "None Not Found"
-        - solvent molarity (M): "None Not Found"
+        {missing_block}
 
         IMPORTANT:
-        - If a value is not explicitly stated, use the Not Found rules above.
-        - Measurements taken before or at the beginning of stability tests MUST have time(h) = 0
+        - If a value is not explicitly stated, use the Not Found rules above.{custom_rules_block}
 
         If there are zero data points, return:
         {{ "rows": [] }}
         """.strip()
 
-    # Use a single user message with the full payload
-    # user_content = json.dumps(payload, ensure_ascii=False)
-    prompt = create_table_prompt(payload, OUTPUT_COLUMNS)
+    prompt = create_table_prompt(payload, cols)
 
     json_schema = build_rows_json_schema(
-        OUTPUT_COLUMNS,
+        cols,
         schema_name="aem_ocr_rows",
         field_type="string",
         allow_nulls=False,
@@ -457,6 +455,7 @@ def infer_rows_for_table(
     df_out = _coerce_rows_schema(rows, doi=doi, source_kind="table", source_name=table_name)
     return df_out, meta
 
+
 def infer_rows_for_figure_dataset(
     client,
     doi: str,
@@ -466,13 +465,22 @@ def infer_rows_for_figure_dataset(
     full_text: Optional[Any],
     cache_dir: str,
     max_points_per_call: int = 200,
-    subsample_step: Optional[int] = None) -> Tuple[pd.DataFrame, Any]:
+    subsample_step: Optional[int] = None,
+    *,
+    output_columns: Optional[List[str]] = None,
+    missing_value_defaults: Optional[Dict[str, str]] = None,
+    extra_rules: str = "",
+) -> Tuple[pd.DataFrame, Any]:
     """
     Returns (df_rows, meta). Sends the FULL extracted figure dataset to the LLM in one call and asks
     it to directly emit normalized dataset rows with exactly OUTPUT_COLUMNS.
     """
+    cols = output_columns or OUTPUT_COLUMNS
+    defaults = missing_value_defaults or MISSING_VALUE_DEFAULTS
+    custom_rules = extra_rules.strip() if extra_rules else DATASET_COMPLETION_RULES.strip()
+
     if df_points is None or df_points.empty:
-        return pd.DataFrame(columns=OUTPUT_COLUMNS), None
+        return pd.DataFrame(columns=cols), None
 
     ensure_cache_dir(cache_dir)
 
@@ -491,13 +499,17 @@ def infer_rows_for_figure_dataset(
     }
 
     cache_key = f"emit_rows::figure::{doi}::{dataset_name}::{_hash_payload(payload)}"
-    # print("FIG CACHE KEY:", cache_key)
-    # print("FIG CACHE PATH:", _cache_path(cache_dir, cache_key))
 
     cached = load_cached_rows(cache_dir, cache_key)
     if cached is not None:
         df_out = _coerce_rows_schema(cached, doi=doi, source_kind="figure", source_name=dataset_name)
         return df_out, None
+
+    missing_block = _build_missing_value_block(defaults)
+
+    custom_rules_block = ""
+    if custom_rules:
+        custom_rules_block = f"\n        {custom_rules}"
 
     instructions = f"""
         You are an expert at converting scientific figure data into structured tabular datasets.
@@ -509,7 +521,7 @@ def infer_rows_for_figure_dataset(
 
         Output schema:
         Convert the data into rows with EXACTLY the following output_columns:
-        {json.dumps(OUTPUT_COLUMNS, indent=2)}
+        {json.dumps(cols, indent=2)}
 
         Return ONLY valid JSON in this exact format:
         {{
@@ -530,8 +542,8 @@ def infer_rows_for_figure_dataset(
         - Do not infer trends.
 
         Allowed information sources:
-        - (1) the provided table
-        - (2) the table caption
+        - (1) the provided figure data
+        - (2) the figure caption
         - (3) full text (if provided)
 
         Provenance (always fill exactly):
@@ -540,27 +552,21 @@ def infer_rows_for_figure_dataset(
         - source_name = "{dataset_name}"
 
         Missing-value rules (use EXACT strings):
-        - prop test temp (C): "25 Not Found"
-        - degradation test temp (C): "None Not Found"
-        - time(h): "0 Not Found"
-        - relative humidity(%): "100 Not Found"
-        - solvent type: "None Not Found"
-        - solvent molarity (M): "None Not Found"
+        {missing_block}
 
         IMPORTANT:
-        - If a value is not explicitly stated, use the Not Found rules above.
-        - Measurements taken before or at the beginning of stability tests MUST have time(h) = 0
+        - If a value is not explicitly stated, use the Not Found rules above.{custom_rules_block}
 
         If there are zero data points, return:
         {{ "rows": [] }}
         """.strip()
 
 
-    prompt = create_figure_prompt(payload, OUTPUT_COLUMNS)
+    prompt = create_figure_prompt(payload, cols)
 
 
     json_schema = build_rows_json_schema(
-        OUTPUT_COLUMNS,
+        cols,
         schema_name="aem_ocr_rows",
         field_type="string",
         allow_nulls=False,

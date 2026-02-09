@@ -1,12 +1,13 @@
 # AEM_OCR/src/ui/pipeline_orchestrator.py
 from __future__ import annotations
 import csv
+import json
 import subprocess
 import sys
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from discover import discover_run
 from schemas import RunResult
@@ -116,6 +117,7 @@ def run_full_pipeline(
     run_plextract: bool = True,
     run_complete_dataset: bool = True,
     exclude_full_text: bool = True,
+    custom_instructions: Dict[str, Any] | None = None,
 ) -> RunResult:
     """
     Orchestrates:
@@ -140,6 +142,14 @@ def run_full_pipeline(
         )
 
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- save custom instructions for this run ---
+    import os
+    ci_path = run_dir / "custom_instructions.json"
+    if custom_instructions:
+        with open(ci_path, "w") as f:
+            json.dump(custom_instructions, f, indent=2)
+    os.environ["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
 
     # --- workspace subdirs ---
     records_dir = run_dir / "records"
@@ -264,6 +274,8 @@ def run_full_pipeline(
                 cmd += ["--extracted_figures_root", str(plextract_results_root)]
         if exclude_full_text:
             cmd.append("--exclude_full_text")
+        if ci_path.exists():
+            cmd += ["--custom_instructions", str(ci_path)]
 
         _run(cmd)
 

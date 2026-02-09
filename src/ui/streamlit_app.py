@@ -23,6 +23,11 @@ from intervention import (
     apply_overrides_to_plextract,
 )
 from run_plextract_single import run_plextract_single_figure
+from custom_instructions import (
+    default_instructions,
+    load_instructions,
+    save_instructions,
+)
 import numpy as np
 import cv2
 from cropping import save_crops
@@ -498,6 +503,112 @@ with st.sidebar:
     #     st.session_state["rr"] = rr
 
     st.divider()
+    st.header("Custom Instructions")
+    st.caption(
+        "Customise the LLM prompts for each pipeline stage. "
+        "Changes are saved per workspace and applied to new runs."
+    )
+
+    # Load / initialise instructions for active workspace
+    _ci_path = active_workspace_dir / "custom_instructions.json"
+    if "custom_instructions" not in st.session_state:
+        st.session_state["custom_instructions"] = load_instructions(_ci_path)
+
+    ci = st.session_state["custom_instructions"]
+
+    with st.expander("Table extraction rules", expanded=False):
+        st.caption(
+            "Extra rules for how raw HTML/XML tables are parsed into structured data. "
+            "E.g. how merged cells or multi-level headers should be handled."
+        )
+        ci["table_extraction_rules"] = st.text_area(
+            "Table extraction extra rules",
+            value=ci.get("table_extraction_rules", ""),
+            height=120,
+            key="ci_table_extraction",
+        )
+
+    with st.expander("Figure filtering criteria", expanded=False):
+        st.caption(
+            "Criteria the LLM uses to decide whether to keep or discard a figure. "
+            "E.g. 'only keep line charts showing conductivity vs time'."
+        )
+        ci["figure_filter_criteria"] = st.text_area(
+            "Figure filter criteria",
+            value=ci.get("figure_filter_criteria", ""),
+            height=150,
+            key="ci_figure_filter",
+        )
+
+    with st.expander("Table filtering criteria", expanded=False):
+        st.caption(
+            "Criteria the LLM uses to decide whether to keep or discard a table."
+        )
+        ci["table_filter_criteria"] = st.text_area(
+            "Table filter criteria",
+            value=ci.get("table_filter_criteria", ""),
+            height=150,
+            key="ci_table_filter",
+        )
+
+    with st.expander("Dataset completion rules", expanded=False):
+        st.caption(
+            "Extra rules applied when the LLM converts tables/figures into "
+            "the final normalised dataset rows. E.g. 'before = time 0'."
+        )
+        ci["dataset_completion_rules"] = st.text_area(
+            "Dataset completion extra rules",
+            value=ci.get("dataset_completion_rules", ""),
+            height=120,
+            key="ci_dataset_completion",
+        )
+
+    with st.expander("Output columns", expanded=False):
+        st.caption(
+            "Comma-separated list of columns for the final dataset. "
+            "Change this to capture different properties."
+        )
+        ci["output_columns"] = st.text_area(
+            "Output columns (one per line)",
+            value="\n".join(ci.get("output_columns", [])),
+            height=160,
+            key="ci_output_columns",
+        )
+
+    with st.expander("Missing-value defaults", expanded=False):
+        st.caption(
+            "JSON dict of column→default when a value is not found. "
+            "E.g. {\"time(h)\": \"0 Not Found\"}"
+        )
+        ci["missing_value_defaults"] = st.text_area(
+            "Missing-value defaults (JSON)",
+            value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
+            height=160,
+            key="ci_missing_defaults",
+        )
+
+    if st.button("Save custom instructions"):
+        # Parse output_columns back to list
+        raw_cols = st.session_state.get("ci_output_columns", "")
+        ci["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
+        # Parse missing-value defaults back to dict
+        try:
+            ci["missing_value_defaults"] = json.loads(
+                st.session_state.get("ci_missing_defaults", "{}")
+            )
+        except json.JSONDecodeError:
+            st.error("Missing-value defaults must be valid JSON.")
+        save_instructions(_ci_path, ci)
+        st.session_state["custom_instructions"] = ci
+        st.success("Saved custom instructions.")
+
+    if st.button("Reset to defaults"):
+        ci = default_instructions()
+        st.session_state["custom_instructions"] = ci
+        save_instructions(_ci_path, ci)
+        st.rerun()
+
+    st.divider()
     st.header("Load an existing run")
 
     # Choose which workspace to browse when loading runs
@@ -594,6 +705,17 @@ if st.button("Run pipeline", type="primary"):
                     st.warning(f"Run directory already exists and may be overwritten: {target}")
 
 
+            # --- Save custom instructions for this run ---
+            _run_ci = st.session_state.get("custom_instructions", default_instructions())
+            # Parse output_columns if still a string
+            if isinstance(_run_ci.get("output_columns"), str):
+                _run_ci["output_columns"] = [c.strip() for c in _run_ci["output_columns"].splitlines() if c.strip()]
+            if isinstance(_run_ci.get("missing_value_defaults"), str):
+                try:
+                    _run_ci["missing_value_defaults"] = json.loads(_run_ci["missing_value_defaults"])
+                except Exception:
+                    pass
+
             rr = run_full_pipeline(
                 dois=dois,
                 run_root=run_root,
@@ -606,7 +728,7 @@ if st.button("Run pipeline", type="primary"):
                 run_plextract=run_plextract,
                 run_complete_dataset=run_complete_dataset,
                 exclude_full_text=exclude_full_text,
-
+                custom_instructions=_run_ci,
             )
 
         st.session_state["rr"] = rr
