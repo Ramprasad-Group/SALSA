@@ -124,3 +124,74 @@ def load_instructions_from_env_or_path(
     if path_str and path_str.strip():
         return load_instructions(Path(path_str.strip()))
     return default_instructions()
+
+
+# ---------------------------------------------------------------------------
+# Presets — named instruction sets stored under a shared directory
+# ---------------------------------------------------------------------------
+
+PRESETS_DIR_NAME = "instruction_presets"
+
+
+def _presets_dir(workspaces_root: Path) -> Path:
+    """Return (and create) the shared presets directory."""
+    d = workspaces_root / PRESETS_DIR_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def list_presets(workspaces_root: Path) -> List[str]:
+    """Return sorted list of preset names (without .json extension)."""
+    d = _presets_dir(workspaces_root)
+    return sorted(
+        p.stem for p in d.glob("*.json") if p.is_file()
+    )
+
+
+def save_preset(workspaces_root: Path, name: str, instructions: Dict[str, Any]) -> Path:
+    """Save a named preset. Returns the file path."""
+    path = _presets_dir(workspaces_root) / f"{name}.json"
+    save_instructions(path, instructions)
+    return path
+
+
+def load_preset(workspaces_root: Path, name: str) -> Dict[str, Any]:
+    """Load a named preset."""
+    path = _presets_dir(workspaces_root) / f"{name}.json"
+    return load_instructions(path)
+
+
+def delete_preset(workspaces_root: Path, name: str) -> None:
+    """Delete a named preset."""
+    path = _presets_dir(workspaces_root) / f"{name}.json"
+    if path.exists():
+        path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Discovery — find custom_instructions.json files in runs and workspaces
+# ---------------------------------------------------------------------------
+
+def find_run_instructions(run_dir: Path) -> Optional[Path]:
+    """Return the path to custom_instructions.json inside a run dir, or None."""
+    p = run_dir / "custom_instructions.json"
+    return p if p.exists() else None
+
+
+def list_workspace_runs_with_instructions(
+    workspace_dir: Path,
+) -> List[Dict[str, Any]]:
+    """
+    Scan a workspace for runs that have a custom_instructions.json.
+    Returns list of {"run_id": str, "path": Path}.
+    """
+    results: List[Dict[str, Any]] = []
+    if not workspace_dir.is_dir():
+        return results
+    for child in sorted(workspace_dir.iterdir(), reverse=True):
+        if not child.is_dir():
+            continue
+        ci = child / "custom_instructions.json"
+        if ci.exists():
+            results.append({"run_id": child.name, "path": ci})
+    return results
