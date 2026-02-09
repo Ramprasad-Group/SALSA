@@ -1,4 +1,11 @@
 src/paper-downloader/paper_downloader/logs/
 src/cost/usage.jsonl
 src/ui_runs/
-src/ui_runs/__pychache*
+
+# Python bytecode caches
+__pycache__/
+*.pyc
+
+# Large model checkpoints (download from HF at runtime)
+huggingface/checkpoint.pth
+huggingface/iter_3000.pth
