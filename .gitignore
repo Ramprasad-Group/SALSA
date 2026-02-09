@@ -1,4 +1,5 @@
 src/paper-downloader/paper_downloader/logs/
+src/extract_figure_data/results/
 src/cost/usage.jsonl
 src/ui_runs/
 
