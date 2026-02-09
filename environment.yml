@@ -16,6 +16,12 @@ dependencies:
   - streamlit=1.31.1
   - transformers
   - plotly
+  - sqlalchemy
+  - sshtunnel
+  - bs4
+  - lxml
+  - python-dotenv
+  - openai
   - pip
   - pip:
       - bresenham==0.2.1

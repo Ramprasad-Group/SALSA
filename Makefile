@@ -3,6 +3,9 @@
 
 CONDA_ENV   ?= AEM_OCR
 SHELL       := /bin/bash
+TORCH_VER ?= 1.13.1
+TV_VER    ?= 0.14.1
+CUDA_VER  ?= 11.7
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -16,18 +19,10 @@ setup: env torch install ## One-command setup
 	@echo "Activate the env:   conda activate $(CONDA_ENV)"
 	@echo "Launch the UI:      make ui"
 
-# conda-config: ## Configure conda (strict channel priority)
-# 	conda config --set channel_priority strict
-
 env:
 	conda env create -f environment.yml --name $(CONDA_ENV) || \
 		conda env update -f environment.yml --name $(CONDA_ENV) --prune
 	@echo "Activate with:  conda activate $(CONDA_ENV)"
-
-
-TORCH_VER ?= 1.13.1
-TV_VER    ?= 0.14.1
-CUDA_VER  ?= 11.7
 
 torch:
 	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
@@ -39,7 +34,6 @@ torch:
 	  pytorch=$(TORCH_VER) torchvision=$(TV_VER) pytorch-cuda=$(CUDA_VER) \
 	  intel-openmp mkl mkl-service && \
 	python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
-
 
 install:
 	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
