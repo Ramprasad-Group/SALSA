@@ -30,6 +30,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 _SRC_ROOT = os.path.join(_REPO_ROOT, "src")
 sys.path.insert(0, _SRC_ROOT)
 from ui.openai_cost import append_usage, run_id_from_env
+from ui.custom_instructions import load_instructions_from_env_or_path
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../paper-downloader"))
 sys.path.insert(0, parent_dir)
@@ -37,7 +38,7 @@ from paper_downloader import config, utils
 
 # --- new helper module (in same directory as this script) ---
 from row_emitter import (
-    OUTPUT_COLUMNS as DATASET_COLUMNS,
+    OUTPUT_COLUMNS as _DEFAULT_COLUMNS,
     ensure_cache_dir,
     infer_rows_for_table,
     infer_rows_for_figure_dataset,
@@ -78,7 +79,16 @@ parser.add_argument('--skip_llm', action='store_true', help="Skip GPT plan step 
 parser.add_argument('--plan_cache_dir', default='',
                     help="Optional override for plan cache directory. Default: <output_dir>/plans")
 
+parser.add_argument('--custom_instructions', default='',
+                    help="Path to custom_instructions.json (overrides AEM_OCR_CUSTOM_INSTRUCTIONS env var)")
+
 args = parser.parse_args()
+
+# --- Load custom instructions ---
+_ci = load_instructions_from_env_or_path(args.custom_instructions or None)
+DATASET_COLUMNS = _ci.get("output_columns", list(_DEFAULT_COLUMNS))
+_MISSING_DEFAULTS = _ci.get("missing_value_defaults", {})
+_EXTRA_RULES = _ci.get("dataset_completion_rules", "")
 
 # Setup logging
 log_file = f"{args.log_file}/complete_datasets_{datetime.now().strftime(config.DATE_TIME_FORMAT)}.log"
@@ -517,6 +527,9 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
             full_text=full_text,
             cache_dir=ROW_CACHE_DIR,
             max_points_per_call=200,
+            output_columns=DATASET_COLUMNS,
+            missing_value_defaults=_MISSING_DEFAULTS,
+            extra_rules=_EXTRA_RULES,
         )
 
         try:
@@ -566,6 +579,9 @@ def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
             full_text=full_text,
             cache_dir=ROW_CACHE_DIR,
             max_rows_per_call=60,
+            output_columns=DATASET_COLUMNS,
+            missing_value_defaults=_MISSING_DEFAULTS,
+            extra_rules=_EXTRA_RULES,
         )
         try:
             _log_cost(meta, extra={"kind": "emit_rows_table", "table_name": table_name})
