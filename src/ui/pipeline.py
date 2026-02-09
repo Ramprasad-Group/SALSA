@@ -143,13 +143,18 @@ def run_full_pipeline(
 
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- save custom instructions for this run ---
+    # --- Reference workspace-level custom instructions ---
+    # Instructions are saved in workspace/custom_instructions/default.json
+    # We pass them via environment variable to downstream scripts
     import os
-    ci_path = run_dir / "custom_instructions.json"
     if custom_instructions:
+        # Create a temporary reference file in the workspace (not run) directory
+        workspace_ci_dir = run_root / "custom_instructions"
+        workspace_ci_dir.mkdir(parents=True, exist_ok=True)
+        ci_path = workspace_ci_dir / "default.json"
         with open(ci_path, "w") as f:
             json.dump(custom_instructions, f, indent=2)
-    os.environ["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+        os.environ["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
 
     # --- workspace subdirs ---
     records_dir = run_dir / "records"

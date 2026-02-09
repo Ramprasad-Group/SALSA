@@ -516,7 +516,11 @@ with st.sidebar:
     )
 
     # --- Reload instructions when workspace changes ---
-    _ci_path = active_workspace_dir / "custom_instructions.json"
+    # Save to dedicated directory within workspace
+    _ci_dir = active_workspace_dir / "custom_instructions"
+    _ci_dir.mkdir(parents=True, exist_ok=True)
+    _ci_path = _ci_dir / "default.json"
+
     _prev_ws = st.session_state.get("_ci_loaded_workspace")
     if _prev_ws != active_workspace_name or "custom_instructions" not in st.session_state:
         st.session_state["custom_instructions"] = load_instructions(_ci_path)
@@ -557,8 +561,13 @@ with st.sidebar:
         col_save_p, col_del_p = st.columns(2)
         with col_save_p:
             if st.button("Save as preset") and preset_name.strip():
-                # Ensure output_columns / missing_value_defaults are parsed
-                _ci_to_save = dict(ci)
+                # Ensure all fields are read from session state
+                _ci_to_save = {}
+                _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
+                _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
+                _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
+                _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+
                 raw_cols = st.session_state.get("ci_output_columns", "")
                 _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
                 try:
@@ -566,7 +575,7 @@ with st.sidebar:
                         st.session_state.get("ci_missing_defaults", "{}")
                     )
                 except Exception:
-                    pass
+                    _ci_to_save["missing_value_defaults"] = {}
                 save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
                 st.success(f"Saved preset: {preset_name.strip()}")
                 st.rerun()
@@ -613,7 +622,7 @@ with st.sidebar:
             "Extra rules for how raw HTML/XML tables are parsed into structured data. "
             "E.g. how merged cells or multi-level headers should be handled."
         )
-        ci["table_extraction_rules"] = st.text_area(
+        st.text_area(
             "Table extraction extra rules",
             value=ci.get("table_extraction_rules", ""),
             height=120,
@@ -625,7 +634,7 @@ with st.sidebar:
             "Criteria the LLM uses to decide whether to keep or discard a figure. "
             "E.g. 'only keep line charts showing conductivity vs time'."
         )
-        ci["figure_filter_criteria"] = st.text_area(
+        st.text_area(
             "Figure filter criteria",
             value=ci.get("figure_filter_criteria", ""),
             height=150,
@@ -636,7 +645,7 @@ with st.sidebar:
         st.caption(
             "Criteria the LLM uses to decide whether to keep or discard a table."
         )
-        ci["table_filter_criteria"] = st.text_area(
+        st.text_area(
             "Table filter criteria",
             value=ci.get("table_filter_criteria", ""),
             height=150,
@@ -648,7 +657,7 @@ with st.sidebar:
             "Extra rules applied when the LLM converts tables/figures into "
             "the final normalised dataset rows. E.g. 'before = time 0'."
         )
-        ci["dataset_completion_rules"] = st.text_area(
+        st.text_area(
             "Dataset completion extra rules",
             value=ci.get("dataset_completion_rules", ""),
             height=120,
@@ -660,7 +669,7 @@ with st.sidebar:
             "One column name per line for the final dataset. "
             "Change this to capture different properties."
         )
-        ci["output_columns"] = st.text_area(
+        st.text_area(
             "Output columns (one per line)",
             value="\n".join(ci.get("output_columns", [])),
             height=160,
@@ -672,7 +681,7 @@ with st.sidebar:
             "JSON dict of column name to default value when not found. "
             "E.g. {\"time(h)\": \"0 Not Found\"}"
         )
-        ci["missing_value_defaults"] = st.text_area(
+        st.text_area(
             "Missing-value defaults (JSON)",
             value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
             height=160,
@@ -683,6 +692,12 @@ with st.sidebar:
     col_ci_save, col_ci_reset = st.columns(2)
     with col_ci_save:
         if st.button("Save custom instructions"):
+            # Read all fields from session state
+            ci["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
+            ci["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
+            ci["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
+            ci["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+
             # Parse output_columns back to list
             raw_cols = st.session_state.get("ci_output_columns", "")
             ci["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
@@ -693,6 +708,7 @@ with st.sidebar:
                 )
             except json.JSONDecodeError:
                 st.error("Missing-value defaults must be valid JSON.")
+                return
             save_instructions(_ci_path, ci)
             st.session_state["custom_instructions"] = ci
             st.success("Saved to workspace.")
