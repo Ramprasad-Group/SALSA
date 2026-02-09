@@ -25,14 +25,10 @@ from intervention import (
 from run_plextract_single import run_plextract_single_figure
 from custom_instructions import (
     default_instructions,
-    load_instructions,
-    save_instructions,
     list_presets,
     save_preset,
     load_preset,
     delete_preset,
-    find_run_instructions,
-    list_workspace_runs_with_instructions,
 )
 import numpy as np
 import cv2
@@ -512,109 +508,43 @@ with st.sidebar:
     st.header("Custom Instructions")
     st.caption(
         "Customise the LLM prompts for each pipeline stage. "
-        "Changes are saved per workspace and applied to new runs."
+        "Save and load named instruction sets from the shared presets directory."
     )
 
-    # --- Reload instructions when workspace changes ---
-    # Save to dedicated directory within workspace
-    _ci_dir = active_workspace_dir / "custom_instructions"
-    _ci_dir.mkdir(parents=True, exist_ok=True)
-    _ci_path = _ci_dir / "default.json"
-
-    _prev_ws = st.session_state.get("_ci_loaded_workspace")
-    if _prev_ws != active_workspace_name or "custom_instructions" not in st.session_state:
-        st.session_state["custom_instructions"] = load_instructions(_ci_path)
-        st.session_state["_ci_loaded_workspace"] = active_workspace_name
+    # --- Initialize with defaults if not loaded yet ---
+    if "custom_instructions" not in st.session_state:
+        st.session_state["custom_instructions"] = default_instructions()
+        st.session_state["current_preset_name"] = None
 
     ci = st.session_state["custom_instructions"]
 
-    # --- Load / Import presets ---
-    with st.expander("Load & save presets", expanded=False):
-        st.caption(
-            "Presets are named instruction sets shared across all workspaces. "
-            "You can also import instructions from a previous run."
-        )
+    # --- Load presets ---
+    existing_presets = list_presets(workspaces_root)
 
-        # --- Named presets ---
-        existing_presets = list_presets(workspaces_root)
-        if existing_presets:
+    st.subheader("Load Preset")
+    if existing_presets:
+        col_load_a, col_load_b = st.columns([3, 1])
+        with col_load_a:
             preset_choice = st.selectbox(
-                "Load a saved preset",
+                "Select preset to load",
                 options=[""] + existing_presets,
                 key="ci_preset_choice",
             )
-            if st.button("Load preset") and preset_choice:
+        with col_load_b:
+            if st.button("Load", type="secondary") and preset_choice:
                 loaded = load_preset(workspaces_root, preset_choice)
                 st.session_state["custom_instructions"] = loaded
-                st.session_state["_ci_loaded_workspace"] = None  # force widget refresh
+                st.session_state["current_preset_name"] = preset_choice
                 st.success(f"Loaded preset: {preset_choice}")
                 st.rerun()
-        else:
-            st.info("No presets saved yet.")
+    else:
+        st.info("No presets saved yet. Create your first preset below.")
 
-        st.markdown("---")
-        preset_name = st.text_input(
-            "Save current instructions as preset",
-            value="",
-            key="ci_new_preset_name",
-        )
-        col_save_p, col_del_p = st.columns(2)
-        with col_save_p:
-            if st.button("Save as preset") and preset_name.strip():
-                # Ensure all fields are read from session state
-                _ci_to_save = {}
-                _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
-                _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
-                _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-                _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
-
-                raw_cols = st.session_state.get("ci_output_columns", "")
-                _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
-                try:
-                    _ci_to_save["missing_value_defaults"] = json.loads(
-                        st.session_state.get("ci_missing_defaults", "{}")
-                    )
-                except Exception:
-                    _ci_to_save["missing_value_defaults"] = {}
-                save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
-                st.success(f"Saved preset: {preset_name.strip()}")
-                st.rerun()
-        with col_del_p:
-            if existing_presets and st.button("Delete selected preset") and st.session_state.get("ci_preset_choice"):
-                delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
-                st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
-                st.rerun()
-
-        st.markdown("---")
-        st.caption("Import instructions from a previous run")
-
-        # List workspaces for browsing
-        _import_ws_options = _list_subdirs(workspaces_root)
-        _import_ws = st.selectbox(
-            "Workspace",
-            options=_import_ws_options or ["(none)"],
-            key="ci_import_workspace",
-        )
-
-        if _import_ws and _import_ws != "(none)":
-            _import_ws_dir = workspaces_root / _import_ws
-            runs_with_ci = list_workspace_runs_with_instructions(_import_ws_dir)
-            if runs_with_ci:
-                run_labels = [r["run_id"] for r in runs_with_ci]
-                _import_run = st.selectbox(
-                    "Run",
-                    options=[""] + run_labels,
-                    key="ci_import_run",
-                )
-                if st.button("Import from run") and _import_run:
-                    match = next(r for r in runs_with_ci if r["run_id"] == _import_run)
-                    loaded = load_instructions(match["path"])
-                    st.session_state["custom_instructions"] = loaded
-                    st.session_state["_ci_loaded_workspace"] = None
-                    st.success(f"Imported instructions from run: {_import_run}")
-                    st.rerun()
-            else:
-                st.info("No runs with saved instructions in this workspace.")
+    # Show currently loaded preset
+    if st.session_state.get("current_preset_name"):
+        st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
+    else:
+        st.caption("Currently editing: **Unsaved changes (default)**")
 
     # --- Instruction editors ---
     with st.expander("Table extraction rules", expanded=False):
@@ -688,37 +618,61 @@ with st.sidebar:
             key="ci_missing_defaults",
         )
 
-    # --- Save / Reset buttons ---
-    col_ci_save, col_ci_reset = st.columns(2)
-    with col_ci_save:
-        if st.button("Save custom instructions"):
-            # Read all fields from session state
-            ci["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
-            ci["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
-            ci["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-            ci["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+    # --- Save preset ---
+    st.subheader("Save Preset")
+    col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
 
-            # Parse output_columns back to list
+    with col_name:
+        # Default to current preset name if editing an existing one
+        default_name = st.session_state.get("current_preset_name", "")
+        preset_name = st.text_input(
+            "Preset name",
+            value=default_name,
+            key="ci_new_preset_name",
+            placeholder="Enter a name for this preset"
+        )
+
+    with col_save_btn:
+        st.write("")  # spacing
+        st.write("")  # spacing
+        if st.button("Save", type="primary") and preset_name.strip():
+            # Read all fields from session state
+            _ci_to_save = {}
+            _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
+            _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
+            _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
+            _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+
             raw_cols = st.session_state.get("ci_output_columns", "")
-            ci["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
-            # Parse missing-value defaults back to dict
+            _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
             try:
-                ci["missing_value_defaults"] = json.loads(
+                _ci_to_save["missing_value_defaults"] = json.loads(
                     st.session_state.get("ci_missing_defaults", "{}")
                 )
-                save_instructions(_ci_path, ci)
-                st.session_state["custom_instructions"] = ci
-                st.success("Saved to workspace.")
             except json.JSONDecodeError:
                 st.error("Missing-value defaults must be valid JSON.")
+                _ci_to_save["missing_value_defaults"] = {}
 
-    with col_ci_reset:
-        if st.button("Reset to defaults"):
-            ci = default_instructions()
-            st.session_state["custom_instructions"] = ci
-            st.session_state["_ci_loaded_workspace"] = None
-            save_instructions(_ci_path, ci)
+            save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
+            st.session_state["current_preset_name"] = preset_name.strip()
+            st.success(f"Saved preset: {preset_name.strip()}")
             st.rerun()
+
+    with col_del_btn:
+        st.write("")  # spacing
+        st.write("")  # spacing
+        if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
+            delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
+            if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
+                st.session_state["current_preset_name"] = None
+            st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
+            st.rerun()
+
+    # --- Reset to defaults button ---
+    if st.button("Reset to defaults", type="secondary"):
+        st.session_state["custom_instructions"] = default_instructions()
+        st.session_state["current_preset_name"] = None
+        st.rerun()
 
     st.divider()
     st.header("Load an existing run")
@@ -764,12 +718,6 @@ with st.sidebar:
         if st.button("Load run") and pick:
             rr = discover_run(load_workspace_dir / pick)
             st.session_state["rr"] = rr
-            # Restore custom instructions from the loaded run (if present)
-            run_ci_path = find_run_instructions(load_workspace_dir / pick)
-            if run_ci_path:
-                st.session_state["custom_instructions"] = load_instructions(run_ci_path)
-                st.session_state["_ci_loaded_workspace"] = None  # force widget refresh
-                st.toast(f"Loaded custom instructions from run: {pick}")
     else:
         st.info("No workspaces exist yet. Create one above, then run the pipeline.")
 
