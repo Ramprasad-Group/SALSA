@@ -147,6 +147,7 @@ def run_full_pipeline(
     # Instructions are saved in workspace/custom_instructions/default.json
     # We pass them via environment variable to downstream scripts
     import os
+    ci_path = None
     if custom_instructions:
         # Create a temporary reference file in the workspace (not run) directory
         workspace_ci_dir = run_root / "custom_instructions"
@@ -155,6 +156,10 @@ def run_full_pipeline(
         with open(ci_path, "w") as f:
             json.dump(custom_instructions, f, indent=2)
         os.environ["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+        print(f"[Pipeline] Saved custom instructions to: {ci_path}")
+        print(f"[Pipeline] Missing value defaults: {custom_instructions.get('missing_value_defaults', {})}")
+    else:
+        print("[Pipeline] WARNING: No custom instructions provided, using defaults")
 
     # --- workspace subdirs ---
     records_dir = run_dir / "records"
@@ -279,7 +284,7 @@ def run_full_pipeline(
                 cmd += ["--extracted_figures_root", str(plextract_results_root)]
         if exclude_full_text:
             cmd.append("--exclude_full_text")
-        if ci_path.exists():
+        if ci_path and ci_path.exists():
             cmd += ["--custom_instructions", str(ci_path)]
 
         _run(cmd)

@@ -782,6 +782,12 @@ if st.button("Run pipeline", type="primary"):
                 except Exception:
                     pass
 
+            # Debug: show what preset is being used
+            preset_name = st.session_state.get("current_preset_name", "defaults")
+            st.info(f"Using custom instructions: **{preset_name}**")
+            with st.expander("View custom instructions being used", expanded=False):
+                st.json(_run_ci)
+
             rr = run_full_pipeline(
                 dois=dois,
                 run_root=run_root,
