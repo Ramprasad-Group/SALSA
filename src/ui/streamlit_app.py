@@ -706,12 +706,11 @@ with st.sidebar:
                 ci["missing_value_defaults"] = json.loads(
                     st.session_state.get("ci_missing_defaults", "{}")
                 )
+                save_instructions(_ci_path, ci)
+                st.session_state["custom_instructions"] = ci
+                st.success("Saved to workspace.")
             except json.JSONDecodeError:
                 st.error("Missing-value defaults must be valid JSON.")
-                return
-            save_instructions(_ci_path, ci)
-            st.session_state["custom_instructions"] = ci
-            st.success("Saved to workspace.")
 
     with col_ci_reset:
         if st.button("Reset to defaults"):
