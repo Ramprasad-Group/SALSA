@@ -163,7 +163,6 @@ def _default_ollama_models_dir() -> Path:
     fallback.mkdir(parents=True, exist_ok=True)
     return fallback
 
-
 def _ollama_models_dir_from_proc() -> Optional[Path]:
     """
     Try to read ``OLLAMA_MODELS`` from the running ``ollama`` daemon process's
@@ -186,7 +185,6 @@ def _ollama_models_dir_from_proc() -> Optional[Path]:
     except Exception:
         pass
     return None
-
 
 def _default_ollama_host() -> str:
     """
@@ -389,6 +387,19 @@ def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: li
     
     return df
 
+def _ollama_models() -> List[str]:
+    models = _ollama_list_models_via_cli()
+    if not models:
+        models = _ollama_list_models_from_dir(Path(str(default_ollama_dir)))
+    return models
+
+# SET OLLAMA DIR AND HOST (computed outside expander for reuse)
+default_ollama_dir = _default_ollama_models_dir()
+default_ollama_host = _default_ollama_host()
+
+_openai_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
+
+
 st.set_page_config(page_title="AEM_OCR UI", layout="wide")
 st.title("AEM_OCR")
 
@@ -404,15 +415,6 @@ with st.sidebar:
 
     # Choose/create workspace
     st.header("Workspace")
-
-    # # List existing workspaces (subdirs of workspaces_root)
-    # existing_workspaces = _list_subdirs(workspaces_root)
-
-    # # Keep selection in session_state
-    # if "workspace_name" not in st.session_state:
-    #     st.session_state["workspace_name"] = (
-    #         existing_workspaces[0] if existing_workspaces else _default_workspace_name()
-    #     )
 
     # List existing workspaces
     existing_workspaces = _list_subdirs(workspaces_root)
@@ -456,11 +458,10 @@ with st.sidebar:
     # Now this is always the true selected value
     active_workspace_name = st.session_state["workspace_name"]
     active_workspace_dir = _ensure_workspace(workspaces_root, active_workspace_name)
-
     run_root = active_workspace_dir
 
     st.divider()
-
+    st.header("Select Stages")
     with st.expander("Stages", expanded=False):
         run_download_doi = st.checkbox("Download DOIs", value=True)
         run_extract_figures = st.checkbox("Extract figures", value=True)
@@ -472,18 +473,8 @@ with st.sidebar:
         run_chemical_composition = st.checkbox("Extract chemical composition", value=True)
         exclude_full_text = st.checkbox("Exclude full text from context", value=True)
 
-    # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
-    default_ollama_dir = _default_ollama_models_dir()
-    default_ollama_host = _default_ollama_host()
-
-    _openai_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
-
-    def _ollama_models() -> List[str]:
-        models = _ollama_list_models_via_cli()
-        if not models:
-            models = _ollama_list_models_from_dir(Path(str(default_ollama_dir)))
-        return models
-
+    st.divider()
+    st.header("Select LLM(s)")
     with st.expander("LLM", expanded=False):
         # --- General LLM (used for filtering, figure planning, etc.) ---
         st.subheader("General LLM")
@@ -550,13 +541,8 @@ with st.sidebar:
                     st.session_state["completion_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
                 st.selectbox("Completion model", options=_openai_models, index=0, key="completion_llm_model")
 
+    st.divider()
     st.header("Custom Instructions")
-    st.caption(
-        "Customise the LLM prompts for each pipeline stage. "
-        "Save and load named instruction sets from the shared presets directory."
-    )
-
-    # --- Initialize with defaults if not loaded yet ---
     if "custom_instructions" not in st.session_state:
         st.session_state["custom_instructions"] = default_instructions()
         st.session_state["current_preset_name"] = None
@@ -565,31 +551,30 @@ with st.sidebar:
 
     # --- Load presets ---
     existing_presets = list_presets(workspaces_root)
+    with st.expander("Load Preset Custom Instructions", expanded = False):
+        if existing_presets:
+            col_load_a, col_load_b = st.columns([3, 1])
+            with col_load_a:
+                preset_choice = st.selectbox(
+                    "Select preset to load",
+                    options=[""] + existing_presets,
+                    key="ci_preset_choice",
+                )
+            with col_load_b:
+                if st.button("Load", type="secondary") and preset_choice:
+                    loaded = load_preset(workspaces_root, preset_choice)
+                    st.session_state["custom_instructions"] = loaded
+                    st.session_state["current_preset_name"] = preset_choice
+                    st.success(f"Loaded preset: {preset_choice}")
+                    st.rerun()
+        else:
+            st.info("No presets saved yet. Create your first preset below.")
 
-    st.subheader("Load Preset")
-    if existing_presets:
-        col_load_a, col_load_b = st.columns([3, 1])
-        with col_load_a:
-            preset_choice = st.selectbox(
-                "Select preset to load",
-                options=[""] + existing_presets,
-                key="ci_preset_choice",
-            )
-        with col_load_b:
-            if st.button("Load", type="secondary") and preset_choice:
-                loaded = load_preset(workspaces_root, preset_choice)
-                st.session_state["custom_instructions"] = loaded
-                st.session_state["current_preset_name"] = preset_choice
-                st.success(f"Loaded preset: {preset_choice}")
-                st.rerun()
-    else:
-        st.info("No presets saved yet. Create your first preset below.")
-
-    # Show currently loaded preset
-    if st.session_state.get("current_preset_name"):
-        st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
-    else:
-        st.caption("Currently editing: **Unsaved changes (default)**")
+        # Show currently loaded preset
+        if st.session_state.get("current_preset_name"):
+            st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
+        else:
+            st.caption("Currently editing: **Unsaved changes (default)**")
 
     # --- Instruction editors ---
     with st.expander("Table extraction rules", expanded=False):
@@ -663,109 +648,93 @@ with st.sidebar:
             key="ci_missing_defaults",
         )
 
-    # --- Save preset ---
-    st.subheader("Save Preset")
-    col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
+    with st.expander("Save Custom Instructions", expanded=False):
 
-    with col_name:
-        # Default to current preset name if editing an existing one
-        default_name = st.session_state.get("current_preset_name", "")
-        preset_name = st.text_input(
-            "Preset name",
-            value=default_name,
-            key="ci_new_preset_name",
-            placeholder="Enter a name for this preset"
-        )
+        st.subheader("Save Preset")
+        col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
 
-    with col_save_btn:
-        st.write("")  # spacing
-        st.write("")  # spacing
-        if st.button("Save", type="primary") and preset_name.strip():
-            # Read all fields from session state
-            _ci_to_save = {}
-            _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
-            _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
-            _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-            _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
-
-            raw_cols = st.session_state.get("ci_output_columns", "")
-            _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
-            try:
-                _ci_to_save["missing_value_defaults"] = json.loads(
-                    st.session_state.get("ci_missing_defaults", "{}")
-                )
-            except json.JSONDecodeError:
-                st.error("Missing-value defaults must be valid JSON.")
-                _ci_to_save["missing_value_defaults"] = {}
-
-            save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
-            st.session_state["current_preset_name"] = preset_name.strip()
-            st.success(f"Saved preset: {preset_name.strip()}")
-            st.rerun()
-
-    with col_del_btn:
-        st.write("")  # spacing
-        st.write("")  # spacing
-        if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
-            delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
-            if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
-                st.session_state["current_preset_name"] = None
-            st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
-            st.rerun()
-
-    # --- Reset to defaults button ---
-    if st.button("Reset to defaults", type="secondary"):
-        st.session_state["custom_instructions"] = default_instructions()
-        st.session_state["current_preset_name"] = None
-        st.rerun()
-
-    st.divider()
-    st.header("Load an existing run")
-
-    # Choose which workspace to browse when loading runs
-    load_ws_options = _list_subdirs(workspaces_root)
-    # if not load_ws_options:
-    #     st.info("No workspaces exist yet. Create one above, then run the pipeline.")
-    # else:
-    #     if "load_workspace" not in st.session_state:
-    #         st.session_state["load_workspace"] = active_workspace_name if active_workspace_name in load_ws_options else load_ws_options[0]
-
-    #     load_workspace_name = st.selectbox(
-    #         "Browse workspace",
-    #         options=load_ws_options,
-    #         index=load_ws_options.index(st.session_state["load_workspace"])
-    #             if st.session_state["load_workspace"] in load_ws_options else 0,
-    #         key="load_workspace_selectbox",
-    #     )
-    #     st.session_state["load_workspace"] = load_workspace_name
-
-    #     load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
-
-    if load_ws_options:
-        # ensure state is valid
-        if st.session_state.get("load_workspace") not in load_ws_options:
-            st.session_state["load_workspace"] = (
-                active_workspace_name if active_workspace_name in load_ws_options else load_ws_options[0]
+        with col_name:
+            # Default to current preset name if editing an existing one
+            default_name = st.session_state.get("current_preset_name", "")
+            preset_name = st.text_input(
+                "Preset name",
+                value=default_name,
+                key="ci_new_preset_name",
+                placeholder="Enter a name for this preset"
             )
 
-        load_workspace_name = st.selectbox(
-            "Browse workspace",
-            options=load_ws_options,
-            key="load_workspace",   # <-- single source of truth
-        )
+        with col_save_btn:
+            st.write("")  # spacing
+            st.write("")  # spacing
+            if st.button("Save", type="primary") and preset_name.strip():
+                # Read all fields from session state
+                _ci_to_save = {}
+                _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
+                _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
+                _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
+                _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
 
-        load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
-        
-        
-        existing_runs = sorted([p.name for p in load_workspace_dir.iterdir() if p.is_dir()], reverse=True)
-        pick = st.selectbox("Run ID", options=[""] + existing_runs, key="load_run_id")
+                raw_cols = st.session_state.get("ci_output_columns", "")
+                _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
+                try:
+                    _ci_to_save["missing_value_defaults"] = json.loads(
+                        st.session_state.get("ci_missing_defaults", "{}")
+                    )
+                except json.JSONDecodeError:
+                    st.error("Missing-value defaults must be valid JSON.")
+                    _ci_to_save["missing_value_defaults"] = {}
 
-        if st.button("Load run") and pick:
-            rr = discover_run(load_workspace_dir / pick)
-            st.session_state["rr"] = rr
-    else:
-        st.info("No workspaces exist yet. Create one above, then run the pipeline.")
+                save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
+                st.session_state["current_preset_name"] = preset_name.strip()
+                st.success(f"Saved preset: {preset_name.strip()}")
+                st.rerun()
 
+        with col_del_btn:
+            st.write("")  # spacing
+            st.write("")  # spacing
+            if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
+                delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
+                if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
+                    st.session_state["current_preset_name"] = None
+                st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
+                st.rerun()
+
+        # --- Reset to defaults button ---
+        if st.button("Reset to defaults", type="secondary"):
+            st.session_state["custom_instructions"] = default_instructions()
+            st.session_state["current_preset_name"] = None
+            st.rerun()
+
+        st.divider()
+        st.header("Load an existing run")
+
+        # Choose which workspace to browse when loading runs
+        load_ws_options = _list_subdirs(workspaces_root)
+
+        if load_ws_options:
+            # ensure state is valid
+            if st.session_state.get("load_workspace") not in load_ws_options:
+                st.session_state["load_workspace"] = (
+                    active_workspace_name if active_workspace_name in load_ws_options else load_ws_options[0]
+                )
+
+            load_workspace_name = st.selectbox(
+                "Browse workspace",
+                options=load_ws_options,
+                key="load_workspace",   # <-- single source of truth
+            )
+
+            load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
+            
+            
+            existing_runs = sorted([p.name for p in load_workspace_dir.iterdir() if p.is_dir()], reverse=True)
+            pick = st.selectbox("Run ID", options=[""] + existing_runs, key="load_run_id")
+
+            if st.button("Load run") and pick:
+                rr = discover_run(load_workspace_dir / pick)
+                st.session_state["rr"] = rr
+        else:
+            st.info("No workspaces exist yet. Create one above, then run the pipeline.")
 
 # ---------------- Run pipeline ----------------
 st.subheader("Input DOIs")

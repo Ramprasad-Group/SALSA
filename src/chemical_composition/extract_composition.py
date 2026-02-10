@@ -52,7 +52,7 @@ IMPORTANT — you MUST include:
   samples.
 
 For each relevant item, return a JSON array of objects with these keys:
-- "source_type": one of "text", "table", "figure", "scheme"
+- "source_type": one of "text", "table", "figure/scheme"
 - "source_id": the ID as used in the paper (e.g. "Table 1", "Figure 3",
   "Scheme 1") or "body_text" for inline passages
 - "excerpt": the relevant passage (≤500 chars) or caption/description
