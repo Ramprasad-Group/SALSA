@@ -16,7 +16,7 @@ def run_plextract_on_manual_crops(
     if not has_any:
         raise FileNotFoundError(f"manual_crops exists but contains no images: {manual_crops}")
 
-    plextract_py = scripts_root / "extract-figure-data" / "plextract.py"
+    plextract_py = scripts_root / "extract_figure_data" / "plextract.py"
 
     workdir = run_dir / "plextract_work_manual"
     logs_dir = workdir / "logs"

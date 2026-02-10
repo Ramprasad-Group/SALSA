@@ -1142,7 +1142,7 @@ with tab_intervene:
         st.error("Could not find source image. Check figures_tables/figures/ directory.")
         st.stop()
 
-    sub_crop, sub_masks, sub_series, sub_apply = st.tabs(["Crop", "Masks", "Series", "Apply / Re-run"])
+    sub_crop, sub_series, sub_apply = st.tabs(["Crop", "Series", "Apply / Re-run"])
 
     with sub_crop:
         st.subheader("Crop & extract data from sub-regions")
@@ -1179,7 +1179,6 @@ with tab_intervene:
             with col_rerun:
                 if st.button("Re-run extraction on existing crops", type="primary"):
                     try:
-                        # Copy crops into manual_crops dir structure for plextract
                         manual_crops_dir = rr.run_dir / "manual_crops" / item.safe_doi
                         manual_crops_dir.mkdir(parents=True, exist_ok=True)
                         import shutil
@@ -1253,7 +1252,6 @@ with tab_intervene:
             if st.button("Save & run extraction", type="primary", disabled=len(rects) == 0):
                 saved = save_crops(item.source_image, rects, crops_out_dir, prefix=prefix)
                 if saved:
-                    # Copy into manual_crops for plextract
                     manual_crops_dir = rr.run_dir / "manual_crops" / item.safe_doi
                     manual_crops_dir.mkdir(parents=True, exist_ok=True)
                     import shutil
@@ -1275,7 +1273,6 @@ with tab_intervene:
             if latest_manual:
                 out_base = latest_manual / "output" / item.safe_doi
                 if out_base.exists():
-                    # Show any final_dataset.csv found in manual outputs
                     found_csvs = list(out_base.glob("**/final/final_dataset.csv"))
                     if found_csvs:
                         for csv_p in found_csvs:
@@ -1286,7 +1283,6 @@ with tab_intervene:
                                     st.dataframe(df, use_container_width=True, hide_index=True)
                                 except Exception as e:
                                     st.warning(f"Failed to load: {e}")
-                                # Show the rendered image if it exists
                                 final_img = csv_p.parent / "final_image.png"
                                 if final_img.exists():
                                     st_image_auto(str(final_img), full_width=True)
@@ -1298,85 +1294,9 @@ with tab_intervene:
                     st.info("No outputs found for this DOI in manual run.")
         else:
             st.info("No manual plextract run found yet. Save crops and run extraction above.")
-    with sub_masks:
-        st.subheader("Redraw / edit masks")
-
-        lf_dir = get_lineformer_dir(item.figure_dir)
-        if not lf_dir.exists():
-            st.error(f"No lineformer dir found: {lf_dir}")
-            st.stop()
-
-        series_items = load_series_catalog(lf_dir)
-        series_indices = [s.series_index for s in series_items]
-
-        sel_idx = st.selectbox("Select series_index to edit", series_indices)
-
-        # base figure image to draw on (use source_image)
-        base_img = Image.open(item.source_image).convert("RGB")
-        w, h = base_img.size
-        display_w = min(w, 1100)
-        display_h = int(h * (display_w / w))
-        base_img_disp = base_img.resize((display_w, display_h))
-
-        # load existing mask (override if exists, else original)
-        override_masks = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
-        orig_mask_path = next(s.mask_path for s in series_items if s.series_index == sel_idx)
-        mask_path = override_masks.get(sel_idx, orig_mask_path)
-        mask_img = Image.open(mask_path).convert("L").resize((display_w, display_h))
-
-        st.caption(f"Editing series_index={sel_idx}")
-        c1, c2 = st.columns([2, 1])
-
-        with c1:
-            st.write("Draw white where the mask should be. Use 'freedraw' for painting.")
-            brush = st.slider("Brush width", 1, 40, 10)
-
-            # canvas returns an RGBA image of strokes; we threshold alpha to a binary mask
-            canvas = st_canvas(
-                background_image=base_img_disp,
-                drawing_mode="freedraw",
-                stroke_width=brush,
-                stroke_color="rgba(255,255,255,1.0)",
-                fill_color="rgba(255,255,255,1.0)",
-                update_streamlit=True,
-                height=display_h,
-                width=display_w,
-                key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
-            )
-
-        with c2:
-            st.write("Current mask preview")
-            st_image_auto(mask_img, full_width=True)
-
-        # Build new mask from strokes
-        if canvas.image_data is not None:
-            rgba = canvas.image_data.astype(np.uint8)
-            alpha = rgba[..., 3]
-            # binary from alpha (strokes)
-            new_mask_small = (alpha > 0).astype(np.uint8) * 255
-
-            # resize back to original size
-            new_mask = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
-            new_mask_pil = Image.fromarray(new_mask).convert("L")
-
-            colA, colB = st.columns(2)
-            with colA:
-                if st.button("Save edited mask", type="primary"):
-                    outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, sel_idx, new_mask_pil)
-                    st.success(f"Saved override mask: {outp}")
-
-                    # update series_catalog.override.json too (optional but useful)
-                    override_masks2 = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
-                    write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks2)
-            with colB:
-                if st.button("Reset canvas (rerun)"):
-                    st.rerun()
-
-            with st.expander("Preview new mask (full-res)", expanded=False):
-                st_image_auto(new_mask_pil, full_width=True)
 
     with sub_series:
-        st.subheader("Rename / delete / preview series")
+        st.subheader("Series management")
 
         lf_dir = get_lineformer_dir(item.figure_dir)
         if not lf_dir.exists():
@@ -1388,13 +1308,17 @@ with tab_intervene:
             deleted = set(int(x) for x in mapping.get("deleted", []))
             override_masks = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
 
-            # --- Composite overlay: all series colored on the source image ---
+            # --- Helper: get display name for a series index ---
             _SERIES_COLORS = [
                 (255, 0, 0), (0, 128, 255), (0, 200, 0), (255, 165, 0),
                 (148, 0, 211), (0, 206, 209), (255, 20, 147), (128, 128, 0),
                 (0, 255, 127), (100, 149, 237),
             ]
 
+            def _display_name(idx: int) -> str:
+                return names.get(str(idx), f"Series {idx}")
+
+            # --- Composite overlay: all series colored on the source image ---
             base_img = Image.open(item.source_image).convert("RGBA")
             overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
 
@@ -1413,9 +1337,8 @@ with tab_intervene:
                     overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
                 except Exception:
                     pass
-                display_name = names.get(str(i), f"Series {i}")
                 hex_color = "#{:02x}{:02x}{:02x}".format(*color)
-                legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {i}: {display_name}')
+                legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
 
             composite = Image.alpha_composite(base_img, overlay).convert("RGB")
             st_image_auto(composite, full_width=True)
@@ -1423,7 +1346,9 @@ with tab_intervene:
                 st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
 
             st.divider()
-            st.write("Rename or delete each series below.")
+
+            # ---- Rename / delete section ----
+            st.write("**Rename or delete** each series below.")
 
             new_names = {}
             new_deleted = set(deleted)
@@ -1435,11 +1360,11 @@ with tab_intervene:
                 cols = st.columns([0.5, 3, 1])
                 with cols[0]:
                     st.markdown(
-                        f'<span style="color:{hex_color}; font-size:1.4em; font-weight:bold;">&#9632; {i}</span>',
+                        f'<span style="color:{hex_color}; font-size:1.4em; font-weight:bold;">&#9632;</span>',
                         unsafe_allow_html=True,
                     )
                 with cols[1]:
-                    default_name = names.get(str(i), f"Series {i}")
+                    default_name = _display_name(i)
                     new_names[str(i)] = st.text_input(
                         f"Name for series {i}",
                         value=default_name,
@@ -1465,6 +1390,104 @@ with tab_intervene:
                 p = save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping2)
                 st.success(f"Saved mapping: {p}")
                 st.rerun()
+
+            st.divider()
+
+            # ---- Redraw mask / mark points section ----
+            st.write("**Redraw mask** for a series.")
+
+            active_series = [s for s in series_items if s.series_index not in deleted]
+            if not active_series:
+                st.info("No active series to edit.")
+            else:
+                sel_series_name_options = [f"{_display_name(s.series_index)}" for s in active_series]
+                sel_series_ui = st.selectbox(
+                    "Select series to edit",
+                    range(len(active_series)),
+                    format_func=lambda i: sel_series_name_options[i],
+                    key=f"mask_edit_sel_{item.safe_doi}_{item.figure_id}",
+                )
+                sel_s = active_series[sel_series_ui]
+                sel_idx = sel_s.series_index
+
+                base_img_rgb = Image.open(item.source_image).convert("RGB")
+                w, h = base_img_rgb.size
+                disp_w = min(w, 1100)
+                disp_h = int(h * (disp_w / w))
+                base_img_disp = base_img_rgb.resize((disp_w, disp_h))
+
+                # Load current mask for preview
+                orig_mask_path = next(s.mask_path for s in series_items if s.series_index == sel_idx)
+                cur_mask_path = override_masks.get(sel_idx, orig_mask_path)
+                cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
+
+                draw_mode = st.radio(
+                    "Drawing mode",
+                    ["Freedraw (paint mask)", "Click points (mark series)"],
+                    horizontal=True,
+                    key=f"draw_mode_{item.safe_doi}_{item.figure_id}_{sel_idx}",
+                )
+
+                c1, c2 = st.columns([2, 1])
+
+                with c1:
+                    if draw_mode.startswith("Freedraw"):
+                        brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{item.figure_id}_{sel_idx}")
+                        mask_canvas = st_canvas(
+                            background_image=base_img_disp,
+                            drawing_mode="freedraw",
+                            stroke_width=brush,
+                            stroke_color="rgba(255,255,255,1.0)",
+                            fill_color="rgba(255,255,255,1.0)",
+                            update_streamlit=True,
+                            height=disp_h,
+                            width=disp_w,
+                            key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
+                        )
+                    else:
+                        # Click points mode: use small circles as markers
+                        st.caption("Click on points belonging to this series. Each click places a marker.")
+                        marker_size = st.slider("Marker radius", 2, 20, 6, key=f"marker_{item.safe_doi}_{item.figure_id}_{sel_idx}")
+                        mask_canvas = st_canvas(
+                            background_image=base_img_disp,
+                            drawing_mode="circle",
+                            stroke_width=1,
+                            stroke_color="rgba(255,255,255,1.0)",
+                            fill_color="rgba(255,255,255,1.0)",
+                            update_streamlit=True,
+                            height=disp_h,
+                            width=disp_w,
+                            key=f"point_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
+                        )
+
+                with c2:
+                    st.write("Current mask")
+                    st_image_auto(cur_mask_img, full_width=True)
+
+                # Build new mask from canvas strokes/points
+                if mask_canvas.image_data is not None:
+                    rgba = mask_canvas.image_data.astype(np.uint8)
+                    alpha = rgba[..., 3]
+                    new_mask_small = (alpha > 0).astype(np.uint8) * 255
+
+                    new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+                    new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+
+                    colA, colB = st.columns(2)
+                    with colA:
+                        if st.button("Save edited mask", type="primary", key=f"save_mask_{item.safe_doi}_{item.figure_id}_{sel_idx}"):
+                            outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, sel_idx, new_mask_pil)
+                            st.success(f"Saved override mask for {_display_name(sel_idx)}")
+                            override_masks2 = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
+                            write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks2)
+                            st.rerun()
+                    with colB:
+                        if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{sel_idx}"):
+                            st.rerun()
+
+                    with st.expander("Preview new mask (full-res)", expanded=False):
+                        st_image_auto(new_mask_pil, full_width=True)
+
     with sub_apply:
         st.subheader("Apply edits & re-run")
 
