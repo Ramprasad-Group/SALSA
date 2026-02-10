@@ -113,15 +113,33 @@ def _scan_plextract_artifacts(plextract_workdir: Path) -> Dict[str, List[Path]]:
 
     return out
 
+def _find_chemical_composition(chem_comp_dir: Path) -> Dict[str, Path]:
+    """
+    Returns: { safe_doi : path_to_result.json }
+    Expects: <run_dir>/chemical_composition/<safe_doi>/result.json
+    """
+    out: Dict[str, Path] = {}
+    if not chem_comp_dir.exists():
+        return out
+    for d in chem_comp_dir.iterdir():
+        if d.is_dir():
+            rj = d / "result.json"
+            if rj.exists():
+                out[d.name] = rj
+    return out
+
+
 def discover_run(run_dir: Path) -> RunResult:
     reparsed = run_dir / "reparsed"
     figures_tables = run_dir / "figures_tables"
     plextract_workdir = run_dir / "plextract_work"
-    complete_dataset_dir = run_dir / "complete_dataset" 
+    complete_dataset_dir = run_dir / "complete_dataset"
+    chem_comp_dir = run_dir / "chemical_composition"
 
     final_csv_map = _find_final_dataset_csv(plextract_workdir)
     plex_artifacts = _scan_plextract_artifacts(plextract_workdir)
     completed_map = _find_completed_dataset_csv(complete_dataset_dir)
+    chem_comp_map = _find_chemical_composition(chem_comp_dir)
 
 
     dois: list[DoiResult] = []
@@ -147,6 +165,15 @@ def discover_run(run_dir: Path) -> RunResult:
             completed_csv = completed_map.get(safe_doi)
             if completed_csv:
                 dr.extra["completed_dataset_csv"] = str(completed_csv)
+
+            # chemical composition
+            chem_result = chem_comp_map.get(safe_doi)
+            if chem_result:
+                dr.extra["chemical_composition_json"] = str(chem_result)
+                # also check for samples CSV
+                samples_csv = chem_result.parent / "samples.csv"
+                if samples_csv.exists():
+                    dr.extra["chemical_composition_csv"] = str(samples_csv)
 
             # figures
             fig_dir = figures_tables / "figures" / safe_doi
