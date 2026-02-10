@@ -1141,12 +1141,39 @@ with tab_chem:
     with sub_cc_draw:
         st.markdown("#### Chemical Structure Drawing Tool")
         st.caption(
-            "Use the Ketcher editor below to draw a chemical structure. "
-            "Click **Get SMILES** to capture the structure, then save it "
-            "with a sample name."
+            "Primary editor uses JSME (online). If your environment blocks CDN access, "
+            "use the offline sketch pad below so you can still draw and save structures."
         )
 
-        render_ketcher_editor(height=550, key=f"ketcher_{_cc_safe}")
+        with st.expander("JSME editor (online)", expanded=False):
+            render_ketcher_editor(height=550, key=f"ketcher_{_cc_safe}")
+
+        st.markdown("#### Offline sketch pad")
+        st.caption("Draw freehand structure sketches when the online editor cannot load.")
+        sketch_canvas = st_canvas(
+            fill_color="rgba(0, 0, 0, 0.0)",
+            stroke_width=3,
+            stroke_color="#000000",
+            background_color="#ffffff",
+            update_streamlit=True,
+            height=420,
+            width=900,
+            drawing_mode="freedraw",
+            key=f"chem_sketch_{_cc_safe}",
+        )
+
+        draw_image_path = rr.run_dir / "chemical_composition" / _cc_safe / "drawn_structure_sketch.png"
+        col_sketch_save, col_sketch_clear = st.columns(2)
+        with col_sketch_save:
+            if st.button("Save sketch image", key=f"save_sketch_{_cc_safe}"):
+                if sketch_canvas.image_data is None:
+                    st.error("No sketch available yet.")
+                else:
+                    draw_image_path.parent.mkdir(parents=True, exist_ok=True)
+                    Image.fromarray(sketch_canvas.image_data.astype(np.uint8)).save(draw_image_path)
+                    st.success(f"Saved sketch to `{draw_image_path}`")
+        with col_sketch_clear:
+            st.caption("Use the canvas toolbar trash icon to clear strokes.")
 
         st.divider()
         st.markdown("#### Save Drawn Structure")
