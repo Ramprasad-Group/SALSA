@@ -705,8 +705,8 @@ with st.sidebar:
             st.session_state["current_preset_name"] = None
             st.rerun()
 
-        st.divider()
-        st.header("Load an existing run")
+    st.divider()
+    with st.expander("Load an existing run", expanded=False):
 
         # Choose which workspace to browse when loading runs
         load_ws_options = _list_subdirs(workspaces_root)
