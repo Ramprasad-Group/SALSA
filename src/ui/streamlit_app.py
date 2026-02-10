@@ -1385,9 +1385,8 @@ with tab_intervene:
             else:
                 canvas = st_canvas(background_color="rgba(255,255,255,0.0)", **canvas_kwargs)
         except Exception as e:
-            st.warning(f"Canvas background failed: {e}")
-            with st.expander("Show source image", expanded=False):
-                st_image_auto(pil_img_disp, full_width=True)
+            st.warning(f"Canvas background failed: {e}. Showing image below for reference.")
+            st_image_auto(pil_img_disp, full_width=True)
             canvas = st_canvas(background_color="rgba(255,255,255,0.0)", **canvas_kwargs)
 
         scale_x = orig_w / display_w
@@ -1563,158 +1562,175 @@ with tab_intervene:
 
             st.divider()
 
-            # ---- Redraw mask section ----
-            st.write("**Redraw series mask**")
+            # ---- Generate colored series masks composite ----
+            base_img_rgb = Image.open(item.source_image).convert("RGBA")
+            w, h = base_img_rgb.size
+            disp_w = min(w, 1100)
+            disp_h = int(h * (disp_w / w))
 
+            # Build colored overlay for all existing series
+            overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            for s in sorted(series_items, key=lambda x: x.series_index):
+                i = s.series_index
+                if i in deleted:
+                    continue
+                color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
+                mask_path = override_masks.get(i, s.mask_path)
+                try:
+                    mask = Image.open(mask_path).convert("L")
+                    mask_arr = np.array(mask)
+                    color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
+                    color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
+                    overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
+                except Exception:
+                    pass
+
+            composite_full = Image.alpha_composite(base_img_rgb, overlay).convert("RGB")
+            composite_disp = composite_full.resize((disp_w, disp_h))
+
+            # ---- Unified drawing interface for edit/create ----
+            st.write("**Edit or Create Series Mask**")
+
+            # Choose mode: edit existing or create new
             active_series = [s for s in series_items if s.series_index not in deleted]
-            if not active_series:
-                st.info("No active series to edit.")
-            else:
-                sel_series_name_options = [f"{_display_name(s.series_index)}" for s in active_series]
-                sel_series_ui = st.selectbox(
-                    "Select series to edit",
-                    range(len(active_series)),
-                    format_func=lambda i: sel_series_name_options[i],
-                    key=f"mask_edit_sel_{item.safe_doi}_{item.figure_id}",
+            existing_indices = [s.series_index for s in series_items]
+            next_idx = max(existing_indices) + 1 if existing_indices else 0
+
+            mode_options = ["Edit existing series", "Create new series"]
+            mode = st.radio(
+                "Mode",
+                mode_options,
+                key=f"series_mode_{item.safe_doi}_{item.figure_id}",
+                horizontal=True,
+            )
+
+            is_creating = (mode == "Create new series")
+
+            if is_creating:
+                selected_idx = next_idx
+                series_name = st.text_input(
+                    "Name for new series",
+                    value=f"Series {next_idx}",
+                    key=f"new_series_name_{item.safe_doi}_{item.figure_id}",
                 )
-                sel_s = active_series[sel_series_ui]
-                sel_idx = sel_s.series_index
+                # For new series, no current mask to show
+                cur_mask_img = None
+            else:
+                if not active_series:
+                    st.info("No active series to edit.")
+                    selected_idx = None
+                else:
+                    sel_series_name_options = [f"{_display_name(s.series_index)}" for s in active_series]
+                    sel_series_ui = st.selectbox(
+                        "Select series to edit",
+                        range(len(active_series)),
+                        format_func=lambda i: sel_series_name_options[i],
+                        key=f"mask_edit_sel_{item.safe_doi}_{item.figure_id}",
+                    )
+                    sel_s = active_series[sel_series_ui]
+                    selected_idx = sel_s.series_index
+                    series_name = _display_name(selected_idx)
 
-                base_img_rgb = Image.open(item.source_image).convert("RGB")
-                w, h = base_img_rgb.size
-                disp_w = min(w, 1100)
-                disp_h = int(h * (disp_w / w))
-                base_img_disp = base_img_rgb.resize((disp_w, disp_h))
+                    # Load current mask for preview
+                    orig_mask_path = next(s.mask_path for s in series_items if s.series_index == selected_idx)
+                    cur_mask_path = override_masks.get(selected_idx, orig_mask_path)
+                    cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
 
-                # Load current mask for preview
-                orig_mask_path = next(s.mask_path for s in series_items if s.series_index == sel_idx)
-                cur_mask_path = override_masks.get(sel_idx, orig_mask_path)
-                cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
+            if selected_idx is not None:
+                # Show selected series color
+                sel_color = _SERIES_COLORS[selected_idx % len(_SERIES_COLORS)]
+                hex_color = "#{:02x}{:02x}{:02x}".format(*sel_color)
+                st.markdown(
+                    f'**Drawing with color:** <span style="color:{hex_color}; font-size:1.8em; font-weight:bold;">&#9632;</span> {series_name}',
+                    unsafe_allow_html=True,
+                )
 
-                c1, c2 = st.columns([2, 1])
+                # Canvas stroke color - use selected series color with full opacity
+                stroke_color_rgba = f"rgba({sel_color[0]},{sel_color[1]},{sel_color[2]},1.0)"
+
+                c1, c2 = st.columns([3, 1])
 
                 with c1:
-                    st.write("Draw on the image below to redraw the series mask")
-                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{item.figure_id}_{sel_idx}")
+                    st.write("Draw on the colored series image below")
+                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{item.figure_id}_{selected_idx}")
                     mask_canvas = st_canvas(
-                        background_image=base_img_disp,
+                        background_image=composite_disp,
                         drawing_mode="freedraw",
                         stroke_width=brush,
-                        stroke_color="rgba(255,255,255,1.0)",
-                        fill_color="rgba(255,255,255,1.0)",
+                        stroke_color=stroke_color_rgba,
+                        fill_color=stroke_color_rgba,
                         update_streamlit=True,
                         height=disp_h,
                         width=disp_w,
-                        key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
+                        key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}",
                     )
 
                 with c2:
-                    st.write("Current mask")
-                    st_image_auto(cur_mask_img, full_width=True)
+                    if cur_mask_img is not None:
+                        st.write("Current mask")
+                        st_image_auto(cur_mask_img, full_width=True)
+                    else:
+                        st.info("Drawing new series")
 
                 # Build new mask from canvas strokes
                 if mask_canvas.image_data is not None:
                     rgba = mask_canvas.image_data.astype(np.uint8)
-                    alpha = rgba[..., 3]
-                    new_mask_small = (alpha > 0).astype(np.uint8) * 255
+                    # Extract pixels matching the selected color (with some tolerance)
+                    r, g, b = sel_color
+                    color_match = (
+                        (np.abs(rgba[..., 0].astype(int) - r) < 30) &
+                        (np.abs(rgba[..., 1].astype(int) - g) < 30) &
+                        (np.abs(rgba[..., 2].astype(int) - b) < 30) &
+                        (rgba[..., 3] > 0)
+                    )
+                    new_mask_small = color_match.astype(np.uint8) * 255
 
-                    new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
-                    new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+                    if np.any(new_mask_small > 0):
+                        new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+                        new_mask_pil = Image.fromarray(new_mask_full).convert("L")
 
-                    colA, colB = st.columns(2)
-                    with colA:
-                        if st.button("Save edited mask", type="primary", key=f"save_mask_{item.safe_doi}_{item.figure_id}_{sel_idx}"):
-                            outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, sel_idx, new_mask_pil)
-                            st.success(f"Saved override mask for {_display_name(sel_idx)}")
-                            override_masks2 = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
-                            write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks2)
-                            st.rerun()
-                    with colB:
-                        if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{sel_idx}"):
-                            st.rerun()
+                        colA, colB = st.columns(2)
+                        with colA:
+                            save_label = "Create new series" if is_creating else f"Save edited mask"
+                            if st.button(save_label, type="primary", key=f"save_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
+                                outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, selected_idx, new_mask_pil)
 
-                    st.header("test")
-                    st_image_auto(new_mask_pil, full_width=True)
+                                if is_creating:
+                                    # Update mapping with the new series name
+                                    mapping_updated = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
+                                    if "series_names" not in mapping_updated:
+                                        mapping_updated["series_names"] = {}
+                                    mapping_updated["series_names"][str(selected_idx)] = series_name
+                                    save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping_updated)
 
-            st.divider()
+                                    # Calculate centroid for the new series
+                                    mask_arr = np.array(new_mask_pil)
+                                    y_coords, x_coords = np.where(mask_arr > 0)
+                                    if len(x_coords) > 0:
+                                        centroid_x = float(np.mean(x_coords))
+                                        centroid_y = float(np.mean(y_coords))
+                                    else:
+                                        centroid_x, centroid_y = 0.0, 0.0
 
-            # ---- Create new series section ----
-            st.write("**Create new series/mask**")
+                                    # Add new series to the catalog
+                                    from intervention import SeriesItem
+                                    new_series = SeriesItem(
+                                        series_index=selected_idx,
+                                        mask_path=outp,
+                                        centroid=(centroid_x, centroid_y)
+                                    )
+                                    series_items.append(new_series)
+                                    st.success(f"Created new series '{series_name}' with index {selected_idx}")
+                                else:
+                                    st.success(f"Saved override mask for {series_name}")
 
-            # Find the next available series index
-            existing_indices = [s.series_index for s in series_items]
-            next_idx = max(existing_indices) + 1 if existing_indices else 0
-
-            new_series_name = st.text_input(
-                "Name for new series",
-                value=f"Series {next_idx}",
-                key=f"new_series_name_{item.safe_doi}_{item.figure_id}",
-            )
-
-            base_img_rgb = Image.open(item.source_image).convert("RGB")
-            w, h = base_img_rgb.size
-            disp_w = min(w, 1100)
-            disp_h = int(h * (disp_w / w))
-            base_img_disp = base_img_rgb.resize((disp_w, disp_h))
-
-            st.write("Draw the new series mask below")
-            new_brush = st.slider("Brush width", 1, 40, 10, key=f"new_brush_{item.safe_doi}_{item.figure_id}")
-            new_series_canvas = st_canvas(
-                background_image=base_img_disp,
-                drawing_mode="freedraw",
-                stroke_width=new_brush,
-                stroke_color="rgba(255,255,255,1.0)",
-                fill_color="rgba(255,255,255,1.0)",
-                update_streamlit=True,
-                height=disp_h,
-                width=disp_w,
-                key=f"new_series_canvas_{item.safe_doi}_{item.figure_id}",
-            )
-
-            if new_series_canvas.image_data is not None:
-                rgba = new_series_canvas.image_data.astype(np.uint8)
-                alpha = rgba[..., 3]
-                new_mask_small = (alpha > 0).astype(np.uint8) * 255
-
-                if np.any(new_mask_small > 0):  # Only show save button if something is drawn
-                    new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
-                    new_mask_pil = Image.fromarray(new_mask_full).convert("L")
-
-                    if st.button("Create new series", type="primary", key=f"create_series_{item.safe_doi}_{item.figure_id}"):
-                        # Save the new mask
-                        outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, next_idx, new_mask_pil)
-
-                        # Update mapping with the new series name
-                        mapping_updated = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
-                        if "series_names" not in mapping_updated:
-                            mapping_updated["series_names"] = {}
-                        mapping_updated["series_names"][str(next_idx)] = new_series_name
-                        save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping_updated)
-
-                        # Calculate centroid for the new series
-                        mask_arr = np.array(new_mask_pil)
-                        y_coords, x_coords = np.where(mask_arr > 0)
-                        if len(x_coords) > 0:
-                            centroid_x = float(np.mean(x_coords))
-                            centroid_y = float(np.mean(y_coords))
-                        else:
-                            centroid_x, centroid_y = 0.0, 0.0
-
-                        # Add new series to the catalog
-                        from intervention import SeriesItem
-                        new_series = SeriesItem(
-                            series_index=next_idx,
-                            mask_path=outp,
-                            centroid=(centroid_x, centroid_y)
-                        )
-                        series_items.append(new_series)
-
-                        # Update the series catalog override
-                        override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
-                        write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks_updated)
-
-                        st.success(f"Created new series '{new_series_name}' with index {next_idx}")
-                        st.rerun()
+                                # Update the series catalog override
+                                override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
+                                write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks_updated)
+                                st.rerun()
+                        with colB:
+                            if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
+                                st.rerun()
 
       with st.expander("View colored series masks", expanded=False):
         base_img = Image.open(item.source_image).convert("RGBA")

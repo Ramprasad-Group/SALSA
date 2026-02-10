@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import json
 import shutil
+import numpy as np
 from PIL import Image
 
 
@@ -238,6 +239,7 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
     """
     Copy override masks into <figure_dir>/lineformer/ and replace series_catalog.json
     with the override one (after filtering deleted series if requested).
+    Also handles newly created series from interventions.
     """
     lf_dir = get_lineformer_dir(item_figure_dir)
     if not lf_dir.exists():
@@ -246,7 +248,7 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
     # load original catalog (for centroids etc.)
     series_items = load_series_catalog(lf_dir)
 
-    # load mapping (delete list)
+    # load mapping (delete list and series names)
     mapping = load_mapping(run_dir, safe_doi, figure_id)
     deleted = set(int(x) for x in mapping.get("deleted", []))
 
@@ -258,8 +260,13 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
         dest = lf_dir / p.name
         shutil.copy2(p, dest)
 
+    # Track which series indices we've seen from the original catalog
+    original_indices = {s.series_index for s in series_items}
+
     # write new series_catalog.json (mask_path must point to files in lf_dir)
     rows = []
+
+    # First, process existing series from the original catalog
     for s in series_items:
         if s.series_index in deleted:
             continue
@@ -281,5 +288,32 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
                     "centroid": [s.centroid[0], s.centroid[1]],
                 }
             )
+
+    # Now, add newly created series (those with override masks but not in original catalog)
+    for idx in override_masks:
+        if idx not in original_indices and idx not in deleted:
+            # This is a newly created series - calculate centroid from the mask
+            mask_path = lf_dir / f"mask_series_{idx}.png"
+            if mask_path.exists():
+                try:
+                    mask_img = Image.open(mask_path).convert("L")
+                    mask_arr = np.array(mask_img)
+                    y_coords, x_coords = np.where(mask_arr > 0)
+                    if len(x_coords) > 0:
+                        centroid_x = float(np.mean(x_coords))
+                        centroid_y = float(np.mean(y_coords))
+                    else:
+                        centroid_x, centroid_y = 0.0, 0.0
+
+                    rows.append(
+                        {
+                            "series_index": idx,
+                            "mask_path": str(mask_path),
+                            "centroid": [centroid_x, centroid_y],
+                        }
+                    )
+                except Exception:
+                    # If we can't process the mask, skip it
+                    pass
 
     (lf_dir / "series_catalog.json").write_text(json.dumps(rows, indent=2))
