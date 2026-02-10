@@ -550,174 +550,174 @@ with st.sidebar:
                     st.session_state["completion_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
                 st.selectbox("Completion model", options=_openai_models, index=0, key="completion_llm_model")
 
-    with st.expander("Custom Instructions", expanded=False):
+    st.header("Custom Instructions")
+    st.caption(
+        "Customise the LLM prompts for each pipeline stage. "
+        "Save and load named instruction sets from the shared presets directory."
+    )
+
+    # --- Initialize with defaults if not loaded yet ---
+    if "custom_instructions" not in st.session_state:
+        st.session_state["custom_instructions"] = default_instructions()
+        st.session_state["current_preset_name"] = None
+
+    ci = st.session_state["custom_instructions"]
+
+    # --- Load presets ---
+    existing_presets = list_presets(workspaces_root)
+
+    st.subheader("Load Preset")
+    if existing_presets:
+        col_load_a, col_load_b = st.columns([3, 1])
+        with col_load_a:
+            preset_choice = st.selectbox(
+                "Select preset to load",
+                options=[""] + existing_presets,
+                key="ci_preset_choice",
+            )
+        with col_load_b:
+            if st.button("Load", type="secondary") and preset_choice:
+                loaded = load_preset(workspaces_root, preset_choice)
+                st.session_state["custom_instructions"] = loaded
+                st.session_state["current_preset_name"] = preset_choice
+                st.success(f"Loaded preset: {preset_choice}")
+                st.rerun()
+    else:
+        st.info("No presets saved yet. Create your first preset below.")
+
+    # Show currently loaded preset
+    if st.session_state.get("current_preset_name"):
+        st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
+    else:
+        st.caption("Currently editing: **Unsaved changes (default)**")
+
+    # --- Instruction editors ---
+    with st.expander("Table extraction rules", expanded=False):
         st.caption(
-            "Customise the LLM prompts for each pipeline stage. "
-            "Save and load named instruction sets from the shared presets directory."
+            "Extra rules for how raw HTML/XML tables are parsed into structured data. "
+            "E.g. how merged cells or multi-level headers should be handled."
+        )
+        st.text_area(
+            "Table extraction extra rules",
+            value=ci.get("table_extraction_rules", ""),
+            height=120,
+            key="ci_table_extraction",
         )
 
-        # --- Initialize with defaults if not loaded yet ---
-        if "custom_instructions" not in st.session_state:
-            st.session_state["custom_instructions"] = default_instructions()
-            st.session_state["current_preset_name"] = None
+    with st.expander("Figure filtering criteria", expanded=False):
+        st.caption(
+            "Criteria the LLM uses to decide whether to keep or discard a figure. "
+            "E.g. 'only keep line charts showing conductivity vs time'."
+        )
+        st.text_area(
+            "Figure filter criteria",
+            value=ci.get("figure_filter_criteria", ""),
+            height=150,
+            key="ci_figure_filter",
+        )
 
-        ci = st.session_state["custom_instructions"]
+    with st.expander("Table filtering criteria", expanded=False):
+        st.caption(
+            "Criteria the LLM uses to decide whether to keep or discard a table."
+        )
+        st.text_area(
+            "Table filter criteria",
+            value=ci.get("table_filter_criteria", ""),
+            height=150,
+            key="ci_table_filter",
+        )
 
-        # --- Load presets ---
-        existing_presets = list_presets(workspaces_root)
+    with st.expander("Dataset completion rules", expanded=False):
+        st.caption(
+            "Extra rules applied when the LLM converts tables/figures into "
+            "the final normalised dataset rows. E.g. 'before = time 0'."
+        )
+        st.text_area(
+            "Dataset completion extra rules",
+            value=ci.get("dataset_completion_rules", ""),
+            height=120,
+            key="ci_dataset_completion",
+        )
 
-        st.subheader("Load Preset")
-        if existing_presets:
-            col_load_a, col_load_b = st.columns([3, 1])
-            with col_load_a:
-                preset_choice = st.selectbox(
-                    "Select preset to load",
-                    options=[""] + existing_presets,
-                    key="ci_preset_choice",
+    with st.expander("Output columns", expanded=False):
+        st.caption(
+            "One column name per line for the final dataset. "
+            "Change this to capture different properties."
+        )
+        st.text_area(
+            "Output columns (one per line)",
+            value="\n".join(ci.get("output_columns", [])),
+            height=160,
+            key="ci_output_columns",
+        )
+
+    with st.expander("Missing-value defaults", expanded=False):
+        st.caption(
+            "JSON dict of column name to default value when not found. "
+            "E.g. {\"time(h)\": \"0 Not Found\"}"
+        )
+        st.text_area(
+            "Missing-value defaults (JSON)",
+            value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
+            height=160,
+            key="ci_missing_defaults",
+        )
+
+    # --- Save preset ---
+    st.subheader("Save Preset")
+    col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
+
+    with col_name:
+        # Default to current preset name if editing an existing one
+        default_name = st.session_state.get("current_preset_name", "")
+        preset_name = st.text_input(
+            "Preset name",
+            value=default_name,
+            key="ci_new_preset_name",
+            placeholder="Enter a name for this preset"
+        )
+
+    with col_save_btn:
+        st.write("")  # spacing
+        st.write("")  # spacing
+        if st.button("Save", type="primary") and preset_name.strip():
+            # Read all fields from session state
+            _ci_to_save = {}
+            _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
+            _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
+            _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
+            _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+
+            raw_cols = st.session_state.get("ci_output_columns", "")
+            _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
+            try:
+                _ci_to_save["missing_value_defaults"] = json.loads(
+                    st.session_state.get("ci_missing_defaults", "{}")
                 )
-            with col_load_b:
-                if st.button("Load", type="secondary") and preset_choice:
-                    loaded = load_preset(workspaces_root, preset_choice)
-                    st.session_state["custom_instructions"] = loaded
-                    st.session_state["current_preset_name"] = preset_choice
-                    st.success(f"Loaded preset: {preset_choice}")
-                    st.rerun()
-        else:
-            st.info("No presets saved yet. Create your first preset below.")
+            except json.JSONDecodeError:
+                st.error("Missing-value defaults must be valid JSON.")
+                _ci_to_save["missing_value_defaults"] = {}
 
-        # Show currently loaded preset
-        if st.session_state.get("current_preset_name"):
-            st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
-        else:
-            st.caption("Currently editing: **Unsaved changes (default)**")
-
-        # --- Instruction editors ---
-        with st.expander("Table extraction rules", expanded=False):
-            st.caption(
-                "Extra rules for how raw HTML/XML tables are parsed into structured data. "
-                "E.g. how merged cells or multi-level headers should be handled."
-            )
-            st.text_area(
-                "Table extraction extra rules",
-                value=ci.get("table_extraction_rules", ""),
-                height=120,
-                key="ci_table_extraction",
-            )
-
-        with st.expander("Figure filtering criteria", expanded=False):
-            st.caption(
-                "Criteria the LLM uses to decide whether to keep or discard a figure. "
-                "E.g. 'only keep line charts showing conductivity vs time'."
-            )
-            st.text_area(
-                "Figure filter criteria",
-                value=ci.get("figure_filter_criteria", ""),
-                height=150,
-                key="ci_figure_filter",
-            )
-
-        with st.expander("Table filtering criteria", expanded=False):
-            st.caption(
-                "Criteria the LLM uses to decide whether to keep or discard a table."
-            )
-            st.text_area(
-                "Table filter criteria",
-                value=ci.get("table_filter_criteria", ""),
-                height=150,
-                key="ci_table_filter",
-            )
-
-        with st.expander("Dataset completion rules", expanded=False):
-            st.caption(
-                "Extra rules applied when the LLM converts tables/figures into "
-                "the final normalised dataset rows. E.g. 'before = time 0'."
-            )
-            st.text_area(
-                "Dataset completion extra rules",
-                value=ci.get("dataset_completion_rules", ""),
-                height=120,
-                key="ci_dataset_completion",
-            )
-
-        with st.expander("Output columns", expanded=False):
-            st.caption(
-                "One column name per line for the final dataset. "
-                "Change this to capture different properties."
-            )
-            st.text_area(
-                "Output columns (one per line)",
-                value="\n".join(ci.get("output_columns", [])),
-                height=160,
-                key="ci_output_columns",
-            )
-
-        with st.expander("Missing-value defaults", expanded=False):
-            st.caption(
-                "JSON dict of column name to default value when not found. "
-                "E.g. {\"time(h)\": \"0 Not Found\"}"
-            )
-            st.text_area(
-                "Missing-value defaults (JSON)",
-                value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
-                height=160,
-                key="ci_missing_defaults",
-            )
-
-        # --- Save preset ---
-        st.subheader("Save Preset")
-        col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
-
-        with col_name:
-            # Default to current preset name if editing an existing one
-            default_name = st.session_state.get("current_preset_name", "")
-            preset_name = st.text_input(
-                "Preset name",
-                value=default_name,
-                key="ci_new_preset_name",
-                placeholder="Enter a name for this preset"
-            )
-
-        with col_save_btn:
-            st.write("")  # spacing
-            st.write("")  # spacing
-            if st.button("Save", type="primary") and preset_name.strip():
-                # Read all fields from session state
-                _ci_to_save = {}
-                _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
-                _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
-                _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-                _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
-
-                raw_cols = st.session_state.get("ci_output_columns", "")
-                _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
-                try:
-                    _ci_to_save["missing_value_defaults"] = json.loads(
-                        st.session_state.get("ci_missing_defaults", "{}")
-                    )
-                except json.JSONDecodeError:
-                    st.error("Missing-value defaults must be valid JSON.")
-                    _ci_to_save["missing_value_defaults"] = {}
-
-                save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
-                st.session_state["current_preset_name"] = preset_name.strip()
-                st.success(f"Saved preset: {preset_name.strip()}")
-                st.rerun()
-
-        with col_del_btn:
-            st.write("")  # spacing
-            st.write("")  # spacing
-            if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
-                delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
-                if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
-                    st.session_state["current_preset_name"] = None
-                st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
-                st.rerun()
-
-        # --- Reset to defaults button ---
-        if st.button("Reset to defaults", type="secondary"):
-            st.session_state["custom_instructions"] = default_instructions()
-            st.session_state["current_preset_name"] = None
+            save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
+            st.session_state["current_preset_name"] = preset_name.strip()
+            st.success(f"Saved preset: {preset_name.strip()}")
             st.rerun()
+
+    with col_del_btn:
+        st.write("")  # spacing
+        st.write("")  # spacing
+        if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
+            delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
+            if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
+                st.session_state["current_preset_name"] = None
+            st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
+            st.rerun()
+
+    # --- Reset to defaults button ---
+    if st.button("Reset to defaults", type="secondary"):
+        st.session_state["custom_instructions"] = default_instructions()
+        st.session_state["current_preset_name"] = None
+        st.rerun()
 
     st.divider()
     st.header("Load an existing run")
