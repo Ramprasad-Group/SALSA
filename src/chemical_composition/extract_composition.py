@@ -2,8 +2,11 @@
 Chemical composition extraction module.
 
 Uses the LLM to:
-  1. Identify text, tables, and figures relevant to chemical structures.
-  2. Extract unique sample names with their components and compositions.
+  1. Identify text, tables, and figures relevant to chemical structures
+     — including figures/schemas depicting chemical structures or reactions.
+  2. Extract unique sample names with their components and compositions,
+     filtered to only those samples that have associated materials-property
+     data (e.g. conductivity, stability, IEC) reported in the manuscript.
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
 from llm_client import get_llm_client
+from ui.openai_cost import append_usage, run_id_from_env
 
 
 # ---------------------------------------------------------------------------
@@ -30,15 +34,30 @@ You are an expert materials-science chemist.
 
 Given the following parsed content from a scientific paper, identify ALL
 sections of text, tables, and figures that are relevant to the **chemical
-structures and chemical composition** of the materials discussed.
+structures, chemical reactions, and chemical composition** of the materials
+discussed.
+
+IMPORTANT — you MUST include:
+- Figures or schemes that **depict chemical structures**, molecular
+  diagrams, polymerisation reactions, synthesis routes, or reaction
+  mechanisms (e.g. "Scheme 1", "Figure 1 – synthesis of …").
+  These are extremely important even if they contain no numerical data.
+- Figures that show chemical drawings, repeat-unit structures, monomer
+  structures, cross-linking diagrams, or any graphical representation of
+  molecules.
+- Tables listing polymer compositions, monomer feed ratios, IEC values,
+  water uptake, degree of functionalization, etc.
+- Body-text paragraphs describing synthesis procedures, reagent amounts,
+  grafting degrees, functionalization steps, or naming conventions for
+  samples.
 
 For each relevant item, return a JSON array of objects with these keys:
-- "source_type": one of "text", "table", "figure"
-- "source_id": table/figure ID (e.g. "Table 1", "Figure 3") or "body_text"
-  for inline text
+- "source_type": one of "text", "table", "figure", "scheme"
+- "source_id": the ID as used in the paper (e.g. "Table 1", "Figure 3",
+  "Scheme 1") or "body_text" for inline passages
 - "excerpt": the relevant passage (≤500 chars) or caption/description
 - "relevance": brief explanation of why this is relevant to chemical
-  composition
+  composition or structure
 
 Return ONLY a JSON array.  No markdown fences.
 
@@ -49,8 +68,16 @@ Paper content:
 _EXTRACT_SAMPLES_PROMPT = """\
 You are an expert materials-science chemist.
 
-From the paper content below, identify every **unique sample name** and
-for each sample extract:
+From the paper content below, identify every **unique sample name** that
+has associated **materials-property data** reported in this manuscript
+(e.g. conductivity, stability/retention, IEC, water uptake, swelling
+ratio, mechanical properties, or any other measured property).
+
+Do NOT include samples that are only mentioned as literature references,
+reagents consumed during synthesis, or comparison points from other
+papers without new measurements in this manuscript.
+
+For each qualifying sample extract:
 - Its chemical components (monomers, polymers, fillers, dopants, solvents…)
 - The composition of each component (mole %, weight %, volume %, ratio,
   or however it is expressed in the paper)
@@ -99,14 +126,30 @@ def _clean_json_response(text: str) -> str:
     return text.strip()
 
 
+def _log_cost(meta: Any, *, doi: str = "", extra: Optional[Dict] = None):
+    """Log LLM usage to <run_dir>/cost/usage.jsonl."""
+    try:
+        append_usage(
+            run_id=run_id_from_env("unknown"),
+            resp=meta,
+            doi=doi,
+            extra=extra or {},
+        )
+    except Exception as e:
+        print(f"[chemical_composition] WARNING: failed to log cost: {e}")
+
+
 def identify_relevant_content(
     parsed_text: str,
     tables_text: str = "",
     figures_text: str = "",
+    *,
+    doi: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Ask the LLM to identify which parts of the paper are relevant to
-    chemical composition.
+    chemical composition — including figures/schemes depicting structures
+    or reactions.
 
     Parameters
     ----------
@@ -116,6 +159,8 @@ def identify_relevant_content(
         Concatenated table data (captions + content).
     figures_text : str
         Concatenated figure captions / descriptions.
+    doi : str
+        DOI for cost logging.
 
     Returns
     -------
@@ -135,10 +180,13 @@ def identify_relevant_content(
 
     prompt = _IDENTIFY_RELEVANT_PROMPT.format(content=combined)
     client = get_llm_client()
-    raw = client.chat(
+    raw, meta = client.chat(
         [{"role": "user", "content": prompt}],
         temperature=0.0,
+        return_meta=True,
     )
+
+    _log_cost(meta, doi=doi, extra={"kind": "chemical_composition_identify"})
 
     try:
         items = json.loads(_clean_json_response(raw))
@@ -153,9 +201,12 @@ def extract_samples_and_compositions(
     parsed_text: str,
     tables_text: str = "",
     figures_text: str = "",
+    *,
+    doi: str = "",
 ) -> List[Dict[str, Any]]:
     """
-    Ask the LLM to extract every unique sample and its chemical composition.
+    Ask the LLM to extract every unique sample that has associated
+    materials-property data, along with its chemical composition.
 
     Returns
     -------
@@ -175,10 +226,13 @@ def extract_samples_and_compositions(
 
     prompt = _EXTRACT_SAMPLES_PROMPT.format(content=combined)
     client = get_llm_client()
-    raw = client.chat(
+    raw, meta = client.chat(
         [{"role": "user", "content": prompt}],
         temperature=0.0,
+        return_meta=True,
     )
+
+    _log_cost(meta, doi=doi, extra={"kind": "chemical_composition_extract"})
 
     try:
         items = json.loads(_clean_json_response(raw))
@@ -209,7 +263,13 @@ def run_chemical_composition_extraction(
 
     Returns the combined result dict.
     """
+    import os
     import pandas as pd
+
+    # Set AEM_OCR_RUN_DIR so cost logging writes to the correct location
+    os.environ["AEM_OCR_RUN_DIR"] = str(run_dir)
+
+    doi_str = safe_doi.replace("@", "/")
 
     # --- gather text ---
     parsed_text = ""
@@ -247,26 +307,43 @@ def run_chemical_composition_extraction(
                     pass
         tables_text = "\n".join(parts)
 
-    # --- gather figure captions ---
+    # --- gather figure captions (including schemes) ---
     figures_text = ""
     if figures_dir and figures_dir.exists():
         parts = []
+        # Collect captions from metadata JSON files
         for mf in sorted(figures_dir.glob("*_metadata.json")):
             try:
                 meta = json.loads(mf.read_text())
                 cap = meta.get("caption", "")
+                fig_id = meta.get("id", mf.stem.replace("_metadata", ""))
                 if cap:
-                    parts.append(f"### {mf.stem}\n{cap}\n")
+                    parts.append(f"### {fig_id}\n{cap}\n")
             except Exception:
                 pass
+        # Also list figure filenames to help identify scheme/structure figures
+        # even when metadata is sparse
+        for img in sorted(
+            list(figures_dir.glob("*.png"))
+            + list(figures_dir.glob("*.jpg"))
+            + list(figures_dir.glob("*.jpeg"))
+        ):
+            meta_path = img.with_name(img.stem + "_metadata.json")
+            if not meta_path.exists():
+                # No metadata; include filename so LLM knows the figure exists
+                parts.append(f"### {img.stem}\n(figure image: {img.name})\n")
         figures_text = "\n".join(parts)
 
     # --- LLM calls ---
-    relevant = identify_relevant_content(parsed_text, tables_text, figures_text)
-    samples = extract_samples_and_compositions(parsed_text, tables_text, figures_text)
+    relevant = identify_relevant_content(
+        parsed_text, tables_text, figures_text, doi=doi_str,
+    )
+    samples = extract_samples_and_compositions(
+        parsed_text, tables_text, figures_text, doi=doi_str,
+    )
 
     result = {
-        "doi": safe_doi.replace("@", "/"),
+        "doi": doi_str,
         "safe_doi": safe_doi,
         "relevant_content": relevant,
         "samples": samples,
