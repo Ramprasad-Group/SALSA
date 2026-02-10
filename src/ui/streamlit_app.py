@@ -905,8 +905,8 @@ st.session_state["selected_doi"] = selected_doi
 doi_item = next(d for d in rr.dois if d.doi == selected_doi)
 
 # ---------------- Tabs (under DOI dropdown) ----------------
-tab_text, tab_figs, tab_tables, tab_xy, tab_chem, tab_intervene = st.tabs(
-    ["Parsed text", "Figures", "Tables", "Dataset", "Chemical Composition", "Interventions"]
+tab_text, tab_figs, tab_tables, tab_chem, tab_xy, tab_intervene = st.tabs(
+    ["Parsed text", "Figures", "Tables", "Chemical Composition", "Dataset", "Interventions"]
 )
 
 with tab_text:
@@ -1047,9 +1047,22 @@ with tab_chem:
                             f"**{item_rc.get('source_type', '')}** — "
                             f"{item_rc.get('source_id', '')}"
                         )
-                        st.caption(item_rc.get("relevance", ""))
+                        # Show relevance as wrapped text instead of single-line caption
+                        _rel_text = item_rc.get("relevance", "")
+                        if _rel_text:
+                            st.markdown(f"_{_rel_text}_")
+                        # Display the referenced figure/scheme image if available
+                        if item_rc.get("source_type", "").lower() in ("figure/scheme", "figure", "scheme"):
+                            _src_id = item_rc.get("source_id", "").lower().replace(" ", "")
+                            for _fig in doi_item.figures:
+                                _fig_id_norm = _fig.id.lower().replace(" ", "").replace("_", "")
+                                if _src_id and (_src_id in _fig_id_norm or _fig_id_norm in _src_id):
+                                    if _fig.figure_path and _fig.figure_path.exists():
+                                        st_image_auto(str(_fig.figure_path), full_width=True)
+                                    break
                         if item_rc.get("excerpt"):
-                            st.code(item_rc["excerpt"][:500])
+                            # Show excerpt as wrapped text block
+                            st.text(item_rc["excerpt"][:500])
                         if i < len(relevant) - 1:
                             st.divider()
                 else:

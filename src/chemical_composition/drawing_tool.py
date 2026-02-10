@@ -26,6 +26,7 @@ _JSME_HTML = """\
 <html>
 <head>
 <meta charset="utf-8"/>
+<base href="https://cdn.jsdelivr.net/npm/jsme-editor@2024.8.4/jsme/"/>
 <script src="https://cdn.jsdelivr.net/npm/jsme-editor@2024.8.4/jsme/jsme.nocache.js"></script>
 <style>
   * {{ box-sizing: border-box; }}

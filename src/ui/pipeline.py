@@ -125,9 +125,11 @@ def run_full_pipeline(
       1) download_records_multiple_dois_webofscience.py
       2) download_papers.py
       3) reparse_filtered_dois.py
-      4) extract_figures_tables_llm.py (+ optional filtering)
-      5) plextract.py (digitize)
-      6) complete-dataset.py (agglomerate + GPT row completion)
+      4) extract_figures_tables_llm.py (extraction only)
+      5) chemical composition extraction (on unfiltered figures/tables)
+      6) filter figures/tables
+      7) plextract.py (digitize)
+      8) complete-dataset.py (agglomerate + GPT row completion)
     All outputs go under run_root/<run_id>/...
     """
     if run_id is None:
@@ -234,8 +236,8 @@ def run_full_pipeline(
 
     index_csv = reparsed_dir / "index.csv"
 
-    # --- 4) extract_figures_tables_llm.py ---
-    cmd = [
+    # --- 4) extract_figures_tables_llm.py (extraction only, no filtering yet) ---
+    cmd_extract = [
         sys.executable, str(p_extract_ft),
         "--no_db",
         "--csv_path", str(index_csv),
@@ -243,30 +245,14 @@ def run_full_pipeline(
         "--output_dir", str(figures_tables_dir),
     ]
     if run_extract_figures:
-        cmd.append("--extract_figures")
+        cmd_extract.append("--extract_figures")
     if run_extract_tables:
-        cmd.append("--extract_tables")
-    if run_filter_figures:
-        cmd.append("--filter_figures")
-    if run_filter_tables:
-        cmd.append("--filter_tables")
-    _run(cmd)
+        cmd_extract.append("--extract_tables")
+    _run(cmd_extract)
 
-    # --- 5) plextract.py ---
-    # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
-    if run_plextract:
-        _run([
-            sys.executable, str(p_plextract),
-            "--input", str(figures_tables_dir / "figures"),
-            "--workdir", str(plextract_workdir),
-        ])
-
-    if run_plextract:
-        plextract_results_root = _plextract_results_root(plextract_workdir)
-        if plextract_results_root is not None:
-            _copy_figure_metadata_to_plextract(figures_tables_dir, plextract_results_root)
-
-    # --- 6) chemical composition extraction (before dataset completion) ---
+    # --- 5) chemical composition extraction (before filtering) ---
+    # Run chemical composition extraction on unfiltered figures/tables so that
+    # structure-relevant figures (schemes, drawings) are available for analysis.
     if run_chemical_composition:
         _chemical_composition_dir = run_dir / "chemical_composition"
         _chemical_composition_dir.mkdir(parents=True, exist_ok=True)
@@ -299,7 +285,36 @@ def run_full_pipeline(
             except Exception as e:
                 print(f"[Pipeline] WARNING: Chemical composition failed for {doi}: {e}")
 
-    # --- 7) complete-dataset.py ---
+    # --- 6) filter figures/tables (after chemical composition extraction) ---
+    if run_filter_figures or run_filter_tables:
+        cmd_filter = [
+            sys.executable, str(p_extract_ft),
+            "--no_db",
+            "--csv_path", str(index_csv),
+            "--structured_files_dir", str(structured_root),
+            "--output_dir", str(figures_tables_dir),
+        ]
+        if run_filter_figures:
+            cmd_filter.append("--filter_figures")
+        if run_filter_tables:
+            cmd_filter.append("--filter_tables")
+        _run(cmd_filter)
+
+    # --- 7) plextract.py ---
+    # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
+    if run_plextract:
+        _run([
+            sys.executable, str(p_plextract),
+            "--input", str(figures_tables_dir / "figures"),
+            "--workdir", str(plextract_workdir),
+        ])
+
+    if run_plextract:
+        plextract_results_root = _plextract_results_root(plextract_workdir)
+        if plextract_results_root is not None:
+            _copy_figure_metadata_to_plextract(figures_tables_dir, plextract_results_root)
+
+    # --- 8) complete-dataset.py ---
     if run_complete_dataset:
         cmd = [
             sys.executable, str(p_complete_dataset),
