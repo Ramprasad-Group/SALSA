@@ -1314,9 +1314,8 @@ with tab_intervene:
     if not _intervene_ready or item is None:
         st.info("Select a figure above to view intervention options.")
     else:
-      sub_crop, sub_series, sub_apply = st.tabs(["Crop", "Series", "Apply / Re-run"])
-
-      with sub_crop:
+      # Use expanders instead of tabs for better organization
+      with st.expander("🔲 Cropping", expanded=False):
         st.subheader("Crop & extract data from sub-regions")
 
         pil_img = Image.open(item.source_image).convert("RGB")
@@ -1467,7 +1466,7 @@ with tab_intervene:
         else:
             st.info("No manual plextract run found yet. Save crops and run extraction above.")
 
-      with sub_series:
+      with st.expander("📊 Series Management", expanded=False):
         st.subheader("Series management")
 
         lf_dir = get_lineformer_dir(item.figure_dir)
@@ -1516,34 +1515,33 @@ with tab_intervene:
                     return _plextract_series_labels[idx]
                 return f"Series {idx}"
 
-            # --- Composite overlay: all series colored on the source image ---
-            base_img = Image.open(item.source_image).convert("RGBA")
-            overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+            # --- Show colored series overlay in its own expander ---
+            with st.expander("View colored series masks", expanded=False):
+                base_img = Image.open(item.source_image).convert("RGBA")
+                overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
 
-            legend_lines = []
-            for s in sorted(series_items, key=lambda x: x.series_index):
-                i = s.series_index
-                if i in deleted:
-                    continue
-                color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
-                mask_path = override_masks.get(i, s.mask_path)
-                try:
-                    mask = Image.open(mask_path).convert("L").resize(base_img.size, Image.NEAREST)
-                    mask_arr = np.array(mask)
-                    color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
-                    color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
-                    overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
-                except Exception:
-                    pass
-                hex_color = "#{:02x}{:02x}{:02x}".format(*color)
-                legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
+                legend_lines = []
+                for s in sorted(series_items, key=lambda x: x.series_index):
+                    i = s.series_index
+                    if i in deleted:
+                        continue
+                    color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
+                    mask_path = override_masks.get(i, s.mask_path)
+                    try:
+                        mask = Image.open(mask_path).convert("L").resize(base_img.size, Image.NEAREST)
+                        mask_arr = np.array(mask)
+                        color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
+                        color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
+                        overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
+                    except Exception:
+                        pass
+                    hex_color = "#{:02x}{:02x}{:02x}".format(*color)
+                    legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
 
-            composite = Image.alpha_composite(base_img, overlay).convert("RGB")
-            st_image_auto(composite, full_width=True)
-            if legend_lines:
-                st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
-
-            st.divider()
+                composite = Image.alpha_composite(base_img, overlay).convert("RGB")
+                st_image_auto(composite, full_width=True)
+                if legend_lines:
+                    st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
 
             # ---- Rename / delete section ----
             st.write("**Rename or delete** each series below.")
@@ -1591,8 +1589,8 @@ with tab_intervene:
 
             st.divider()
 
-            # ---- Redraw mask / mark points section ----
-            st.write("**Redraw mask** for a series.")
+            # ---- Redraw mask section ----
+            st.write("**Redraw series mask**")
 
             active_series = [s for s in series_items if s.series_index not in deleted]
             if not active_series:
@@ -1619,50 +1617,28 @@ with tab_intervene:
                 cur_mask_path = override_masks.get(sel_idx, orig_mask_path)
                 cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
 
-                draw_mode = st.radio(
-                    "Drawing mode",
-                    ["Freedraw (paint mask)", "Click points (mark series)"],
-                    horizontal=True,
-                    key=f"draw_mode_{item.safe_doi}_{item.figure_id}_{sel_idx}",
-                )
-
                 c1, c2 = st.columns([2, 1])
 
                 with c1:
-                    if draw_mode.startswith("Freedraw"):
-                        brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{item.figure_id}_{sel_idx}")
-                        mask_canvas = st_canvas(
-                            background_image=base_img_disp,
-                            drawing_mode="freedraw",
-                            stroke_width=brush,
-                            stroke_color="rgba(255,255,255,1.0)",
-                            fill_color="rgba(255,255,255,1.0)",
-                            update_streamlit=True,
-                            height=disp_h,
-                            width=disp_w,
-                            key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
-                        )
-                    else:
-                        # Click points mode: use small circles as markers
-                        st.caption("Click on points belonging to this series. Each click places a marker.")
-                        marker_size = st.slider("Marker radius", 2, 20, 6, key=f"marker_{item.safe_doi}_{item.figure_id}_{sel_idx}")
-                        mask_canvas = st_canvas(
-                            background_image=base_img_disp,
-                            drawing_mode="circle",
-                            stroke_width=1,
-                            stroke_color="rgba(255,255,255,1.0)",
-                            fill_color="rgba(255,255,255,1.0)",
-                            update_streamlit=True,
-                            height=disp_h,
-                            width=disp_w,
-                            key=f"point_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
-                        )
+                    st.write("Draw on the image below to redraw the series mask")
+                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{item.figure_id}_{sel_idx}")
+                    mask_canvas = st_canvas(
+                        background_image=base_img_disp,
+                        drawing_mode="freedraw",
+                        stroke_width=brush,
+                        stroke_color="rgba(255,255,255,1.0)",
+                        fill_color="rgba(255,255,255,1.0)",
+                        update_streamlit=True,
+                        height=disp_h,
+                        width=disp_w,
+                        key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{sel_idx}",
+                    )
 
                 with c2:
                     st.write("Current mask")
                     st_image_auto(cur_mask_img, full_width=True)
 
-                # Build new mask from canvas strokes/points
+                # Build new mask from canvas strokes
                 if mask_canvas.image_data is not None:
                     rgba = mask_canvas.image_data.astype(np.uint8)
                     alpha = rgba[..., 3]
@@ -1686,68 +1662,106 @@ with tab_intervene:
                     with st.expander("Preview new mask (full-res)", expanded=False):
                         st_image_auto(new_mask_pil, full_width=True)
 
-      with sub_apply:
-        st.subheader("Apply edits & re-run")
+            st.divider()
 
-        # --- Apply overrides ---
-        st.markdown("**Step 1:** Apply mask overrides and series deletions to plextract output.")
-        if st.button("Apply overrides into plextract output folder", type="primary"):
+            # ---- Create new series section ----
+            st.write("**Create new series/mask**")
+
+            # Find the next available series index
+            existing_indices = [s.series_index for s in series_items]
+            next_idx = max(existing_indices) + 1 if existing_indices else 0
+
+            new_series_name = st.text_input(
+                "Name for new series",
+                value=f"Series {next_idx}",
+                key=f"new_series_name_{item.safe_doi}_{item.figure_id}",
+            )
+
+            base_img_rgb = Image.open(item.source_image).convert("RGB")
+            w, h = base_img_rgb.size
+            disp_w = min(w, 1100)
+            disp_h = int(h * (disp_w / w))
+            base_img_disp = base_img_rgb.resize((disp_w, disp_h))
+
+            st.write("Draw the new series mask below")
+            new_brush = st.slider("Brush width", 1, 40, 10, key=f"new_brush_{item.safe_doi}_{item.figure_id}")
+            new_series_canvas = st_canvas(
+                background_image=base_img_disp,
+                drawing_mode="freedraw",
+                stroke_width=new_brush,
+                stroke_color="rgba(255,255,255,1.0)",
+                fill_color="rgba(255,255,255,1.0)",
+                update_streamlit=True,
+                height=disp_h,
+                width=disp_w,
+                key=f"new_series_canvas_{item.safe_doi}_{item.figure_id}",
+            )
+
+            if new_series_canvas.image_data is not None:
+                rgba = new_series_canvas.image_data.astype(np.uint8)
+                alpha = rgba[..., 3]
+                new_mask_small = (alpha > 0).astype(np.uint8) * 255
+
+                if np.any(new_mask_small > 0):  # Only show save button if something is drawn
+                    new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+                    new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+
+                    if st.button("Create new series", type="primary", key=f"create_series_{item.safe_doi}_{item.figure_id}"):
+                        # Save the new mask
+                        outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, next_idx, new_mask_pil)
+
+                        # Update mapping with the new series name
+                        mapping_updated = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
+                        if "series_names" not in mapping_updated:
+                            mapping_updated["series_names"] = {}
+                        mapping_updated["series_names"][str(next_idx)] = new_series_name
+                        save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping_updated)
+
+                        # Calculate centroid for the new series
+                        mask_arr = np.array(new_mask_pil)
+                        y_coords, x_coords = np.where(mask_arr > 0)
+                        if len(x_coords) > 0:
+                            centroid_x = float(np.mean(x_coords))
+                            centroid_y = float(np.mean(y_coords))
+                        else:
+                            centroid_x, centroid_y = 0.0, 0.0
+
+                        # Add new series to the catalog
+                        from intervention import SeriesItem
+                        new_series = SeriesItem(
+                            series_index=next_idx,
+                            mask_path=outp,
+                            centroid=(centroid_x, centroid_y)
+                        )
+                        series_items.append(new_series)
+
+                        # Update the series catalog override
+                        override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
+                        write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks_updated)
+
+                        st.success(f"Created new series '{new_series_name}' with index {next_idx}")
+                        st.rerun()
+
+      with st.expander("🔄 Rerun Figure Data Extraction", expanded=False):
+        st.write("This will apply your mask overrides and re-extract data from the figure.")
+        st.info("New masks will replace the old respective masks where you have made changes. The extraction will use the updated masks along with the original masks for unchanged series.")
+
+        if st.button("Rerun figure data extraction", type="primary"):
             try:
-                apply_overrides_to_plextract(item.figure_dir, rr.run_dir, item.safe_doi, item.figure_id)
-                st.success("Applied overrides to plextract output folder.")
-            except Exception as e:
-                st.error(f"Failed to apply overrides: {e}")
+                # First, apply all overrides to the plextract output
+                with st.spinner("Applying mask overrides and series changes..."):
+                    apply_overrides_to_plextract(item.figure_dir, rr.run_dir, item.safe_doi, item.figure_id)
+                st.success("✓ Applied overrides to plextract output")
 
-        st.divider()
-
-        # --- Patch labels ---
-        st.markdown("**Step 2 (optional):** Rename series labels in final dataset without re-digitizing.")
-
-        mapping = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
-        series_names = mapping.get("series_names", {})
-        deleted = set(int(x) for x in mapping.get("deleted", []))
-
-        final_csv = item.final_dir / "final_dataset.csv"
-        if final_csv.exists():
-            if st.button("Write patched final_dataset_patched.csv"):
-                df = pd.read_csv(final_csv)
-                candidate_cols = [c for c in df.columns if c.lower() in {"series", "series_label", "label", "name"}]
-                if not candidate_cols:
-                    st.error(f"No obvious series label column found in {list(df.columns)}")
-                else:
-                    col = candidate_cols[0]
-                    def _rename(x):
-                        try:
-                            i = int(x)
-                            if i in deleted:
-                                return None
-                            return series_names.get(str(i), f"Series {i}")
-                        except Exception:
-                            return x
-
-                    df[col] = df[col].map(_rename)
-                    df = df.dropna(subset=[col])
-                    outp = item.final_dir / "final_dataset_patched.csv"
-                    df.to_csv(outp, index=False)
-                    st.success(f"Wrote: {outp}")
-                    st.dataframe(df.head(2000), use_container_width=True)
-        else:
-            st.info("No final_dataset.csv found in final/ directory.")
-
-        st.divider()
-
-        # --- Re-run extraction ---
-        st.markdown("**Step 3 (optional):** Re-run full data extraction for this figure.")
-        if st.button("Re-run plextract for this figure only", type="secondary"):
-            try:
-                with st.spinner("Running plextract on this figure only..."):
+                # Then re-run the extraction
+                with st.spinner("Re-running data extraction on this figure..."):
                     run_plextract_single_figure(
                         scripts_root=scripts_root,
                         run_dir=rr.run_dir,
                         safe_doi=item.safe_doi,
                         figure_path=item.source_image,
                     )
-                st.success("Done. Check plextract_work_interventions/ for results.")
+                st.success("✓ Data extraction complete! Check plextract_work_interventions/ for results.")
             except Exception as e:
                 st.error(f"Failed: {e}")
 
