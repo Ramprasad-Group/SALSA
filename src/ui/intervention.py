@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import json
 import shutil
+import re
 import numpy as np
 from PIL import Image
 
@@ -94,10 +95,16 @@ def _try_find_source_image(filtered_fig_root: Path, safe_doi: str, figure_id: st
     if not d.exists():
         return None
 
-    # figure_id might be "Figure_10" or "Figure_10.jpg"
+    # figure_id might be "Figure_10", "Figure_10.jpg", or "Figure_10_subfig_0.png"
     fig_path = Path(figure_id)
-    stem = fig_path.stem          # "Figure_10"
-    suffix = fig_path.suffix.lower()  # ".jpg" or ""
+    stem = fig_path.stem
+    suffix = fig_path.suffix.lower()
+
+    # Also try the parent figure stem when subfigures are present.
+    base_stem = re.sub(r"_subfig_\d+$", "", stem)
+    candidate_stems = [stem]
+    if base_stem != stem:
+        candidate_stems.append(base_stem)
 
     exts = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
 
@@ -107,14 +114,49 @@ def _try_find_source_image(filtered_fig_root: Path, safe_doi: str, figure_id: st
         if p.exists():
             return p
 
-    # 2) Try by stem + known extensions
-    for ext in exts:
-        p = d / f"{stem}{ext}"
-        if p.exists():
-            return p
+    # 2) Try by candidate stem + known extensions
+    for s in candidate_stems:
+        for ext in exts:
+            p = d / f"{s}{ext}"
+            if p.exists():
+                return p
 
-    # 3) Fallback: any file whose stem matches
-    hits = [p for p in d.iterdir() if p.is_file() and p.stem == stem]
+    # 3) Metadata-based match (supports renamed/hashed figure directories)
+    for meta in d.glob("*_metadata.json"):
+        try:
+            row = json.loads(meta.read_text())
+        except Exception:
+            continue
+
+        clean_label = str(row.get("clean_label", "")).strip()
+        if not clean_label:
+            continue
+        if clean_label not in candidate_stems and all(not s.startswith(clean_label) for s in candidate_stems):
+            continue
+
+        p_from_meta = Path(str(row.get("figure_file_path", "")).strip())
+        if p_from_meta and p_from_meta.exists():
+            return p_from_meta
+
+        for ext in exts:
+            p = d / f"{clean_label}{ext}"
+            if p.exists():
+                return p
+
+    # 4) Fallback: any file whose stem matches one of our candidates
+    hits = [
+        p
+        for p in d.iterdir()
+        if p.is_file() and p.suffix.lower() in exts and p.stem in candidate_stems
+    ]
+    if hits:
+        return hits[0]
+
+    # 5) Last resort: if only one image exists for this DOI folder, use it.
+    image_files = [p for p in d.iterdir() if p.is_file() and p.suffix.lower() in exts]
+    if len(image_files) == 1:
+        return image_files[0]
+
     return hits[0] if hits else None
 
 @dataclass
