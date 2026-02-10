@@ -1315,7 +1315,7 @@ with tab_intervene:
         st.info("Select a figure above to view intervention options.")
     else:
       # Use expanders instead of tabs for better organization
-      with st.expander("🔲 Cropping", expanded=False):
+      with st.expander("Cropping", expanded=False):
         st.subheader("Crop & extract data from sub-regions")
 
         pil_img = Image.open(item.source_image).convert("RGB")
@@ -1466,7 +1466,9 @@ with tab_intervene:
         else:
             st.info("No manual plextract run found yet. Save crops and run extraction above.")
 
-      with st.expander("📊 Series Management", expanded=False):
+                  # --- Show colored series overlay in its own expander ---
+      
+      with st.expander("Series Management", expanded=False):
         st.subheader("Series management")
 
         lf_dir = get_lineformer_dir(item.figure_dir)
@@ -1514,34 +1516,6 @@ with tab_intervene:
                 if idx in _plextract_series_labels:
                     return _plextract_series_labels[idx]
                 return f"Series {idx}"
-
-            # --- Show colored series overlay in its own expander ---
-            with st.expander("View colored series masks", expanded=False):
-                base_img = Image.open(item.source_image).convert("RGBA")
-                overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
-
-                legend_lines = []
-                for s in sorted(series_items, key=lambda x: x.series_index):
-                    i = s.series_index
-                    if i in deleted:
-                        continue
-                    color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
-                    mask_path = override_masks.get(i, s.mask_path)
-                    try:
-                        mask = Image.open(mask_path).convert("L").resize(base_img.size, Image.NEAREST)
-                        mask_arr = np.array(mask)
-                        color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
-                        color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
-                        overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
-                    except Exception:
-                        pass
-                    hex_color = "#{:02x}{:02x}{:02x}".format(*color)
-                    legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
-
-                composite = Image.alpha_composite(base_img, overlay).convert("RGB")
-                st_image_auto(composite, full_width=True)
-                if legend_lines:
-                    st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
 
             # ---- Rename / delete section ----
             st.write("**Rename or delete** each series below.")
@@ -1659,8 +1633,8 @@ with tab_intervene:
                         if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{sel_idx}"):
                             st.rerun()
 
-                    with st.expander("Preview new mask (full-res)", expanded=False):
-                        st_image_auto(new_mask_pil, full_width=True)
+                    st.header("test")
+                    st_image_auto(new_mask_pil, full_width=True)
 
             st.divider()
 
@@ -1742,7 +1716,34 @@ with tab_intervene:
                         st.success(f"Created new series '{new_series_name}' with index {next_idx}")
                         st.rerun()
 
-      with st.expander("🔄 Rerun Figure Data Extraction", expanded=False):
+      with st.expander("View colored series masks", expanded=False):
+        base_img = Image.open(item.source_image).convert("RGBA")
+        overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+
+        legend_lines = []
+        for s in sorted(series_items, key=lambda x: x.series_index):
+            i = s.series_index
+            if i in deleted:
+                continue
+            color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
+            mask_path = override_masks.get(i, s.mask_path)
+            try:
+                mask = Image.open(mask_path).convert("L").resize(base_img.size, Image.NEAREST)
+                mask_arr = np.array(mask)
+                color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
+                color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
+                overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
+            except Exception:
+                pass
+            hex_color = "#{:02x}{:02x}{:02x}".format(*color)
+            legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
+
+        composite = Image.alpha_composite(base_img, overlay).convert("RGB")
+        st_image_auto(composite, full_width=True)
+        if legend_lines:
+            st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
+
+      with st.expander("Rerun Figure Data Extraction", expanded=False):
         st.write("This will apply your mask overrides and re-extract data from the figure.")
         st.info("New masks will replace the old respective masks where you have made changes. The extraction will use the updated masks along with the original masks for unchanged series.")
 
