@@ -116,6 +116,7 @@ def run_full_pipeline(
     run_filter_tables: bool = True,
     run_plextract: bool = True,
     run_complete_dataset: bool = True,
+    run_chemical_composition: bool = False,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
 ) -> RunResult:
@@ -289,6 +290,39 @@ def run_full_pipeline(
 
         _run(cmd)
 
+
+    # --- 7) chemical composition extraction ---
+    if run_chemical_composition:
+        _chemical_composition_dir = run_dir / "chemical_composition"
+        _chemical_composition_dir.mkdir(parents=True, exist_ok=True)
+
+        # Add src/ to path for the import
+        _src_root = scripts_root.parent if scripts_root.name != "src" else scripts_root
+        _src_path = str(_src_root / "src") if (_src_root / "src").exists() else str(scripts_root.parent)
+        if _src_path not in sys.path:
+            sys.path.insert(0, _src_path)
+
+        from chemical_composition.extract_composition import (
+            run_chemical_composition_extraction,
+        )
+
+        for doi in dois:
+            safe = doi_to_safe(doi.strip())
+            parsed_json = reparsed_dir / safe / "parsed.json"
+            tables_d = figures_tables_dir / "tables" / safe
+            figures_d = figures_tables_dir / "figures" / safe
+
+            try:
+                run_chemical_composition_extraction(
+                    run_dir=run_dir,
+                    safe_doi=safe,
+                    parsed_json_path=parsed_json if parsed_json.exists() else None,
+                    tables_dir=tables_d if tables_d.exists() else None,
+                    figures_dir=figures_d if figures_d.exists() else None,
+                )
+                print(f"[Pipeline] Chemical composition extracted for {doi}")
+            except Exception as e:
+                print(f"[Pipeline] WARNING: Chemical composition failed for {doi}: {e}")
 
     # --- discover everything for UI ---
     return discover_run(run_dir)

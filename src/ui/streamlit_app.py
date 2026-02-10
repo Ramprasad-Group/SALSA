@@ -35,6 +35,7 @@ import cv2
 from cropping import save_crops
 from run_plextract_manual import run_plextract_on_manual_crops
 import os
+import sys
 import subprocess
 from typing import List, Optional
 import re
@@ -442,6 +443,7 @@ with st.sidebar:
     run_filter_tables = st.checkbox("Filter tables", value=True)
     run_plextract = st.checkbox("Extract data from figures", value=True)
     run_complete_dataset = st.checkbox("Complete dataset", value=True)
+    run_chemical_composition = st.checkbox("Extract chemical composition", value=False)
     exclude_full_text = st.checkbox("Exclude full text from context", value=True)
     
     st.divider()
@@ -799,6 +801,7 @@ if st.button("Run pipeline", type="primary"):
                 run_filter_tables=run_filter_tables,
                 run_plextract=run_plextract,
                 run_complete_dataset=run_complete_dataset,
+                run_chemical_composition=run_chemical_composition,
                 exclude_full_text=exclude_full_text,
                 custom_instructions=_run_ci,
             )
@@ -869,8 +872,8 @@ st.session_state["selected_doi"] = selected_doi
 doi_item = next(d for d in rr.dois if d.doi == selected_doi)
 
 # ---------------- Tabs (under DOI dropdown) ----------------
-tab_text, tab_figs, tab_tables, tab_xy, tab_intervene = st.tabs(
-    ["Parsed text", "Figures", "Tables", "Dataset", "Interventions"]
+tab_text, tab_figs, tab_tables, tab_xy, tab_chem, tab_intervene = st.tabs(
+    ["Parsed text", "Figures", "Tables", "Dataset", "Chemical Composition", "Interventions"]
 )
 
 with tab_text:
@@ -966,6 +969,212 @@ with tab_xy:
                 "No completed dataset found for this DOI in this run.\n\n"
                 "To generate it: enable **Complete dataset (LLM)** and re-run the pipeline."
             )
+
+with tab_chem:
+    st.subheader("Chemical Composition")
+
+    # --- Add src/ to path for chemical_composition imports ---
+    _src_for_chem = (Path(__file__).resolve().parent / "..").resolve()
+    if str(_src_for_chem) not in sys.path:
+        sys.path.insert(0, str(_src_for_chem))
+
+    from chemical_composition.extract_composition import (
+        identify_relevant_content as _cc_identify,
+        extract_samples_and_compositions as _cc_extract,
+        run_chemical_composition_extraction as _cc_run,
+    )
+    from chemical_composition.drawing_tool import (
+        render_ketcher_editor,
+        load_drawn_structures,
+        save_drawn_structure,
+        delete_drawn_structure,
+    )
+
+    _cc_safe = doi_to_safe(selected_doi)
+
+    # --- Sub-tabs within Chemical Composition ---
+    sub_cc_results, sub_cc_draw, sub_cc_run_tab = st.tabs(
+        ["Extracted Results", "Draw Chemical Structure", "Run Extraction"]
+    )
+
+    with sub_cc_results:
+        # Show previously extracted results if they exist
+        cc_json_path = doi_item.extra.get("chemical_composition_json")
+        cc_csv_path = doi_item.extra.get("chemical_composition_csv")
+
+        if cc_json_path and Path(cc_json_path).exists():
+            cc_data = json.loads(Path(cc_json_path).read_text())
+
+            # --- Relevant content ---
+            with st.expander("Relevant content identified", expanded=False):
+                relevant = cc_data.get("relevant_content", [])
+                if relevant:
+                    for i, item_rc in enumerate(relevant):
+                        st.markdown(
+                            f"**{item_rc.get('source_type', '')}** — "
+                            f"{item_rc.get('source_id', '')}"
+                        )
+                        st.caption(item_rc.get("relevance", ""))
+                        if item_rc.get("excerpt"):
+                            st.code(item_rc["excerpt"][:500])
+                        if i < len(relevant) - 1:
+                            st.divider()
+                else:
+                    st.info("No relevant content identified.")
+
+            # --- Samples table ---
+            st.markdown("#### Extracted Samples & Compositions")
+            if cc_csv_path and Path(cc_csv_path).exists():
+                try:
+                    df_cc = pd.read_csv(cc_csv_path)
+                    st.dataframe(df_cc, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        label="Download samples CSV",
+                        data=Path(cc_csv_path).read_bytes(),
+                        file_name=f"{_cc_safe}_samples.csv",
+                        mime="text/csv",
+                    )
+                except Exception as e:
+                    st.warning(f"Failed to load samples CSV: {e}")
+            else:
+                # Fall back to JSON display
+                samples = cc_data.get("samples", [])
+                if samples:
+                    for s in samples:
+                        with st.expander(f"Sample: {s.get('sample_name', 'Unknown')}"):
+                            if s.get("structure_class"):
+                                st.markdown(f"**Structure class:** {s['structure_class']}")
+                            if s.get("notes"):
+                                st.caption(s["notes"])
+                            comps = s.get("components", [])
+                            if comps:
+                                comp_rows = []
+                                for c in comps:
+                                    comp_rows.append({
+                                        "Component": c.get("name", ""),
+                                        "Role": c.get("role", ""),
+                                        "Formula": c.get("formula", ""),
+                                        "SMILES": c.get("smiles", ""),
+                                        "Amount": c.get("amount", ""),
+                                    })
+                                st.dataframe(
+                                    pd.DataFrame(comp_rows),
+                                    use_container_width=True,
+                                    hide_index=True,
+                                )
+                else:
+                    st.info("No samples extracted.")
+
+            # --- Drawn structures ---
+            st.markdown("#### User-Drawn Structures")
+            drawn = load_drawn_structures(rr.run_dir, _cc_safe)
+            if drawn:
+                for idx, ds in enumerate(drawn):
+                    cols = st.columns([3, 2, 1])
+                    with cols[0]:
+                        st.markdown(f"**{ds.get('sample_name', 'Unnamed')}**")
+                        if ds.get("smiles"):
+                            st.code(ds["smiles"], language=None)
+                    with cols[1]:
+                        if ds.get("notes"):
+                            st.caption(ds["notes"])
+                    with cols[2]:
+                        if st.button("Delete", key=f"del_drawn_{_cc_safe}_{idx}"):
+                            delete_drawn_structure(rr.run_dir, _cc_safe, idx)
+                            st.rerun()
+            else:
+                st.info("No user-drawn structures saved yet. Use the 'Draw Chemical Structure' tab.")
+
+        else:
+            st.info(
+                "No chemical composition data found for this DOI.\n\n"
+                "Enable **Extract chemical composition** in the sidebar and re-run, "
+                "or use the **Run Extraction** tab to extract on demand."
+            )
+
+    with sub_cc_draw:
+        st.markdown("#### Chemical Structure Drawing Tool")
+        st.caption(
+            "Use the Ketcher editor below to draw a chemical structure. "
+            "Click **Get SMILES** to capture the structure, then save it "
+            "with a sample name."
+        )
+
+        render_ketcher_editor(height=550, key=f"ketcher_{_cc_safe}")
+
+        st.divider()
+        st.markdown("#### Save Drawn Structure")
+
+        draw_sample_name = st.text_input(
+            "Sample name for this structure",
+            key=f"draw_sample_{_cc_safe}",
+            placeholder="e.g. QPPO-TMA-40",
+        )
+        draw_smiles = st.text_input(
+            "SMILES (paste from editor or type manually)",
+            key=f"draw_smiles_{_cc_safe}",
+            placeholder="e.g. C(C(=O)O)N",
+        )
+        draw_notes = st.text_input(
+            "Notes (optional)",
+            key=f"draw_notes_{_cc_safe}",
+            placeholder="e.g. backbone polymer for sample set A",
+        )
+
+        if st.button("Save structure", type="primary", key=f"save_drawn_{_cc_safe}"):
+            if not draw_sample_name.strip():
+                st.error("Please provide a sample name.")
+            else:
+                save_drawn_structure(
+                    run_dir=rr.run_dir,
+                    safe_doi=_cc_safe,
+                    sample_name=draw_sample_name.strip(),
+                    smiles=draw_smiles.strip(),
+                    notes=draw_notes.strip(),
+                )
+                st.success(f"Saved structure for '{draw_sample_name.strip()}'")
+                st.rerun()
+
+    with sub_cc_run_tab:
+        st.markdown("#### Run Chemical Composition Extraction")
+        st.caption(
+            "Run the LLM-based extraction on demand for this DOI. "
+            "This will analyse the parsed text, tables, and figure captions "
+            "to identify chemical structures, sample names, and compositions."
+        )
+
+        if st.button("Extract chemical composition", type="primary", key=f"run_cc_{_cc_safe}"):
+            try:
+                with st.spinner("Extracting chemical composition..."):
+                    parsed_json = doi_item.parsed_json_path
+                    tables_d = rr.run_dir / "figures_tables" / "tables" / _cc_safe
+                    figures_d = rr.run_dir / "figures_tables" / "figures" / _cc_safe
+
+                    result = _cc_run(
+                        run_dir=rr.run_dir,
+                        safe_doi=_cc_safe,
+                        parsed_json_path=parsed_json,
+                        tables_dir=tables_d if tables_d.exists() else None,
+                        figures_dir=figures_d if figures_d.exists() else None,
+                    )
+
+                st.success("Extraction complete!")
+
+                # Show results inline
+                samples = result.get("samples", [])
+                st.markdown(f"**Found {len(samples)} sample(s)**")
+                if samples:
+                    for s in samples:
+                        with st.expander(f"Sample: {s.get('sample_name', 'Unknown')}"):
+                            st.json(s)
+
+                relevant = result.get("relevant_content", [])
+                st.markdown(f"**Identified {len(relevant)} relevant content section(s)**")
+
+                st.info("Reload the run or switch tabs to see the full results.")
+
+            except Exception as e:
+                st.error(f"Chemical composition extraction failed: {e}")
 
 with tab_intervene:
     # Explicit scan (cached)
