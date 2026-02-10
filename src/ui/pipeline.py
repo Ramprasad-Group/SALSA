@@ -143,10 +143,14 @@ def run_full_pipeline(
 
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    # --- Set run dir and run ID so cost logging writes to <run_dir>/cost/usage.jsonl ---
+    import os
+    os.environ["AEM_OCR_RUN_DIR"] = str(run_dir)
+    os.environ["AEM_OCR_RUN_ID"] = run_id
+
     # --- Reference workspace-level custom instructions ---
     # Instructions are saved in workspace/custom_instructions/default.json
     # We pass them via environment variable to downstream scripts
-    import os
     ci_path = None
     if custom_instructions:
         # Create a temporary reference file in the workspace (not run) directory

@@ -1151,6 +1151,8 @@ with tab_intervene:
         orig_w, orig_h = pil_img.size
         display_w = min(orig_w, 1100)
         display_h = int(orig_h * (display_w / orig_w))
+        # Resize to display dimensions for canvas (avoids Streamlit media file errors)
+        pil_img_disp = pil_img.resize((display_w, display_h))
 
         img_name = Path(item.figure_id).name
         crops_out_dir = rr.run_dir / "interventions" / item.safe_doi / img_name
@@ -1209,13 +1211,13 @@ with tab_intervene:
 
         try:
             if show_bg:
-                canvas = st_canvas(background_image=pil_img, **canvas_kwargs)
+                canvas = st_canvas(background_image=pil_img_disp, **canvas_kwargs)
             else:
                 canvas = st_canvas(background_color="rgba(255,255,255,0.0)", **canvas_kwargs)
         except Exception as e:
             st.warning(f"Canvas background failed: {e}")
             with st.expander("Show source image", expanded=False):
-                st_image_auto(pil_img, full_width=True)
+                st_image_auto(pil_img_disp, full_width=True)
             canvas = st_canvas(background_color="rgba(255,255,255,0.0)", **canvas_kwargs)
 
         scale_x = orig_w / display_w
