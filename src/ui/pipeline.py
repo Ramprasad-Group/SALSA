@@ -266,36 +266,7 @@ def run_full_pipeline(
         if plextract_results_root is not None:
             _copy_figure_metadata_to_plextract(figures_tables_dir, plextract_results_root)
 
-    # --- 6) complete-dataset.py ---
-    if run_complete_dataset:
-        # complete-dataset.py expects a DOI file and an index CSV
-        # We already have:
-        #   - doi_csv (column "DOI")
-        #   - index_csv (reparsed/index.csv)
-        # We set output_dir to run-scoped folder.
-        cmd = [
-            sys.executable, str(p_complete_dataset),
-            "--file_path", str(doi_csv),
-            "--doi_column", "DOI",
-            "--index_csv_path", str(index_csv),
-            "--output_dir", str(complete_dataset_dir),
-            "--figures_tables_dir", str(figures_tables_dir),
-            "--log_file", str(complete_dataset_dir),
-        ]
-        # If plextract ran, try to pass its results directory as --extracted_figures_root
-        if run_plextract:
-            plextract_results_root = _plextract_results_root(plextract_workdir)
-            if plextract_results_root is not None:
-                cmd += ["--extracted_figures_root", str(plextract_results_root)]
-        if exclude_full_text:
-            cmd.append("--exclude_full_text")
-        if ci_path and ci_path.exists():
-            cmd += ["--custom_instructions", str(ci_path)]
-
-        _run(cmd)
-
-
-    # --- 7) chemical composition extraction ---
+    # --- 6) chemical composition extraction (before dataset completion) ---
     if run_chemical_composition:
         _chemical_composition_dir = run_dir / "chemical_composition"
         _chemical_composition_dir.mkdir(parents=True, exist_ok=True)
@@ -327,6 +298,29 @@ def run_full_pipeline(
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
             except Exception as e:
                 print(f"[Pipeline] WARNING: Chemical composition failed for {doi}: {e}")
+
+    # --- 7) complete-dataset.py ---
+    if run_complete_dataset:
+        cmd = [
+            sys.executable, str(p_complete_dataset),
+            "--file_path", str(doi_csv),
+            "--doi_column", "DOI",
+            "--index_csv_path", str(index_csv),
+            "--output_dir", str(complete_dataset_dir),
+            "--figures_tables_dir", str(figures_tables_dir),
+            "--log_file", str(complete_dataset_dir),
+        ]
+        # If plextract ran, try to pass its results directory as --extracted_figures_root
+        if run_plextract:
+            plextract_results_root = _plextract_results_root(plextract_workdir)
+            if plextract_results_root is not None:
+                cmd += ["--extracted_figures_root", str(plextract_results_root)]
+        if exclude_full_text:
+            cmd.append("--exclude_full_text")
+        if ci_path and ci_path.exists():
+            cmd += ["--custom_instructions", str(ci_path)]
+
+        _run(cmd)
 
     # --- discover everything for UI ---
     return discover_run(run_dir)

@@ -595,16 +595,74 @@ def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
 
     return pd.concat(dfs, ignore_index=True).reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
 
+def _load_chemical_samples(modified_doi: str) -> List[Dict[str, Any]]:
+    """
+    Load extracted chemical composition samples for this DOI if available.
+    Returns a list of sample dicts from samples.json, or empty list.
+    """
+    run_dir = os.environ.get("AEM_OCR_RUN_DIR", "").strip()
+    if not run_dir:
+        return []
+    samples_path = os.path.join(run_dir, "chemical_composition", modified_doi, "samples.json")
+    if not os.path.exists(samples_path):
+        return []
+    try:
+        with open(samples_path, "r") as f:
+            samples = json.load(f)
+        if isinstance(samples, list) and samples:
+            return samples
+    except Exception as e:
+        log.warning(f"Failed to load chemical samples from {samples_path}: {e}")
+    return []
+
+
+def _expand_dataset_by_samples(
+    df: pd.DataFrame,
+    samples: List[Dict[str, Any]],
+) -> pd.DataFrame:
+    """
+    When chemical composition samples are available, produce a copy of
+    the dataset for each unique sample.  The 'Sample Name' column (if present
+    in the output schema) is filled with the sample name from the extracted
+    chemical composition data.
+    """
+    if df.empty or not samples:
+        return df
+
+    sample_names = []
+    for s in samples:
+        name = (s.get("sample_name") or "").strip()
+        if name and name not in sample_names:
+            sample_names.append(name)
+
+    if not sample_names:
+        return df
+
+    parts = []
+    for name in sample_names:
+        chunk = df.copy()
+        if "Sample Name" in chunk.columns:
+            chunk["Sample Name"] = name
+        parts.append(chunk)
+
+    return pd.concat(parts, ignore_index=True)
+
+
 def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
     df_tables = complete_dataset_from_tables_llm(complete_record, client)
     df_figs = complete_dataset_from_figures_llm(complete_record, client)
 
-    print("====DF_TABLES====", df_tables)
-    print("====DF_FIGS====", df_figs)
-
     df_all = pd.concat([df_tables, df_figs], ignore_index=True)
     df_all = df_all.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
     df_all = df_all.drop_duplicates()
+
+    # If chemical composition samples were extracted, compile data per unique sample
+    modified_doi = complete_record.get("modified_doi", "")
+    chem_samples = _load_chemical_samples(modified_doi)
+    if chem_samples:
+        df_all = _expand_dataset_by_samples(df_all, chem_samples)
+        df_all = df_all.drop_duplicates()
+
     return df_all
 
 # ----------------------------

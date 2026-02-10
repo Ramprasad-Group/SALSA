@@ -71,7 +71,10 @@ _JSME_HTML = """\
 
   // JSME calls this global function when it finishes loading
   function jsmeOnLoad() {{
-    jsmeApp = new JSApplet.JSME("jsme_container", "{editor_width}", "{editor_height}px", {{
+    // Use the container's actual width for proper sizing
+    var container = document.getElementById('jsme_container');
+    var w = container ? container.offsetWidth || 700 : 700;
+    jsmeApp = new JSApplet.JSME("jsme_container", w + "px", "{editor_height}px", {{
       "options": "query,hydrogens,multipart"
     }});
   }}
@@ -126,7 +129,7 @@ def render_ketcher_editor(
         editor_height=editor_height,
         editor_width="100%",
     )
-    components.html(html, height=height, scrolling=False)
+    components.html(html, height=height, scrolling=True)
 
 
 # ---------------------------------------------------------------------------

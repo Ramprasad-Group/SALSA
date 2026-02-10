@@ -461,22 +461,18 @@ with st.sidebar:
 
     st.divider()
 
-    # Select stages
-    st.header("Stages")
-    run_download_doi = st.checkbox("Download DOIs", value=True)
-    run_extract_figures = st.checkbox("Extract figures", value=True)
-    run_extract_tables = st.checkbox("Extract tables", value=True)
-    run_filter_figures = st.checkbox("Filter figures", value=True)
-    run_filter_tables = st.checkbox("Filter tables", value=True)
-    run_plextract = st.checkbox("Extract data from figures", value=True)
-    run_complete_dataset = st.checkbox("Complete dataset", value=True)
-    run_chemical_composition = st.checkbox("Extract chemical composition", value=False)
-    exclude_full_text = st.checkbox("Exclude full text from context", value=True)
-    
-    st.divider()
-    st.header("LLM")
+    with st.expander("Stages", expanded=False):
+        run_download_doi = st.checkbox("Download DOIs", value=True)
+        run_extract_figures = st.checkbox("Extract figures", value=True)
+        run_extract_tables = st.checkbox("Extract tables", value=True)
+        run_filter_figures = st.checkbox("Filter figures", value=True)
+        run_filter_tables = st.checkbox("Filter tables", value=True)
+        run_plextract = st.checkbox("Extract data from figures", value=True)
+        run_complete_dataset = st.checkbox("Complete dataset", value=True)
+        run_chemical_composition = st.checkbox("Extract chemical composition", value=True)
+        exclude_full_text = st.checkbox("Exclude full text from context", value=True)
 
-    # SET OLLAMA DIR AND HOST
+    # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
     default_ollama_dir = _default_ollama_models_dir()
     default_ollama_host = _default_ollama_host()
 
@@ -488,260 +484,240 @@ with st.sidebar:
             models = _ollama_list_models_from_dir(Path(str(default_ollama_dir)))
         return models
 
-    # --- General LLM (used for filtering, figure planning, etc.) ---
-    st.subheader("General LLM")
-    st.caption("Used for figure/table filtering, figure planning, and other pre-completion steps.")
+    with st.expander("LLM", expanded=False):
+        # --- General LLM (used for filtering, figure planning, etc.) ---
+        st.subheader("General LLM")
+        st.caption("Used for figure/table filtering, figure planning, and other pre-completion steps.")
 
-    provider = st.radio(
-        "Provider",
-        options=["Ollama", "Chat GPT"],
-        index=0,
-        key="llm_provider",
-    )
-
-    if provider == "Ollama":
-        ollama_models_dir = Path(str(default_ollama_dir))
-        ollama_host = default_ollama_host
-
-        models = _ollama_models()
-        if models:
-            selected_model = st.selectbox("Model", options=models, index=0, key="llm_model")
-        else:
-            selected_model = st.text_input(
-                "Model (no models detected)",
-                value="",
-                key="llm_model",
-            )
-            st.caption("Tip: run `ollama pull <model>` then refresh.")
-    else:
-        openai_base_url = st.text_input(
-            "OpenAI-compatible base URL",
-            value=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            key="openai_base_url",
-        )
-        openai_api_key = st.text_input(
-            "API key (stored only in session)",
-            value=os.environ.get("OPENAI_API_KEY", ""),
-            type="password",
-            key="openai_api_key",
-        )
-        selected_model = st.selectbox("Model", options=_openai_models, index=0, key="llm_model")
-
-    # --- Dataset Completion LLM ---
-    st.subheader("Dataset Completion LLM")
-    st.caption("Used for the final dataset completion step. Can differ from the general LLM.")
-
-    use_separate_completion_llm = st.checkbox(
-        "Use a different LLM for dataset completion",
-        value=False,
-        key="use_separate_completion_llm",
-    )
-
-    if use_separate_completion_llm:
-        completion_provider = st.radio(
-            "Completion provider",
+        provider = st.radio(
+            "Provider",
             options=["Ollama", "Chat GPT"],
-            index=1,
-            key="completion_llm_provider",
+            index=0,
+            key="llm_provider",
         )
 
-        if completion_provider == "Ollama":
+        if provider == "Ollama":
+            ollama_models_dir = Path(str(default_ollama_dir))
+            ollama_host = default_ollama_host
+
             models = _ollama_models()
             if models:
-                st.selectbox("Completion model", options=models, index=0, key="completion_llm_model")
+                selected_model = st.selectbox("Model", options=models, index=0, key="llm_model")
             else:
-                st.text_input("Completion model (no models detected)", value="", key="completion_llm_model")
-        else:
-            st.text_input(
-                "Completion base URL",
-                value=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-                key="completion_openai_base_url",
-            )
-            st.text_input(
-                "Completion API key (stored only in session)",
-                value=os.environ.get("OPENAI_API_KEY", ""),
-                type="password",
-                key="completion_openai_api_key",
-            )
-            st.selectbox("Completion model", options=_openai_models, index=0, key="completion_llm_model")
-
-    # st.divider()
-    # st.header("Load an existing run")
-    # existing = sorted([p.name for p in run_root.iterdir() if p.is_dir()], reverse=True)
-    # pick = st.selectbox("Run ID", options=[""] + existing)
-    # if st.button("Load run") and pick:
-    #     rr = discover_run(run_root / pick)
-    #     st.session_state["rr"] = rr
-
-    st.divider()
-    st.header("Custom Instructions")
-    st.caption(
-        "Customise the LLM prompts for each pipeline stage. "
-        "Save and load named instruction sets from the shared presets directory."
-    )
-
-    # --- Initialize with defaults if not loaded yet ---
-    if "custom_instructions" not in st.session_state:
-        st.session_state["custom_instructions"] = default_instructions()
-        st.session_state["current_preset_name"] = None
-
-    ci = st.session_state["custom_instructions"]
-
-    # --- Load presets ---
-    existing_presets = list_presets(workspaces_root)
-
-    st.subheader("Load Preset")
-    if existing_presets:
-        col_load_a, col_load_b = st.columns([3, 1])
-        with col_load_a:
-            preset_choice = st.selectbox(
-                "Select preset to load",
-                options=[""] + existing_presets,
-                key="ci_preset_choice",
-            )
-        with col_load_b:
-            if st.button("Load", type="secondary") and preset_choice:
-                loaded = load_preset(workspaces_root, preset_choice)
-                st.session_state["custom_instructions"] = loaded
-                st.session_state["current_preset_name"] = preset_choice
-                st.success(f"Loaded preset: {preset_choice}")
-                st.rerun()
-    else:
-        st.info("No presets saved yet. Create your first preset below.")
-
-    # Show currently loaded preset
-    if st.session_state.get("current_preset_name"):
-        st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
-    else:
-        st.caption("Currently editing: **Unsaved changes (default)**")
-
-    # --- Instruction editors ---
-    with st.expander("Table extraction rules", expanded=False):
-        st.caption(
-            "Extra rules for how raw HTML/XML tables are parsed into structured data. "
-            "E.g. how merged cells or multi-level headers should be handled."
-        )
-        st.text_area(
-            "Table extraction extra rules",
-            value=ci.get("table_extraction_rules", ""),
-            height=120,
-            key="ci_table_extraction",
-        )
-
-    with st.expander("Figure filtering criteria", expanded=False):
-        st.caption(
-            "Criteria the LLM uses to decide whether to keep or discard a figure. "
-            "E.g. 'only keep line charts showing conductivity vs time'."
-        )
-        st.text_area(
-            "Figure filter criteria",
-            value=ci.get("figure_filter_criteria", ""),
-            height=150,
-            key="ci_figure_filter",
-        )
-
-    with st.expander("Table filtering criteria", expanded=False):
-        st.caption(
-            "Criteria the LLM uses to decide whether to keep or discard a table."
-        )
-        st.text_area(
-            "Table filter criteria",
-            value=ci.get("table_filter_criteria", ""),
-            height=150,
-            key="ci_table_filter",
-        )
-
-    with st.expander("Dataset completion rules", expanded=False):
-        st.caption(
-            "Extra rules applied when the LLM converts tables/figures into "
-            "the final normalised dataset rows. E.g. 'before = time 0'."
-        )
-        st.text_area(
-            "Dataset completion extra rules",
-            value=ci.get("dataset_completion_rules", ""),
-            height=120,
-            key="ci_dataset_completion",
-        )
-
-    with st.expander("Output columns", expanded=False):
-        st.caption(
-            "One column name per line for the final dataset. "
-            "Change this to capture different properties."
-        )
-        st.text_area(
-            "Output columns (one per line)",
-            value="\n".join(ci.get("output_columns", [])),
-            height=160,
-            key="ci_output_columns",
-        )
-
-    with st.expander("Missing-value defaults", expanded=False):
-        st.caption(
-            "JSON dict of column name to default value when not found. "
-            "E.g. {\"time(h)\": \"0 Not Found\"}"
-        )
-        st.text_area(
-            "Missing-value defaults (JSON)",
-            value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
-            height=160,
-            key="ci_missing_defaults",
-        )
-
-    # --- Save preset ---
-    st.subheader("Save Preset")
-    col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
-
-    with col_name:
-        # Default to current preset name if editing an existing one
-        default_name = st.session_state.get("current_preset_name", "")
-        preset_name = st.text_input(
-            "Preset name",
-            value=default_name,
-            key="ci_new_preset_name",
-            placeholder="Enter a name for this preset"
-        )
-
-    with col_save_btn:
-        st.write("")  # spacing
-        st.write("")  # spacing
-        if st.button("Save", type="primary") and preset_name.strip():
-            # Read all fields from session state
-            _ci_to_save = {}
-            _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
-            _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
-            _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-            _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
-
-            raw_cols = st.session_state.get("ci_output_columns", "")
-            _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
-            try:
-                _ci_to_save["missing_value_defaults"] = json.loads(
-                    st.session_state.get("ci_missing_defaults", "{}")
+                selected_model = st.text_input(
+                    "Model (no models detected)",
+                    value="",
+                    key="llm_model",
                 )
-            except json.JSONDecodeError:
-                st.error("Missing-value defaults must be valid JSON.")
-                _ci_to_save["missing_value_defaults"] = {}
+                st.caption("Tip: run `ollama pull <model>` then refresh.")
+        else:
+            # Read OpenAI config from environment (not displayed in UI)
+            if "openai_base_url" not in st.session_state:
+                st.session_state["openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            if "openai_api_key" not in st.session_state:
+                st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+            selected_model = st.selectbox("Model", options=_openai_models, index=0, key="llm_model")
 
-            save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
-            st.session_state["current_preset_name"] = preset_name.strip()
-            st.success(f"Saved preset: {preset_name.strip()}")
+        # --- Dataset Completion LLM ---
+        st.subheader("Dataset Completion LLM")
+        st.caption("Used for the final dataset completion step. Can differ from the general LLM.")
+
+        use_separate_completion_llm = st.checkbox(
+            "Use a different LLM for dataset completion",
+            value=False,
+            key="use_separate_completion_llm",
+        )
+
+        if use_separate_completion_llm:
+            completion_provider = st.radio(
+                "Completion provider",
+                options=["Ollama", "Chat GPT"],
+                index=1,
+                key="completion_llm_provider",
+            )
+
+            if completion_provider == "Ollama":
+                models = _ollama_models()
+                if models:
+                    st.selectbox("Completion model", options=models, index=0, key="completion_llm_model")
+                else:
+                    st.text_input("Completion model (no models detected)", value="", key="completion_llm_model")
+            else:
+                # Read completion OpenAI config from environment (not displayed in UI)
+                if "completion_openai_base_url" not in st.session_state:
+                    st.session_state["completion_openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+                if "completion_openai_api_key" not in st.session_state:
+                    st.session_state["completion_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+                st.selectbox("Completion model", options=_openai_models, index=0, key="completion_llm_model")
+
+    with st.expander("Custom Instructions", expanded=False):
+        st.caption(
+            "Customise the LLM prompts for each pipeline stage. "
+            "Save and load named instruction sets from the shared presets directory."
+        )
+
+        # --- Initialize with defaults if not loaded yet ---
+        if "custom_instructions" not in st.session_state:
+            st.session_state["custom_instructions"] = default_instructions()
+            st.session_state["current_preset_name"] = None
+
+        ci = st.session_state["custom_instructions"]
+
+        # --- Load presets ---
+        existing_presets = list_presets(workspaces_root)
+
+        st.subheader("Load Preset")
+        if existing_presets:
+            col_load_a, col_load_b = st.columns([3, 1])
+            with col_load_a:
+                preset_choice = st.selectbox(
+                    "Select preset to load",
+                    options=[""] + existing_presets,
+                    key="ci_preset_choice",
+                )
+            with col_load_b:
+                if st.button("Load", type="secondary") and preset_choice:
+                    loaded = load_preset(workspaces_root, preset_choice)
+                    st.session_state["custom_instructions"] = loaded
+                    st.session_state["current_preset_name"] = preset_choice
+                    st.success(f"Loaded preset: {preset_choice}")
+                    st.rerun()
+        else:
+            st.info("No presets saved yet. Create your first preset below.")
+
+        # Show currently loaded preset
+        if st.session_state.get("current_preset_name"):
+            st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
+        else:
+            st.caption("Currently editing: **Unsaved changes (default)**")
+
+        # --- Instruction editors ---
+        with st.expander("Table extraction rules", expanded=False):
+            st.caption(
+                "Extra rules for how raw HTML/XML tables are parsed into structured data. "
+                "E.g. how merged cells or multi-level headers should be handled."
+            )
+            st.text_area(
+                "Table extraction extra rules",
+                value=ci.get("table_extraction_rules", ""),
+                height=120,
+                key="ci_table_extraction",
+            )
+
+        with st.expander("Figure filtering criteria", expanded=False):
+            st.caption(
+                "Criteria the LLM uses to decide whether to keep or discard a figure. "
+                "E.g. 'only keep line charts showing conductivity vs time'."
+            )
+            st.text_area(
+                "Figure filter criteria",
+                value=ci.get("figure_filter_criteria", ""),
+                height=150,
+                key="ci_figure_filter",
+            )
+
+        with st.expander("Table filtering criteria", expanded=False):
+            st.caption(
+                "Criteria the LLM uses to decide whether to keep or discard a table."
+            )
+            st.text_area(
+                "Table filter criteria",
+                value=ci.get("table_filter_criteria", ""),
+                height=150,
+                key="ci_table_filter",
+            )
+
+        with st.expander("Dataset completion rules", expanded=False):
+            st.caption(
+                "Extra rules applied when the LLM converts tables/figures into "
+                "the final normalised dataset rows. E.g. 'before = time 0'."
+            )
+            st.text_area(
+                "Dataset completion extra rules",
+                value=ci.get("dataset_completion_rules", ""),
+                height=120,
+                key="ci_dataset_completion",
+            )
+
+        with st.expander("Output columns", expanded=False):
+            st.caption(
+                "One column name per line for the final dataset. "
+                "Change this to capture different properties."
+            )
+            st.text_area(
+                "Output columns (one per line)",
+                value="\n".join(ci.get("output_columns", [])),
+                height=160,
+                key="ci_output_columns",
+            )
+
+        with st.expander("Missing-value defaults", expanded=False):
+            st.caption(
+                "JSON dict of column name to default value when not found. "
+                "E.g. {\"time(h)\": \"0 Not Found\"}"
+            )
+            st.text_area(
+                "Missing-value defaults (JSON)",
+                value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
+                height=160,
+                key="ci_missing_defaults",
+            )
+
+        # --- Save preset ---
+        st.subheader("Save Preset")
+        col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
+
+        with col_name:
+            # Default to current preset name if editing an existing one
+            default_name = st.session_state.get("current_preset_name", "")
+            preset_name = st.text_input(
+                "Preset name",
+                value=default_name,
+                key="ci_new_preset_name",
+                placeholder="Enter a name for this preset"
+            )
+
+        with col_save_btn:
+            st.write("")  # spacing
+            st.write("")  # spacing
+            if st.button("Save", type="primary") and preset_name.strip():
+                # Read all fields from session state
+                _ci_to_save = {}
+                _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
+                _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
+                _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
+                _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+
+                raw_cols = st.session_state.get("ci_output_columns", "")
+                _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
+                try:
+                    _ci_to_save["missing_value_defaults"] = json.loads(
+                        st.session_state.get("ci_missing_defaults", "{}")
+                    )
+                except json.JSONDecodeError:
+                    st.error("Missing-value defaults must be valid JSON.")
+                    _ci_to_save["missing_value_defaults"] = {}
+
+                save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
+                st.session_state["current_preset_name"] = preset_name.strip()
+                st.success(f"Saved preset: {preset_name.strip()}")
+                st.rerun()
+
+        with col_del_btn:
+            st.write("")  # spacing
+            st.write("")  # spacing
+            if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
+                delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
+                if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
+                    st.session_state["current_preset_name"] = None
+                st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
+                st.rerun()
+
+        # --- Reset to defaults button ---
+        if st.button("Reset to defaults", type="secondary"):
+            st.session_state["custom_instructions"] = default_instructions()
+            st.session_state["current_preset_name"] = None
             st.rerun()
-
-    with col_del_btn:
-        st.write("")  # spacing
-        st.write("")  # spacing
-        if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
-            delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
-            if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
-                st.session_state["current_preset_name"] = None
-            st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
-            st.rerun()
-
-    # --- Reset to defaults button ---
-    if st.button("Reset to defaults", type="secondary"):
-        st.session_state["custom_instructions"] = default_instructions()
-        st.session_state["current_preset_name"] = None
-        st.rerun()
 
     st.divider()
     st.header("Load an existing run")
@@ -1284,21 +1260,23 @@ with tab_intervene:
     flagged = [x for x in flagged_all if x.safe_doi == selected_safe]
 
     item = None
+    _intervene_ready = True  # gate for rendering the rest of the tab
 
     if browse_mode == "Flagged figures only":
         st.write(f"Flagged for this DOI: **{len(flagged)}**")
         if not flagged:
             st.info("No flagged figures for this DOI (or scan hasn't been run yet).")
-            st.stop()
-        labels = [f"{x.figure_id} | {x.reason}" for x in flagged]
-        idx = st.selectbox(
-            "Select flagged figure",
-            range(len(labels)),
-            format_func=lambda i: labels[i],
-            key=f"flagged_sel_{selected_safe}",
-        )
-        item = flagged[idx]
-        st.markdown(f"**Reason:** {item.reason}")
+            _intervene_ready = False
+        else:
+            labels = [f"{x.figure_id} | {x.reason}" for x in flagged]
+            idx = st.selectbox(
+                "Select flagged figure",
+                range(len(labels)),
+                format_func=lambda i: labels[i],
+                key=f"flagged_sel_{selected_safe}",
+            )
+            item = flagged[idx]
+            st.markdown(f"**Reason:** {item.reason}")
     else:
         # Browse all figures from the DOI
         from intervention import InterventionItem, _try_find_source_image, latest_plextract_run_dir as _lpr
@@ -1334,26 +1312,29 @@ with tab_intervene:
 
         if not all_items:
             st.info("No plextract outputs found for this DOI.")
-            st.stop()
+            _intervene_ready = False
+        else:
+            labels = [f"{x.figure_id}{' | ' + x.reason if x.reason else ''}" for x in all_items]
+            idx = st.selectbox(
+                "Select figure",
+                range(len(labels)),
+                format_func=lambda i: labels[i],
+                key=f"all_fig_sel_{selected_safe}",
+            )
+            item = all_items[idx]
+            if item.reason:
+                st.markdown(f"**Flagged:** {item.reason}")
 
-        labels = [f"{x.figure_id}{' | ' + x.reason if x.reason else ''}" for x in all_items]
-        idx = st.selectbox(
-            "Select figure",
-            range(len(labels)),
-            format_func=lambda i: labels[i],
-            key=f"all_fig_sel_{selected_safe}",
-        )
-        item = all_items[idx]
-        if item.reason:
-            st.markdown(f"**Flagged:** {item.reason}")
-
-    if item.source_image is None or not item.source_image.exists():
+    if _intervene_ready and item is not None and (item.source_image is None or not item.source_image.exists()):
         st.error("Could not find source image. Check figures_tables/figures/ directory.")
-        st.stop()
+        _intervene_ready = False
 
-    sub_crop, sub_series, sub_apply = st.tabs(["Crop", "Series", "Apply / Re-run"])
+    if not _intervene_ready or item is None:
+        st.info("Select a figure above to view intervention options.")
+    else:
+      sub_crop, sub_series, sub_apply = st.tabs(["Crop", "Series", "Apply / Re-run"])
 
-    with sub_crop:
+      with sub_crop:
         st.subheader("Crop & extract data from sub-regions")
 
         pil_img = Image.open(item.source_image).convert("RGB")
@@ -1504,7 +1485,7 @@ with tab_intervene:
         else:
             st.info("No manual plextract run found yet. Save crops and run extraction above.")
 
-    with sub_series:
+      with sub_series:
         st.subheader("Series management")
 
         lf_dir = get_lineformer_dir(item.figure_dir)
@@ -1524,8 +1505,34 @@ with tab_intervene:
                 (0, 255, 127), (100, 149, 237),
             ]
 
+            # Try to load actual series labels from plextract final_dataset.csv
+            _plextract_series_labels: dict[int, str] = {}
+            _final_csv_path = item.final_dir / "final_dataset.csv"
+            if _final_csv_path.exists():
+                try:
+                    _fdf = pd.read_csv(_final_csv_path)
+                    if "series_label" in _fdf.columns:
+                        for _sl in _fdf["series_label"].dropna().unique():
+                            _sl_str = str(_sl).strip()
+                            # series_label is often "Series 0" or "0" or actual name
+                            # Try to parse index from numeric labels
+                            try:
+                                _si = int(_sl_str)
+                                _plextract_series_labels[_si] = _sl_str
+                            except ValueError:
+                                # Non-numeric label - try to match by position
+                                _idx = len(_plextract_series_labels)
+                                _plextract_series_labels[_idx] = _sl_str
+                except Exception:
+                    pass
+
             def _display_name(idx: int) -> str:
-                return names.get(str(idx), f"Series {idx}")
+                # Priority: user mapping > plextract series label > fallback
+                if str(idx) in names and names[str(idx)] != f"Series {idx}":
+                    return names[str(idx)]
+                if idx in _plextract_series_labels:
+                    return _plextract_series_labels[idx]
+                return f"Series {idx}"
 
             # --- Composite overlay: all series colored on the source image ---
             base_img = Image.open(item.source_image).convert("RGBA")
@@ -1697,7 +1704,7 @@ with tab_intervene:
                     with st.expander("Preview new mask (full-res)", expanded=False):
                         st_image_auto(new_mask_pil, full_width=True)
 
-    with sub_apply:
+      with sub_apply:
         st.subheader("Apply edits & re-run")
 
         # --- Apply overrides ---
