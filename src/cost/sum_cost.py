@@ -72,6 +72,61 @@ def main(path: str):
 
     print(f"\nGrand total: ${grand_total:.6f}\n")
 
+def summarise_usage(path: str) -> dict:
+    """
+    Return a dict with per-model breakdown and grand total cost.
+
+    Returns:
+        {
+            "models": {
+                "<model>": {"calls": N, "input": N, "cached": N, "output": N, "cost": float},
+                ...
+            },
+            "grand_total": float,
+        }
+    """
+    from pathlib import Path as _P
+    if not _P(path).exists():
+        return {"models": {}, "grand_total": 0.0}
+
+    totals = defaultdict(lambda: {"input": 0, "cached": 0, "output": 0, "n": 0})
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            m = canonical_model(rec.get("model", ""))
+            totals[m]["input"] += int(rec.get("input_tokens", 0) or 0)
+            totals[m]["cached"] += int(rec.get("cached_tokens", 0) or 0)
+            totals[m]["output"] += int(rec.get("output_tokens", 0) or 0)
+            totals[m]["n"] += 1
+
+    grand_total = 0.0
+    models_out = {}
+    for m, t in totals.items():
+        prices = PRICES_PER_1M.get(m)
+        cost = 0.0
+        if prices:
+            non_cached_in = max(0, t["input"] - t["cached"])
+            cost = (
+                (non_cached_in / 1e6) * prices["in"]
+                + (t["cached"] / 1e6) * prices.get("cached_in", prices["in"])
+                + (t["output"] / 1e6) * prices["out"]
+            )
+        grand_total += cost
+        models_out[m] = {
+            "calls": t["n"],
+            "input": t["input"],
+            "cached": t["cached"],
+            "output": t["output"],
+            "cost": cost,
+        }
+
+    return {"models": models_out, "grand_total": grand_total}
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python sum_cost.py /path/to/usage.jsonl")

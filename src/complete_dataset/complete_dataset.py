@@ -610,16 +610,43 @@ def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
 # ----------------------------
 # Main
 # ----------------------------
-def main():
-    # client = get_llm_client()
+def _build_completion_llm_config() -> Optional[LLMConfig]:
+    """
+    Build an LLMConfig for the dataset-completion step from dedicated env vars.
+    Returns None if no completion-specific config is set (falls back to general LLM).
+    """
+    c_provider = os.environ.get("AEM_OCR_COMPLETION_LLM_PROVIDER", "").strip().lower()
+    c_model = os.environ.get("AEM_OCR_COMPLETION_LLM_MODEL", "").strip()
 
-    client = get_llm_client(
-        override=LLMConfig(
-            provider="openai",
-            model="gpt-4.1-mini",
-            api_key=os.environ["OPENAI_API_KEY"],
-        )
-    )
+    if not c_model:
+        return None  # no override; use general LLM
+
+    if c_provider in ("openai", "gpt", ""):
+        base_url = os.environ.get(
+            "AEM_OCR_COMPLETION_OPENAI_BASE_URL",
+            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        ).strip()
+        api_key = os.environ.get(
+            "AEM_OCR_COMPLETION_OPENAI_API_KEY",
+            os.environ.get("OPENAI_API_KEY", ""),
+        ).strip() or None
+        return LLMConfig(provider="openai", model=c_model, base_url=base_url, api_key=api_key)
+
+    # ollama
+    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip()
+    if not host.startswith("http"):
+        host = "http://" + host
+    base_url = host.rstrip("/") + "/v1"
+    return LLMConfig(provider="ollama", model=c_model, base_url=base_url, api_key="ollama")
+
+
+def main():
+    # Use completion-specific LLM if configured, otherwise fall back to general
+    completion_override = _build_completion_llm_config()
+    if completion_override is not None:
+        client = get_llm_client(override=completion_override)
+    else:
+        client = get_llm_client()
 
     df = load_file()
     client = None if args.skip_llm else client
