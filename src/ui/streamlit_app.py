@@ -1139,6 +1139,7 @@ with tab_chem:
             )
 
     with sub_cc_draw:
+
         st.markdown("#### Chemical Structure Drawing Tool")
 
         render_jsme_editor_local(height=550, key=f"jsme_{_cc_safe}")

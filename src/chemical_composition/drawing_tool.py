@@ -204,8 +204,6 @@ def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int =
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(static_root), **kwargs)
-        def log_message(self, format, *args):
-            # Log to stderr for debugging
 
     try:
         httpd = ThreadingHTTPServer((host, port), Handler)
@@ -216,10 +214,10 @@ def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int =
         import time
         time.sleep(0.1)
 
-        print(f"✅ Started HTTP server at http://{host}:{port} serving {static_root}", file=sys.stderr)
+        print(f"Started HTTP server at http://{host}:{port} serving {static_root}", file=sys.stderr)
         return f"http://{host}:{port}"
     except Exception as e:
-        print(f"❌ Failed to start HTTP server: {e}", file=sys.stderr)
+        print(f"Failed to start HTTP server: {e}", file=sys.stderr)
         raise
 
 
@@ -366,18 +364,10 @@ def render_jsme_editor_local(
     jsme_root = here / "JSME_2024-04-29"
     jsme_dir = jsme_root / "jsme"
 
-    # Debug output
-    st.write(f"🔍 **Debug Info:**")
-    st.write(f"- Script location: `{here}`")
-    st.write(f"- JSME root: `{jsme_root}`")
-    st.write(f"- JSME dir: `{jsme_dir}`")
-    st.write(f"- JSME root exists: {jsme_root.exists()}")
-    st.write(f"- JSME dir exists: {jsme_dir.exists()}")
-
     # Check if JSME root directory exists
     if not jsme_root.exists():
         st.error(
-            f"❌ JSME distribution folder not found at: `{jsme_root}`\n\n"
+            f"JSME distribution folder not found at: `{jsme_root}`\n\n"
             "Please download JSME from https://jsme-editor.github.io/ and extract it to:\n"
             f"`{jsme_root}`"
         )
@@ -386,7 +376,7 @@ def render_jsme_editor_local(
     # Check if jsme subdirectory exists (contains the actual JavaScript files)
     if not jsme_dir.exists():
         st.error(
-            f"❌ JSME JavaScript library not found at: `{jsme_dir}`\n\n"
+            f"JSME JavaScript library not found at: `{jsme_dir}`\n\n"
             "The JSME distribution should contain a `jsme` subdirectory with the JavaScript files.\n\n"
             "**To fix this:**\n"
             "1. Download the complete JSME distribution from https://jsme-editor.github.io/\n"
@@ -409,7 +399,7 @@ def render_jsme_editor_local(
     jsme_js = jsme_dir / "jsme.nocache.js"
     if not jsme_js.exists():
         st.error(
-            f"❌ JSME main JavaScript file not found: `{jsme_js}`\n\n"
+            f"JSME main JavaScript file not found: `{jsme_js}`\n\n"
             "The `jsme` directory exists but is missing `jsme.nocache.js`.\n"
             "Please re-download and extract the complete JSME distribution."
         )
@@ -430,19 +420,13 @@ def render_jsme_editor_local(
     # relative to the served root (jsme_root)
     iframe_url = f"{base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
 
-    st.write(f"🌐 **Server Info:**")
-    st.write(f"- HTTP Server: `{base_url}`")
-    st.write(f"- Wrapper path: `{wrapper_path}`")
-    st.write(f"- Wrapper exists: {wrapper_path.exists()}")
-    st.write(f"- iframe URL: `{iframe_url}`")
-
     # Test if server is responding
     import urllib.request
     try:
         with urllib.request.urlopen(iframe_url, timeout=2) as response:
-            st.write(f"✅ **Server is responding** (status {response.status})")
+            st.write(f"**JSME Server is responding**")
     except Exception as e:
-        st.error(f"❌ **Server test failed**: {type(e).__name__}: {e}")
+        st.error(f"**Server test failed**: {type(e).__name__}: {e}")
         st.write("**Troubleshooting:**")
         st.write("- The HTTP server may not have started correctly")
         st.write("- Port 8765 might be in use by another process")
