@@ -1079,6 +1079,8 @@ with tab_chem:
         with st.expander("Relevant Content", expanded=False):
             relevant = cc_data.get("relevant_content", [])
             if relevant:
+                # Add scrollable container with max height
+                st.markdown('<div style="max-height: 600px; overflow-y: auto; padding-right: 10px;">', unsafe_allow_html=True)
                 # Build lookup maps for figures and tables by normalised ID.
                 # Use the figures_tables directory directly so that items
                 # removed by filtering are still available for rendering.
@@ -1143,8 +1145,7 @@ with tab_chem:
                                 st_image_auto(str(_fpath), full_width=True)
                                 _matched_fig = True
                                 break
-                        if not _matched_fig and _src_id:
-                            st.caption(f"(Referenced figure not found: {item_rc.get('source_id', '')})")
+                        # Suppress "not found" message - item may have been filtered intentionally
 
                     # Display the referenced table if available
                     if _src_type in ("table",):
@@ -1167,13 +1168,15 @@ with tab_chem:
                                     st.code(_tpath.read_text(errors="ignore")[:20000])
                                 _matched_tbl = True
                                 break
-                        if not _matched_tbl and _src_id:
-                            st.caption(f"(Referenced table not found: {item_rc.get('source_id', '')})")
+                        # Suppress "not found" message - item may have been filtered intentionally
 
                     if item_rc.get("excerpt"):
-                        st.text(item_rc["excerpt"][:500])
+                        # Use markdown for better text wrapping (no horizontal scrolling)
+                        st.markdown(f"<div style='white-space: pre-wrap; word-wrap: break-word;'>{item_rc['excerpt'][:500]}</div>", unsafe_allow_html=True)
                     if i < len(relevant) - 1:
                         st.divider()
+                # Close scrollable container
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("No relevant content identified.")
 
@@ -1375,12 +1378,13 @@ with tab_intervene:
         st.info("Select a figure above to view intervention options.")
     else:
       # Use expanders instead of tabs for better organization
-      # Always show the source image so the user can see what they're working with
-      st.markdown("**Source image:**")
-      st_image_auto(str(item.source_image), full_width=True)
-
-      with st.expander("Cropping", expanded=False):
+      with st.expander("Cropping", expanded=True):
         st.subheader("Crop & extract data from sub-regions")
+
+        # Show source image for reference
+        st.markdown("**Source image:**")
+        st_image_auto(str(item.source_image), full_width=True)
+        st.divider()
 
         pil_img = Image.open(item.source_image).convert("RGB")
         orig_w, orig_h = pil_img.size
