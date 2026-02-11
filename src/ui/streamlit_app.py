@@ -1025,51 +1025,15 @@ with tab_chem:
 
     _cc_safe = doi_to_safe(selected_doi)
 
-    # --- Sub-tabs within Chemical Composition ---
-    sub_cc_results, sub_cc_draw, sub_cc_run_tab = st.tabs(
-        ["Extracted Results", "Draw Chemical Structure", "Run Extraction"]
-    )
+    # Show previously extracted results if they exist
+    cc_json_path = doi_item.extra.get("chemical_composition_json")
+    cc_csv_path = doi_item.extra.get("chemical_composition_csv")
 
-    with sub_cc_results:
-        # Show previously extracted results if they exist
-        cc_json_path = doi_item.extra.get("chemical_composition_json")
-        cc_csv_path = doi_item.extra.get("chemical_composition_csv")
+    if cc_json_path and Path(cc_json_path).exists():
+        cc_data = json.loads(Path(cc_json_path).read_text())
 
-        if cc_json_path and Path(cc_json_path).exists():
-            cc_data = json.loads(Path(cc_json_path).read_text())
-
-            # --- Relevant content ---
-            with st.expander("Relevant content", expanded=False):
-                relevant = cc_data.get("relevant_content", [])
-                if relevant:
-                    for i, item_rc in enumerate(relevant):
-                        st.markdown(
-                            f"**{item_rc.get('source_type', '')}** — "
-                            f"{item_rc.get('source_id', '')}"
-                        )
-                        # Show relevance as wrapped text instead of single-line caption
-                        _rel_text = item_rc.get("relevance", "")
-                        if _rel_text:
-                            st.markdown(f"_{_rel_text}_")
-                        # Display the referenced figure/scheme image if available
-                        if item_rc.get("source_type", "").lower() in ("figure/scheme", "figure", "scheme"):
-                            _src_id = item_rc.get("source_id", "").lower().replace(" ", "")
-                            for _fig in doi_item.figures:
-                                _fig_id_norm = _fig.id.lower().replace(" ", "").replace("_", "")
-                                if _src_id and (_src_id in _fig_id_norm or _fig_id_norm in _src_id):
-                                    if _fig.figure_path and _fig.figure_path.exists():
-                                        st_image_auto(str(_fig.figure_path), full_width=True)
-                                    break
-                        if item_rc.get("excerpt"):
-                            # Show excerpt as wrapped text block
-                            st.text(item_rc["excerpt"][:500])
-                        if i < len(relevant) - 1:
-                            st.divider()
-                else:
-                    st.info("No relevant content identified.")
-
-            # --- Samples table ---
-            st.markdown("#### Extracted Samples & Compositions")
+        # --- Samples table ---
+        with st.expander("Extracted Samples & Compositions", expanded=True):
             if cc_csv_path and Path(cc_csv_path).exists():
                 try:
                     df_cc = pd.read_csv(cc_csv_path)
@@ -1111,39 +1075,138 @@ with tab_chem:
                 else:
                     st.info("No samples extracted.")
 
-            # --- Drawn structures ---
-            st.markdown("#### User-Drawn Structures")
-            drawn = load_drawn_structures(rr.run_dir, _cc_safe)
-            if drawn:
-                for idx, ds in enumerate(drawn):
-                    cols = st.columns([3, 2, 1])
-                    with cols[0]:
-                        st.markdown(f"**{ds.get('sample_name', 'Unnamed')}**")
-                        if ds.get("smiles"):
-                            st.code(ds["smiles"], language=None)
-                    with cols[1]:
-                        if ds.get("notes"):
-                            st.caption(ds["notes"])
-                    with cols[2]:
-                        if st.button("Delete", key=f"del_drawn_{_cc_safe}_{idx}"):
-                            delete_drawn_structure(rr.run_dir, _cc_safe, idx)
-                            st.rerun()
+        # --- Relevant content (with full table/figure rendering) ---
+        with st.expander("Relevant Content", expanded=False):
+            relevant = cc_data.get("relevant_content", [])
+            if relevant:
+                # Build lookup maps for figures and tables by normalised ID.
+                # Use the figures_tables directory directly so that items
+                # removed by filtering are still available for rendering.
+                _rc_figures_dir = rr.run_dir / "figures_tables" / "figures" / _cc_safe
+                _rc_tables_dir = rr.run_dir / "figures_tables" / "tables" / _cc_safe
+
+                # Gather all figure image paths (including those that may have been filtered away)
+                _rc_all_fig_paths: dict[str, Path] = {}
+                if _rc_figures_dir.exists():
+                    for _fp in _rc_figures_dir.iterdir():
+                        if _fp.is_file() and _fp.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                            _rc_all_fig_paths[_fp.stem.lower().replace(" ", "").replace("_", "")] = _fp
+
+                # Also include figures already loaded on the DOI item
+                for _fig in doi_item.figures:
+                    if _fig.figure_path and _fig.figure_path.exists():
+                        _rc_all_fig_paths[_fig.id.lower().replace(" ", "").replace("_", "")] = _fig.figure_path
+
+                # Gather all table file paths (including those that may have been filtered away)
+                _rc_all_table_paths: dict[str, Path] = {}
+                _rc_all_table_captions: dict[str, str] = {}
+                if _rc_tables_dir.exists():
+                    for _tp in _rc_tables_dir.iterdir():
+                        if _tp.is_file() and not _tp.name.endswith("_metadata.json"):
+                            _norm_id = _tp.stem.lower().replace(" ", "").replace("_", "")
+                            _rc_all_table_paths[_norm_id] = _tp
+                            # Try to load caption from sidecar metadata
+                            _meta_p = _tp.with_name(_tp.stem + "_metadata.json")
+                            if _meta_p.exists():
+                                try:
+                                    _rc_all_table_captions[_norm_id] = json.loads(_meta_p.read_text()).get("caption", "")
+                                except Exception:
+                                    pass
+
+                # Also include tables already loaded on the DOI item
+                for _tbl in doi_item.tables:
+                    _norm_id = _tbl.id.lower().replace(" ", "").replace("_", "")
+                    if _tbl.table_path and _tbl.table_path.exists():
+                        _rc_all_table_paths[_norm_id] = _tbl.table_path
+                    if _tbl.caption:
+                        _rc_all_table_captions[_norm_id] = _tbl.caption
+
+                for i, item_rc in enumerate(relevant):
+                    st.markdown(
+                        f"**{item_rc.get('source_type', '')}** — "
+                        f"{item_rc.get('source_id', '')}"
+                    )
+                    # Show relevance as wrapped text
+                    _rel_text = item_rc.get("relevance", "")
+                    if _rel_text:
+                        st.markdown(f"_{_rel_text}_")
+
+                    _src_type = item_rc.get("source_type", "").lower()
+                    _src_id = item_rc.get("source_id", "").lower().replace(" ", "")
+                    _src_id_norm = _src_id.replace("_", "")
+
+                    # Display the referenced figure/scheme image if available
+                    if _src_type in ("figure/scheme", "figure", "scheme"):
+                        _matched_fig = False
+                        for _fkey, _fpath in _rc_all_fig_paths.items():
+                            if _src_id_norm and (_src_id_norm in _fkey or _fkey in _src_id_norm):
+                                st_image_auto(str(_fpath), full_width=True)
+                                _matched_fig = True
+                                break
+                        if not _matched_fig and _src_id:
+                            st.caption(f"(Referenced figure not found: {item_rc.get('source_id', '')})")
+
+                    # Display the referenced table if available
+                    if _src_type in ("table",):
+                        _matched_tbl = False
+                        for _tkey, _tpath in _rc_all_table_paths.items():
+                            if _src_id_norm and (_src_id_norm in _tkey or _tkey in _src_id_norm):
+                                _tbl_caption = _rc_all_table_captions.get(_tkey, "")
+                                if _tbl_caption:
+                                    st.caption(_tbl_caption)
+                                _suf = _tpath.suffix.lower()
+                                if _suf in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+                                    st_image_auto(str(_tpath), full_width=True)
+                                elif _suf == ".csv":
+                                    try:
+                                        _tdf = pd.read_csv(_tpath)
+                                        st.dataframe(_tdf, use_container_width=True, hide_index=True)
+                                    except Exception:
+                                        st.code(_tpath.read_text(errors="ignore")[:20000])
+                                else:
+                                    st.code(_tpath.read_text(errors="ignore")[:20000])
+                                _matched_tbl = True
+                                break
+                        if not _matched_tbl and _src_id:
+                            st.caption(f"(Referenced table not found: {item_rc.get('source_id', '')})")
+
+                    if item_rc.get("excerpt"):
+                        st.text(item_rc["excerpt"][:500])
+                    if i < len(relevant) - 1:
+                        st.divider()
             else:
-                st.info("No user-drawn structures saved yet. Use the 'Draw Chemical Structure' tab.")
+                st.info("No relevant content identified.")
 
+    else:
+        st.info(
+            "No chemical composition data found for this DOI.\n\n"
+            "Enable **Extract chemical composition** in the sidebar and re-run, "
+            "or use the **Run Extraction** dropdown below to extract on demand."
+        )
+
+    # --- User-Drawn Structures ---
+    with st.expander("User-Drawn Structures", expanded=False):
+        drawn = load_drawn_structures(rr.run_dir, _cc_safe)
+        if drawn:
+            for idx, ds in enumerate(drawn):
+                cols = st.columns([3, 2, 1])
+                with cols[0]:
+                    st.markdown(f"**{ds.get('sample_name', 'Unnamed')}**")
+                    if ds.get("smiles"):
+                        st.code(ds["smiles"], language=None)
+                with cols[1]:
+                    if ds.get("notes"):
+                        st.caption(ds["notes"])
+                with cols[2]:
+                    if st.button("Delete", key=f"del_drawn_{_cc_safe}_{idx}"):
+                        delete_drawn_structure(rr.run_dir, _cc_safe, idx)
+                        st.rerun()
         else:
-            st.info(
-                "No chemical composition data found for this DOI.\n\n"
-                "Enable **Extract chemical composition** in the sidebar and re-run, "
-                "or use the **Run Extraction** tab to extract on demand."
-            )
+            st.info("No user-drawn structures saved yet. Use the drawing tool below.")
 
-    with sub_cc_draw:
-
-        st.markdown("#### Chemical Structure Drawing Tool")
-
+    # --- Chemical Structure Drawing Tool ---
+    with st.expander("Draw Chemical Structure", expanded=False):
         render_jsme_editor_local(height=550, key=f"jsme_{_cc_safe}")
-
 
         st.divider()
         st.markdown("#### Save Drawn Structure")
@@ -1178,8 +1241,8 @@ with tab_chem:
                 st.success(f"Saved structure for '{draw_sample_name.strip()}'")
                 st.rerun()
 
-    with sub_cc_run_tab:
-        st.markdown("#### Run Chemical Composition Extraction")
+    # --- Run Extraction ---
+    with st.expander("Run Extraction", expanded=False):
         st.caption(
             "Run the LLM-based extraction on demand for this DOI. "
             "This will analyse the parsed text, tables, and figure captions "
@@ -1312,6 +1375,10 @@ with tab_intervene:
         st.info("Select a figure above to view intervention options.")
     else:
       # Use expanders instead of tabs for better organization
+      # Always show the source image so the user can see what they're working with
+      st.markdown("**Source image:**")
+      st_image_auto(str(item.source_image), full_width=True)
+
       with st.expander("Cropping", expanded=False):
         st.subheader("Crop & extract data from sub-regions")
 
@@ -1493,13 +1560,10 @@ with tab_intervene:
                     if "series_label" in _fdf.columns:
                         for _sl in _fdf["series_label"].dropna().unique():
                             _sl_str = str(_sl).strip()
-                            # series_label is often "Series 0" or "0" or actual name
-                            # Try to parse index from numeric labels
                             try:
                                 _si = int(_sl_str)
                                 _plextract_series_labels[_si] = _sl_str
                             except ValueError:
-                                # Non-numeric label - try to match by position
                                 _idx = len(_plextract_series_labels)
                                 _plextract_series_labels[_idx] = _sl_str
                 except Exception:
@@ -1513,52 +1577,6 @@ with tab_intervene:
                     return _plextract_series_labels[idx]
                 return f"Series {idx}"
 
-            # ---- Rename / delete section ----
-            st.write("**Rename or delete** each series below.")
-
-            new_names = {}
-            new_deleted = set(deleted)
-
-            for s in sorted(series_items, key=lambda x: x.series_index):
-                i = s.series_index
-                color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
-                hex_color = "#{:02x}{:02x}{:02x}".format(*color)
-                cols = st.columns([0.5, 3, 1])
-                with cols[0]:
-                    st.markdown(
-                        f'<span style="color:{hex_color}; font-size:1.4em; font-weight:bold;">&#9632;</span>',
-                        unsafe_allow_html=True,
-                    )
-                with cols[1]:
-                    default_name = _display_name(i)
-                    new_names[str(i)] = st.text_input(
-                        f"Name for series {i}",
-                        value=default_name,
-                        key=f"series_name_{item.safe_doi}_{item.figure_id}_{i}",
-                        label_visibility="collapsed",
-                    )
-                with cols[2]:
-                    del_flag = st.checkbox(
-                        "Delete",
-                        value=(i in new_deleted),
-                        key=f"series_del_{item.safe_doi}_{item.figure_id}_{i}",
-                    )
-                    if del_flag:
-                        new_deleted.add(i)
-                    else:
-                        new_deleted.discard(i)
-
-            if st.button("Save series mapping", type="primary"):
-                mapping2 = {
-                    "series_names": new_names,
-                    "deleted": sorted(list(new_deleted)),
-                }
-                p = save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping2)
-                st.success(f"Saved mapping: {p}")
-                st.rerun()
-
-            st.divider()
-
             # ---- Generate colored series masks composite ----
             base_img_rgb = Image.open(item.source_image).convert("RGBA")
             w, h = base_img_rgb.size
@@ -1567,6 +1585,7 @@ with tab_intervene:
 
             # Build colored overlay for all existing series
             overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            _legend_lines = []
             for s in sorted(series_items, key=lambda x: x.series_index):
                 i = s.series_index
                 if i in deleted:
@@ -1581,12 +1600,18 @@ with tab_intervene:
                     overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
                 except Exception:
                     pass
+                _hex_c = "#{:02x}{:02x}{:02x}".format(*color)
+                _legend_lines.append(f'<span style="color:{_hex_c}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
 
             composite_full = Image.alpha_composite(base_img_rgb, overlay).convert("RGB")
             composite_disp = composite_full.resize((disp_w, disp_h))
 
-            # ---- Unified drawing interface for edit/create ----
+            # ---- Edit or Create Series Mask ----
             st.write("**Edit or Create Series Mask**")
+
+            # Show the colored composite with legend
+            if _legend_lines:
+                st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
 
             # Choose mode: edit existing or create new
             active_series = [s for s in series_items if s.series_index not in deleted]
@@ -1610,7 +1635,6 @@ with tab_intervene:
                     value=f"Series {next_idx}",
                     key=f"new_series_name_{item.safe_doi}_{item.figure_id}",
                 )
-                # For new series, no current mask to show
                 cur_mask_img = None
             else:
                 if not active_series:
@@ -1672,7 +1696,6 @@ with tab_intervene:
                 # Build new mask from canvas strokes
                 if mask_canvas.image_data is not None:
                     rgba = mask_canvas.image_data.astype(np.uint8)
-                    # Extract pixels matching the selected color (with some tolerance)
                     r, g, b = sel_color
                     color_match = (
                         (np.abs(rgba[..., 0].astype(int) - r) < 30) &
@@ -1693,14 +1716,12 @@ with tab_intervene:
                                 outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, selected_idx, new_mask_pil)
 
                                 if is_creating:
-                                    # Update mapping with the new series name
                                     mapping_updated = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
                                     if "series_names" not in mapping_updated:
                                         mapping_updated["series_names"] = {}
                                     mapping_updated["series_names"][str(selected_idx)] = series_name
                                     save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping_updated)
 
-                                    # Calculate centroid for the new series
                                     mask_arr = np.array(new_mask_pil)
                                     y_coords, x_coords = np.where(mask_arr > 0)
                                     if len(x_coords) > 0:
@@ -1709,7 +1730,6 @@ with tab_intervene:
                                     else:
                                         centroid_x, centroid_y = 0.0, 0.0
 
-                                    # Add new series to the catalog
                                     from intervention import SeriesItem
                                     new_series = SeriesItem(
                                         series_index=selected_idx,
@@ -1721,7 +1741,6 @@ with tab_intervene:
                                 else:
                                     st.success(f"Saved override mask for {series_name}")
 
-                                # Update the series catalog override
                                 override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
                                 write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks_updated)
                                 st.rerun()
@@ -1729,32 +1748,51 @@ with tab_intervene:
                             if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
                                 st.rerun()
 
-      with st.expander("View colored series masks", expanded=False):
-        base_img = Image.open(item.source_image).convert("RGBA")
-        overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+            st.divider()
 
-        legend_lines = []
-        for s in sorted(series_items, key=lambda x: x.series_index):
-            i = s.series_index
-            if i in deleted:
-                continue
-            color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
-            mask_path = override_masks.get(i, s.mask_path)
-            try:
-                mask = Image.open(mask_path).convert("L").resize(base_img.size, Image.NEAREST)
-                mask_arr = np.array(mask)
-                color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
-                color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
-                overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
-            except Exception:
-                pass
-            hex_color = "#{:02x}{:02x}{:02x}".format(*color)
-            legend_lines.append(f'<span style="color:{hex_color}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
+            # ---- Rename / delete section ----
+            st.write("**Rename or delete** each series below.")
 
-        composite = Image.alpha_composite(base_img, overlay).convert("RGB")
-        st_image_auto(composite, full_width=True)
-        if legend_lines:
-            st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
+            new_names = {}
+            new_deleted = set(deleted)
+
+            for s in sorted(series_items, key=lambda x: x.series_index):
+                i = s.series_index
+                color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
+                hex_color = "#{:02x}{:02x}{:02x}".format(*color)
+                cols = st.columns([0.5, 3, 1])
+                with cols[0]:
+                    st.markdown(
+                        f'<span style="color:{hex_color}; font-size:1.4em; font-weight:bold;">&#9632;</span>',
+                        unsafe_allow_html=True,
+                    )
+                with cols[1]:
+                    default_name = _display_name(i)
+                    new_names[str(i)] = st.text_input(
+                        f"Name for series {i}",
+                        value=default_name,
+                        key=f"series_name_{item.safe_doi}_{item.figure_id}_{i}",
+                        label_visibility="collapsed",
+                    )
+                with cols[2]:
+                    del_flag = st.checkbox(
+                        "Delete",
+                        value=(i in new_deleted),
+                        key=f"series_del_{item.safe_doi}_{item.figure_id}_{i}",
+                    )
+                    if del_flag:
+                        new_deleted.add(i)
+                    else:
+                        new_deleted.discard(i)
+
+            if st.button("Save series mapping", type="primary"):
+                mapping2 = {
+                    "series_names": new_names,
+                    "deleted": sorted(list(new_deleted)),
+                }
+                p = save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping2)
+                st.success(f"Saved mapping: {p}")
+                st.rerun()
 
       with st.expander("Rerun Figure Data Extraction", expanded=False):
         st.write("This will apply your mask overrides and re-extract data from the figure.")
