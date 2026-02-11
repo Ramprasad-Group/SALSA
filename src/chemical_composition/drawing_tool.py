@@ -25,6 +25,7 @@ from typing import Optional
 
 import streamlit.components.v1 as components
 import streamlit as st
+import sys
 
 # ---------------------------------------------------------------------------
 # JSME-based HTML component
@@ -205,8 +206,6 @@ def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int =
             super().__init__(*args, directory=str(static_root), **kwargs)
         def log_message(self, format, *args):
             # Log to stderr for debugging
-            import sys
-            print(f"[HTTP] {format % args}", file=sys.stderr)
 
     try:
         httpd = ThreadingHTTPServer((host, port), Handler)
