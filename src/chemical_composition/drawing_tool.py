@@ -17,6 +17,15 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 import streamlit.components.v1 as components
 
+import socket
+import threading
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from pathlib import Path
+from typing import Optional
+
+import streamlit.components.v1 as components
+import streamlit as st
+
 # ---------------------------------------------------------------------------
 # JSME-based HTML component
 # ---------------------------------------------------------------------------
@@ -26,8 +35,8 @@ _JSME_HTML = """\
 <html>
 <head>
 <meta charset="utf-8"/>
-<base href="https://cdn.jsdelivr.net/npm/jsme-editor@2024.8.4/jsme/"/>
-<script src="https://cdn.jsdelivr.net/npm/jsme-editor@2024.8.4/jsme/jsme.nocache.js"></script>
+<base href="{jsme_base_url}/jsme/"/>
+<script src="{jsme_base_url}/jsme/jsme.nocache.js"></script>
 <style>
   * {{ box-sizing: border-box; }}
   body {{ margin: 0; padding: 0; font-family: sans-serif; }}
@@ -183,3 +192,175 @@ def delete_drawn_structure(run_dir: Path, safe_doi: str, index: int) -> None:
         structures.pop(index)
         path = run_dir / "chemical_composition" / safe_doi / "drawn_structures.json"
         path.write_text(json.dumps(structures, indent=2, ensure_ascii=False))
+
+
+# ---------- Static server (serves your local JSME folder) ----------
+
+@st.cache_resource(show_spinner=False)
+def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int = 8765) -> str:
+    static_root = static_root.resolve()
+
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(static_root), **kwargs)
+        def log_message(self, format, *args):
+            return
+
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+
+    return f"http://{host}:{port}"
+
+
+
+# ---------- Wrapper HTML (lives in-memory, but loaded by iframe URL) ----------
+
+def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Path:
+    """
+    Create a wrapper HTML file that loads JSME from jsme_base_url and provides buttons.
+    We write it to a temp dir *inside the served root* so iframe can load it.
+    """
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    wrapper_path = tmp_dir / "jsme_wrapper.html"
+
+    editor_height = max(height - 90, 350)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JSME</title>
+
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; padding: 0; font-family: sans-serif; }}
+  #editor-wrapper {{ width: 100%; }}
+  #jsme_container {{ width: 100%; height: {editor_height}px; border: 1px solid #ccc; }}
+  .toolbar {{
+    display: flex; gap: 8px; padding: 8px 4px; background: #f5f5f5;
+    border-bottom: 1px solid #ddd; align-items: center; flex-wrap: wrap;
+  }}
+  .toolbar button {{
+    padding: 6px 16px; border: 1px solid #999; border-radius: 4px;
+    background: #fff; cursor: pointer; font-size: 14px;
+  }}
+  .toolbar button.primary {{
+    background: #1976d2; color: #fff; border-color: #1565c0;
+  }}
+  .toolbar .info {{ font-size: 13px; color: #555; margin-left: auto; }}
+  #output-area {{
+    font-family: monospace; font-size: 13px; padding: 8px;
+    background: #fafafa; border-top: 1px solid #ddd;
+    min-height: 28px; word-break: break-all; white-space: pre-wrap;
+  }}
+</style>
+
+<script>
+  var jsmeApp = null;
+
+  function setStatus(msg) {{
+    var out = document.getElementById('output-area');
+    if (out) out.textContent = msg;
+  }}
+
+  function initJSME() {{
+    var container = document.getElementById('jsme_container');
+    if (!container) {{
+      setStatus("DOM missing #jsme_container");
+      return;
+    }}
+    var w = container.offsetWidth || 700;
+    try {{
+      jsmeApp = new JSApplet.JSME("jsme_container", w + "px", "{editor_height}px", {{
+        "options": "query,hydrogens,multipart"
+      }});
+      setStatus("JSME ready. Draw, then click Get SMILES.");
+    }} catch (e) {{
+      setStatus("JSME init error: " + (e && e.message ? e.message : e));
+    }}
+  }}
+
+  function jsmeOnLoad() {{
+    if (document.readyState === "loading") {{
+      document.addEventListener("DOMContentLoaded", initJSME);
+    }} else {{
+      initJSME();
+    }}
+  }}
+
+  function getSMILES() {{
+    if (!jsmeApp) {{ setStatus("Editor not ready"); return; }}
+    var smiles = jsmeApp.smiles();
+    setStatus("SMILES: " + (smiles || "(empty)"));
+  }}
+
+  function getMolfile() {{
+    if (!jsmeApp) {{ setStatus("Editor not ready"); return; }}
+    var mol = jsmeApp.molFile();
+    setStatus("Molfile (" + mol.length + " chars):\\n" + mol);
+  }}
+
+  function clearEditor() {{
+    if (jsmeApp) jsmeApp.reset();
+    setStatus("Cleared. Draw, then click Get SMILES.");
+  }}
+</script>
+</head>
+
+<body>
+<div id="editor-wrapper">
+  <div class="toolbar">
+    <button class="primary" onclick="getSMILES()">Get SMILES</button>
+    <button onclick="getMolfile()">Get Molfile</button>
+    <button onclick="clearEditor()">Clear</button>
+    <span class="info">Draw your chemical structure below</span>
+  </div>
+
+  <div id="jsme_container"></div>
+  <div id="output-area">Loading JSME…</div>
+</div>
+
+<!-- IMPORTANT: load local JSME AFTER DOM -->
+<script src="{jsme_base_url}/jsme.nocache.js"></script>
+</body>
+</html>
+"""
+    wrapper_path.write_text(html, encoding="utf-8")
+    return wrapper_path
+
+
+def render_jsme_editor_local(
+    height: int = 550,
+    key: str = "jsme_editor",
+) -> None:
+    """
+    Render a locally vendored JSME distribution located at:
+      src/chemical_composition/JSME_2024-04-29
+
+    Uses a local HTTP server + iframe so JSME can load its companion files.
+    """
+    # This file lives in src/chemical_composition/
+    here = Path(__file__).resolve().parent
+    jsme_root = here / "JSME_2024-04-29"
+    jsme_dir = jsme_root / "jsme"
+
+    if not jsme_dir.exists():
+        st.error(f"JSME folder not found: {jsme_dir}")
+        return
+
+    # Serve *the JSME folder itself*
+    base_url = _start_static_server(jsme_root, host="127.0.0.1", port=8765)
+
+    # Write wrapper HTML into a temp dir INSIDE the served root
+    wrapper_dir = jsme_dir / "_streamlit_wrapper"
+    wrapper_path = _write_jsme_wrapper(
+        wrapper_dir,
+        jsme_base_url=base_url,
+        height=height,
+    )
+
+    # iframe URL (relative to served root)
+    iframe_url = f"{base_url}/_streamlit_wrapper/{wrapper_path.name}"
+
+    components.iframe(iframe_url, height=height, scrolling=True)
