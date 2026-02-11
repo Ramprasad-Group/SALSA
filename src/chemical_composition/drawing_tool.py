@@ -254,6 +254,10 @@ def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Pa
     background: #fafafa; border-top: 1px solid #ddd;
     min-height: 28px; word-break: break-all; white-space: pre-wrap;
   }}
+  .loading-step {{
+    color: #1976d2;
+    font-weight: 500;
+  }}
 </style>
 
 <script>
@@ -264,10 +268,16 @@ def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Pa
     if (out) out.textContent = msg;
   }}
 
+  // Loading progress tracking
+  document.addEventListener('DOMContentLoaded', function() {{
+    setStatus("Step 1/3: DOM ready, preparing container...");
+  }});
+
   function initJSME() {{
+    setStatus("Step 2/3: Initializing JSME editor...");
     var container = document.getElementById('jsme_container');
     if (!container) {{
-      setStatus("DOM missing #jsme_container");
+      setStatus("Error: DOM missing #jsme_container");
       return;
     }}
     var w = container.offsetWidth || 700;
@@ -275,13 +285,14 @@ def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Pa
       jsmeApp = new JSApplet.JSME("jsme_container", w + "px", "{editor_height}px", {{
         "options": "query,hydrogens,multipart"
       }});
-      setStatus("JSME ready. Draw, then click Get SMILES.");
+      setStatus("Step 3/3: JSME ready! Draw your structure, then click Get SMILES.");
     }} catch (e) {{
-      setStatus("JSME init error: " + (e && e.message ? e.message : e));
+      setStatus("JSME initialization error: " + (e && e.message ? e.message : e));
     }}
   }}
 
   function jsmeOnLoad() {{
+    setStatus("Step 2/3: JSME library loaded, creating editor...");
     if (document.readyState === "loading") {{
       document.addEventListener("DOMContentLoaded", initJSME);
     }} else {{
@@ -290,20 +301,20 @@ def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Pa
   }}
 
   function getSMILES() {{
-    if (!jsmeApp) {{ setStatus("Editor not ready"); return; }}
+    if (!jsmeApp) {{ setStatus("Editor not ready yet, please wait..."); return; }}
     var smiles = jsmeApp.smiles();
     setStatus("SMILES: " + (smiles || "(empty)"));
   }}
 
   function getMolfile() {{
-    if (!jsmeApp) {{ setStatus("Editor not ready"); return; }}
+    if (!jsmeApp) {{ setStatus("Editor not ready yet, please wait..."); return; }}
     var mol = jsmeApp.molFile();
     setStatus("Molfile (" + mol.length + " chars):\\n" + mol);
   }}
 
   function clearEditor() {{
     if (jsmeApp) jsmeApp.reset();
-    setStatus("Cleared. Draw, then click Get SMILES.");
+    setStatus("Cleared. Draw your structure, then click Get SMILES.");
   }}
 </script>
 </head>
@@ -318,11 +329,11 @@ def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Pa
   </div>
 
   <div id="jsme_container"></div>
-  <div id="output-area">Loading JSME…</div>
+  <div id="output-area" class="loading-step">Step 1/3: Loading JSME library...</div>
 </div>
 
 <!-- IMPORTANT: load local JSME AFTER DOM -->
-<script src="{jsme_base_url}/jsme.nocache.js"></script>
+<script src="{jsme_base_url}/jsme/jsme.nocache.js"></script>
 </body>
 </html>
 """
@@ -345,11 +356,48 @@ def render_jsme_editor_local(
     jsme_root = here / "JSME_2024-04-29"
     jsme_dir = jsme_root / "jsme"
 
-    if not jsme_dir.exists():
-        st.error(f"JSME folder not found: {jsme_dir}")
+    # Check if JSME root directory exists
+    if not jsme_root.exists():
+        st.error(
+            f"❌ JSME distribution folder not found at: `{jsme_root}`\n\n"
+            "Please download JSME from https://jsme-editor.github.io/ and extract it to:\n"
+            f"`{jsme_root}`"
+        )
         return
 
-    # Serve *the JSME folder itself*
+    # Check if jsme subdirectory exists (contains the actual JavaScript files)
+    if not jsme_dir.exists():
+        st.error(
+            f"❌ JSME JavaScript library not found at: `{jsme_dir}`\n\n"
+            "The JSME distribution should contain a `jsme` subdirectory with the JavaScript files.\n\n"
+            "**To fix this:**\n"
+            "1. Download the complete JSME distribution from https://jsme-editor.github.io/\n"
+            "2. Extract the archive - you should see:\n"
+            "   - `jsme/` directory (contains JavaScript files)\n"
+            "   - `JSME_minimal.html` and other example files\n"
+            f"3. Place the extracted contents in: `{jsme_root}`\n\n"
+            f"**Current contents of `{jsme_root}`:**"
+        )
+        if jsme_root.exists():
+            try:
+                contents = sorted([p.name for p in jsme_root.iterdir()])[:20]
+                st.code("\n".join(contents), language="text")
+                st.caption("(showing first 20 items)")
+            except Exception as e:
+                st.warning(f"Could not list directory contents: {e}")
+        return
+
+    # Check if jsme.nocache.js exists
+    jsme_js = jsme_dir / "jsme.nocache.js"
+    if not jsme_js.exists():
+        st.error(
+            f"❌ JSME main JavaScript file not found: `{jsme_js}`\n\n"
+            "The `jsme` directory exists but is missing `jsme.nocache.js`.\n"
+            "Please re-download and extract the complete JSME distribution."
+        )
+        return
+
+    # Serve *the JSME root folder* (which contains the jsme subdirectory)
     base_url = _start_static_server(jsme_root, host="127.0.0.1", port=8765)
 
     # Write wrapper HTML into a temp dir INSIDE the served root
@@ -360,7 +408,8 @@ def render_jsme_editor_local(
         height=height,
     )
 
-    # iframe URL (relative to served root)
-    iframe_url = f"{base_url}/_streamlit_wrapper/{wrapper_path.name}"
+    # iframe URL: the wrapper is at jsme/_streamlit_wrapper/jsme_wrapper.html
+    # relative to the served root (jsme_root)
+    iframe_url = f"{base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
 
     components.iframe(iframe_url, height=height, scrolling=True)
