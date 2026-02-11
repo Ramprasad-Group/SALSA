@@ -204,13 +204,24 @@ def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int =
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(static_root), **kwargs)
         def log_message(self, format, *args):
-            return
+            # Log to stderr for debugging
+            import sys
+            print(f"[HTTP] {format % args}", file=sys.stderr)
 
-    httpd = ThreadingHTTPServer((host, port), Handler)
-    t = threading.Thread(target=httpd.serve_forever, daemon=True)
-    t.start()
+    try:
+        httpd = ThreadingHTTPServer((host, port), Handler)
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
 
-    return f"http://{host}:{port}"
+        # Give server a moment to start
+        import time
+        time.sleep(0.1)
+
+        print(f"✅ Started HTTP server at http://{host}:{port} serving {static_root}", file=sys.stderr)
+        return f"http://{host}:{port}"
+    except Exception as e:
+        print(f"❌ Failed to start HTTP server: {e}", file=sys.stderr)
+        raise
 
 
 
@@ -423,6 +434,19 @@ def render_jsme_editor_local(
     st.write(f"🌐 **Server Info:**")
     st.write(f"- HTTP Server: `{base_url}`")
     st.write(f"- Wrapper path: `{wrapper_path}`")
+    st.write(f"- Wrapper exists: {wrapper_path.exists()}")
     st.write(f"- iframe URL: `{iframe_url}`")
+
+    # Test if server is responding
+    import urllib.request
+    try:
+        with urllib.request.urlopen(iframe_url, timeout=2) as response:
+            st.write(f"✅ **Server is responding** (status {response.status})")
+    except Exception as e:
+        st.error(f"❌ **Server test failed**: {type(e).__name__}: {e}")
+        st.write("**Troubleshooting:**")
+        st.write("- The HTTP server may not have started correctly")
+        st.write("- Port 8765 might be in use by another process")
+        st.write("- Try restarting the Streamlit app")
 
     components.iframe(iframe_url, height=height, scrolling=True)
