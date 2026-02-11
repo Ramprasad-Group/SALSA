@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -352,6 +353,59 @@ def run_chemical_composition_extraction(
     # --- persist ---
     out_dir = run_dir / "chemical_composition" / safe_doi
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Copy relevant figures and tables to output directory ---
+    # This ensures they're preserved even if later filtering removes them
+    figures_out_dir = out_dir / "figures"
+    tables_out_dir = out_dir / "tables"
+    figures_out_dir.mkdir(parents=True, exist_ok=True)
+    tables_out_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in relevant:
+        src_type = item.get("source_type", "").lower()
+        src_id = item.get("source_id", "").lower()
+
+        # Copy relevant figures/schemes
+        if src_type in ("figure/scheme", "figure", "scheme") and figures_dir and figures_dir.exists():
+            # Normalize source_id for matching
+            src_id_norm = src_id.replace(" ", "").replace("_", "")
+
+            # Find matching figure files
+            for fig_file in figures_dir.iterdir():
+                if fig_file.is_file() and fig_file.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                    fig_stem_norm = fig_file.stem.lower().replace(" ", "").replace("_", "")
+                    if src_id_norm and (src_id_norm in fig_stem_norm or fig_stem_norm in src_id_norm):
+                        # Copy the image file
+                        try:
+                            shutil.copy2(fig_file, figures_out_dir / fig_file.name)
+                            # Copy metadata if it exists
+                            meta_file = fig_file.with_name(fig_file.stem + "_metadata.json")
+                            if meta_file.exists():
+                                shutil.copy2(meta_file, figures_out_dir / meta_file.name)
+                        except Exception as e:
+                            print(f"[chemical_composition] WARNING: failed to copy {fig_file}: {e}")
+                        break
+
+        # Copy relevant tables
+        elif src_type == "table" and tables_dir and tables_dir.exists():
+            # Normalize source_id for matching
+            src_id_norm = src_id.replace(" ", "").replace("_", "")
+
+            # Find matching table files
+            for tbl_file in tables_dir.iterdir():
+                if tbl_file.is_file() and not tbl_file.name.endswith("_metadata.json"):
+                    tbl_stem_norm = tbl_file.stem.lower().replace(" ", "").replace("_", "")
+                    if src_id_norm and (src_id_norm in tbl_stem_norm or tbl_stem_norm in src_id_norm):
+                        # Copy the table file
+                        try:
+                            shutil.copy2(tbl_file, tables_out_dir / tbl_file.name)
+                            # Copy metadata if it exists
+                            meta_file = tbl_file.with_name(tbl_file.stem + "_metadata.json")
+                            if meta_file.exists():
+                                shutil.copy2(meta_file, tables_out_dir / meta_file.name)
+                        except Exception as e:
+                            print(f"[chemical_composition] WARNING: failed to copy {tbl_file}: {e}")
+                        break
 
     (out_dir / "relevant_content.json").write_text(
         json.dumps(relevant, indent=2, ensure_ascii=False)

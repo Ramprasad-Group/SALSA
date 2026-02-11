@@ -1091,26 +1091,41 @@ with tab_chem:
         with st.expander("Relevant Content", expanded=False):
             relevant = cc_data.get("relevant_content", [])
             if relevant:
+                # First priority: chemical_composition directory (preserved copies)
+                _rc_chem_figures_dir = rr.run_dir / "chemical_composition" / _cc_safe / "figures"
+                _rc_chem_tables_dir = rr.run_dir / "chemical_composition" / _cc_safe / "tables"
+                # Fallback: figures_tables directory (may have been filtered)
                 _rc_figures_dir = rr.run_dir / "figures_tables" / "figures" / _cc_safe
                 _rc_tables_dir = rr.run_dir / "figures_tables" / "tables" / _cc_safe
 
-                # Gather all figure image paths (including those that may have been filtered away)
+                # Gather all figure image paths (prioritizing chemical_composition directory)
                 _rc_all_fig_paths: dict[str, Path] = {}
+                # First, check chemical_composition directory
+                if _rc_chem_figures_dir.exists():
+                    for _fp in _rc_chem_figures_dir.iterdir():
+                        if _fp.is_file() and _fp.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                            _rc_all_fig_paths[_fp.stem.lower().replace(" ", "").replace("_", "")] = _fp
+                # Then, add from figures_tables (if not already present)
                 if _rc_figures_dir.exists():
                     for _fp in _rc_figures_dir.iterdir():
                         if _fp.is_file() and _fp.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
-                            _rc_all_fig_paths[_fp.stem.lower().replace(" ", "").replace("_", "")] = _fp
+                            _norm_key = _fp.stem.lower().replace(" ", "").replace("_", "")
+                            if _norm_key not in _rc_all_fig_paths:
+                                _rc_all_fig_paths[_norm_key] = _fp
 
                 # Also include figures already loaded on the DOI item
                 for _fig in doi_item.figures:
                     if _fig.figure_path and _fig.figure_path.exists():
-                        _rc_all_fig_paths[_fig.id.lower().replace(" ", "").replace("_", "")] = _fig.figure_path
+                        _norm_key = _fig.id.lower().replace(" ", "").replace("_", "")
+                        if _norm_key not in _rc_all_fig_paths:
+                            _rc_all_fig_paths[_norm_key] = _fig.figure_path
 
-                # Gather all table file paths (including those that may have been filtered away)
+                # Gather all table file paths (prioritizing chemical_composition directory)
                 _rc_all_table_paths: dict[str, Path] = {}
                 _rc_all_table_captions: dict[str, str] = {}
-                if _rc_tables_dir.exists():
-                    for _tp in _rc_tables_dir.iterdir():
+                # First, check chemical_composition directory
+                if _rc_chem_tables_dir.exists():
+                    for _tp in _rc_chem_tables_dir.iterdir():
                         if _tp.is_file() and not _tp.name.endswith("_metadata.json"):
                             _norm_id = _tp.stem.lower().replace(" ", "").replace("_", "")
                             _rc_all_table_paths[_norm_id] = _tp
@@ -1121,13 +1136,28 @@ with tab_chem:
                                     _rc_all_table_captions[_norm_id] = json.loads(_meta_p.read_text()).get("caption", "")
                                 except Exception:
                                     pass
+                # Then, add from figures_tables (if not already present)
+                if _rc_tables_dir.exists():
+                    for _tp in _rc_tables_dir.iterdir():
+                        if _tp.is_file() and not _tp.name.endswith("_metadata.json"):
+                            _norm_id = _tp.stem.lower().replace(" ", "").replace("_", "")
+                            if _norm_id not in _rc_all_table_paths:
+                                _rc_all_table_paths[_norm_id] = _tp
+                                # Try to load caption from sidecar metadata
+                                _meta_p = _tp.with_name(_tp.stem + "_metadata.json")
+                                if _meta_p.exists():
+                                    try:
+                                        _rc_all_table_captions[_norm_id] = json.loads(_meta_p.read_text()).get("caption", "")
+                                    except Exception:
+                                        pass
 
                 # Also include tables already loaded on the DOI item
                 for _tbl in doi_item.tables:
                     _norm_id = _tbl.id.lower().replace(" ", "").replace("_", "")
                     if _tbl.table_path and _tbl.table_path.exists():
-                        _rc_all_table_paths[_norm_id] = _tbl.table_path
-                    if _tbl.caption:
+                        if _norm_id not in _rc_all_table_paths:
+                            _rc_all_table_paths[_norm_id] = _tbl.table_path
+                    if _tbl.caption and _norm_id not in _rc_all_table_captions:
                         _rc_all_table_captions[_norm_id] = _tbl.caption
 
                 for i, item_rc in enumerate(relevant):
