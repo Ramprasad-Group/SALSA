@@ -356,6 +356,14 @@ def render_jsme_editor_local(
     jsme_root = here / "JSME_2024-04-29"
     jsme_dir = jsme_root / "jsme"
 
+    # Debug output
+    st.write(f"🔍 **Debug Info:**")
+    st.write(f"- Script location: `{here}`")
+    st.write(f"- JSME root: `{jsme_root}`")
+    st.write(f"- JSME dir: `{jsme_dir}`")
+    st.write(f"- JSME root exists: {jsme_root.exists()}")
+    st.write(f"- JSME dir exists: {jsme_dir.exists()}")
+
     # Check if JSME root directory exists
     if not jsme_root.exists():
         st.error(
@@ -411,5 +419,10 @@ def render_jsme_editor_local(
     # iframe URL: the wrapper is at jsme/_streamlit_wrapper/jsme_wrapper.html
     # relative to the served root (jsme_root)
     iframe_url = f"{base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
+
+    st.write(f"🌐 **Server Info:**")
+    st.write(f"- HTTP Server: `{base_url}`")
+    st.write(f"- Wrapper path: `{wrapper_path}`")
+    st.write(f"- iframe URL: `{iframe_url}`")
 
     components.iframe(iframe_url, height=height, scrolling=True)
