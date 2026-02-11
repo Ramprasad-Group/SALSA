@@ -293,7 +293,7 @@ def _write_jsme_wrapper(tmp_dir: Path, *, jsme_base_url: str, height: int) -> Pa
       jsmeApp = new JSApplet.JSME("jsme_container", w + "px", "{editor_height}px", {{
         "options": "query,hydrogens,multipart"
       }});
-      setStatus("Step 3/3: JSME ready! Draw your structure, then click Get SMILES.");
+      setStatus("JSME ready! Draw your structure, then click Get SMILES.");
     }} catch (e) {{
       setStatus("JSME initialization error: " + (e && e.message ? e.message : e));
     }}

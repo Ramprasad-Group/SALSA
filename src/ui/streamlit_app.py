@@ -1039,7 +1039,7 @@ with tab_chem:
             cc_data = json.loads(Path(cc_json_path).read_text())
 
             # --- Relevant content ---
-            with st.expander("Relevant content identified", expanded=False):
+            with st.expander("Relevant content", expanded=False):
                 relevant = cc_data.get("relevant_content", [])
                 if relevant:
                     for i, item_rc in enumerate(relevant):
