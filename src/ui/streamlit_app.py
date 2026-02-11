@@ -316,7 +316,7 @@ def _render_cost_summary(run_dir: Path):
     summary = summarise_usage(str(usage_path))
     if not summary["models"]:
         return
-    with st.expander("Run cost summary", expanded=False):
+    with st.expander("Cost Summary", expanded=False):
         for model_name, info in summary["models"].items():
             label = model_name if model_name != "unknown" else "unknown model"
             st.markdown(
@@ -400,8 +400,20 @@ default_ollama_host = _default_ollama_host()
 _openai_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
 
 
+
 st.set_page_config(page_title="AEM_OCR UI", layout="wide")
 st.title("AEM_OCR")
+
+st.markdown("""
+<style>
+/* Make the expander content scrollable */
+div[data-testid="stExpanderDetails"] {
+    max-height: 600px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
@@ -1079,11 +1091,6 @@ with tab_chem:
         with st.expander("Relevant Content", expanded=False):
             relevant = cc_data.get("relevant_content", [])
             if relevant:
-                # Add scrollable container with max height
-                st.markdown('<div style="max-height: 600px; overflow-y: auto; padding-right: 10px;">', unsafe_allow_html=True)
-                # Build lookup maps for figures and tables by normalised ID.
-                # Use the figures_tables directory directly so that items
-                # removed by filtering are still available for rendering.
                 _rc_figures_dir = rr.run_dir / "figures_tables" / "figures" / _cc_safe
                 _rc_tables_dir = rr.run_dir / "figures_tables" / "tables" / _cc_safe
 
@@ -1175,8 +1182,6 @@ with tab_chem:
                         st.markdown(f"<div style='white-space: pre-wrap; word-wrap: break-word;'>{item_rc['excerpt'][:500]}</div>", unsafe_allow_html=True)
                     if i < len(relevant) - 1:
                         st.divider()
-                # Close scrollable container
-                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("No relevant content identified.")
 
@@ -1187,28 +1192,8 @@ with tab_chem:
             "or use the **Run Extraction** dropdown below to extract on demand."
         )
 
-    # --- User-Drawn Structures ---
-    with st.expander("User-Drawn Structures", expanded=False):
-        drawn = load_drawn_structures(rr.run_dir, _cc_safe)
-        if drawn:
-            for idx, ds in enumerate(drawn):
-                cols = st.columns([3, 2, 1])
-                with cols[0]:
-                    st.markdown(f"**{ds.get('sample_name', 'Unnamed')}**")
-                    if ds.get("smiles"):
-                        st.code(ds["smiles"], language=None)
-                with cols[1]:
-                    if ds.get("notes"):
-                        st.caption(ds["notes"])
-                with cols[2]:
-                    if st.button("Delete", key=f"del_drawn_{_cc_safe}_{idx}"):
-                        delete_drawn_structure(rr.run_dir, _cc_safe, idx)
-                        st.rerun()
-        else:
-            st.info("No user-drawn structures saved yet. Use the drawing tool below.")
-
     # --- Chemical Structure Drawing Tool ---
-    with st.expander("Draw Chemical Structure", expanded=False):
+    with st.expander("Draw Chemical Structures", expanded=False):
         render_jsme_editor_local(height=550, key=f"jsme_{_cc_safe}")
 
         st.divider()
@@ -1244,8 +1229,28 @@ with tab_chem:
                 st.success(f"Saved structure for '{draw_sample_name.strip()}'")
                 st.rerun()
 
+    # --- User-Drawn Structures ---
+    with st.expander("User-Drawn Structures", expanded=False):
+        drawn = load_drawn_structures(rr.run_dir, _cc_safe)
+        if drawn:
+            for idx, ds in enumerate(drawn):
+                cols = st.columns([3, 2, 1])
+                with cols[0]:
+                    st.markdown(f"**{ds.get('sample_name', 'Unnamed')}**")
+                    if ds.get("smiles"):
+                        st.code(ds["smiles"], language=None)
+                with cols[1]:
+                    if ds.get("notes"):
+                        st.caption(ds["notes"])
+                with cols[2]:
+                    if st.button("Delete", key=f"del_drawn_{_cc_safe}_{idx}"):
+                        delete_drawn_structure(rr.run_dir, _cc_safe, idx)
+                        st.rerun()
+        else:
+            st.info("No user-drawn structures saved yet. Use the drawing tool below.")
+
     # --- Run Extraction ---
-    with st.expander("Run Extraction", expanded=False):
+    with st.expander("Run Chamical Composition Extraction", expanded=False):
         st.caption(
             "Run the LLM-based extraction on demand for this DOI. "
             "This will analyse the parsed text, tables, and figure captions "
@@ -1381,11 +1386,6 @@ with tab_intervene:
       with st.expander("Cropping", expanded=True):
         st.subheader("Crop & extract data from sub-regions")
 
-        # Show source image for reference
-        st.markdown("**Source image:**")
-        st_image_auto(str(item.source_image), full_width=True)
-        st.divider()
-
         pil_img = Image.open(item.source_image).convert("RGB")
         orig_w, orig_h = pil_img.size
         display_w = min(orig_w, 1100)
@@ -1397,45 +1397,10 @@ with tab_intervene:
         crops_out_dir = rr.run_dir / "interventions" / item.safe_doi / img_name
         prefix = Path(item.figure_id).stem
 
-        # --- Show existing crops (if any) ---
-        existing_crops = sorted(crops_out_dir.glob(f"{prefix}_subfig_*.png")) if crops_out_dir.exists() else []
-        if existing_crops:
-            st.write(f"**Existing crops:** {len(existing_crops)}")
-            crop_cols = st.columns(min(len(existing_crops), 4))
-            for ci, cp in enumerate(existing_crops):
-                with crop_cols[ci % len(crop_cols)]:
-                    st_image_auto(str(cp), full_width=True)
-                    st.caption(cp.name)
-
-            col_clear, col_rerun = st.columns(2)
-            with col_clear:
-                if st.button("Clear all crops"):
-                    import shutil
-                    for cp in existing_crops:
-                        cp.unlink(missing_ok=True)
-                    st.success("Cleared existing crops.")
-                    st.rerun()
-            with col_rerun:
-                if st.button("Re-run extraction on existing crops", type="primary"):
-                    try:
-                        manual_crops_dir = rr.run_dir / "manual_crops" / item.safe_doi
-                        manual_crops_dir.mkdir(parents=True, exist_ok=True)
-                        import shutil
-                        for cp in existing_crops:
-                            shutil.copy2(cp, manual_crops_dir / cp.name)
-                        with st.spinner("Running plextract on crops..."):
-                            run_plextract_on_manual_crops(scripts_root=scripts_root, run_dir=rr.run_dir)
-                        st.success("Done. Check manual plextract outputs below.")
-                    except Exception as e:
-                        st.error(f"Extraction failed: {e}")
-        else:
-            st.info("No crops saved yet. Draw rectangles below to create crops.")
-
-        st.divider()
-
         # --- Drawing canvas ---
         st.write("**Draw crop regions** on the figure below.")
-        show_bg = st.checkbox("Show image in crop canvas", value=True, key=f"crop_bg_{item.safe_doi}_{item.figure_id}")
+        # show_bg = st.checkbox("Show image in crop canvas", value=True, key=f"crop_bg_{item.safe_doi}_{item.figure_id}")
+        show_bg = True
 
         canvas_kwargs = dict(
             fill_color="rgba(0, 0, 0, 0.0)",
@@ -1501,6 +1466,40 @@ with tab_intervene:
                         st.success("Done. Manual-crops plextract run completed.")
                     except Exception as e:
                         st.error(f"Manual plextract failed: {e}")
+
+        # --- Show existing crops (if any) ---
+        existing_crops = sorted(crops_out_dir.glob(f"{prefix}_subfig_*.png")) if crops_out_dir.exists() else []
+        if existing_crops:
+            st.write(f"**Existing crops:** {len(existing_crops)}")
+            crop_cols = st.columns(min(len(existing_crops), 4))
+            for ci, cp in enumerate(existing_crops):
+                with crop_cols[ci % len(crop_cols)]:
+                    st_image_auto(str(cp), full_width=True)
+                    st.caption(cp.name)
+
+            col_clear, col_rerun = st.columns(2)
+            with col_clear:
+                if st.button("Clear all crops"):
+                    import shutil
+                    for cp in existing_crops:
+                        cp.unlink(missing_ok=True)
+                    st.success("Cleared existing crops.")
+                    st.rerun()
+            with col_rerun:
+                if st.button("Re-run extraction on existing crops", type="primary"):
+                    try:
+                        manual_crops_dir = rr.run_dir / "manual_crops" / item.safe_doi
+                        manual_crops_dir.mkdir(parents=True, exist_ok=True)
+                        import shutil
+                        for cp in existing_crops:
+                            shutil.copy2(cp, manual_crops_dir / cp.name)
+                        with st.spinner("Running plextract on crops..."):
+                            run_plextract_on_manual_crops(scripts_root=scripts_root, run_dir=rr.run_dir)
+                        st.success("Done. Check manual plextract outputs below.")
+                    except Exception as e:
+                        st.error(f"Extraction failed: {e}")
+        else:
+            st.info("No crops saved yet. Draw rectangles below to create crops.")
 
         # --- Show manual plextract outputs ---
         st.divider()
@@ -1613,10 +1612,6 @@ with tab_intervene:
             # ---- Edit or Create Series Mask ----
             st.write("**Edit or Create Series Mask**")
 
-            # Show the colored composite with legend
-            if _legend_lines:
-                st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
-
             # Choose mode: edit existing or create new
             active_series = [s for s in series_items if s.series_index not in deleted]
             existing_indices = [s.series_index for s in series_items]
@@ -1693,7 +1688,7 @@ with tab_intervene:
                 with c2:
                     if cur_mask_img is not None:
                         st.write("Current mask")
-                        st_image_auto(cur_mask_img, full_width=True)
+                        st_image_auto(cur_mask_img, full_width=True, use_container_width=True)
                     else:
                         st.info("Drawing new series")
 
@@ -1751,6 +1746,10 @@ with tab_intervene:
                         with colB:
                             if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
                                 st.rerun()
+
+            # Show the colored composite with legend
+            if _legend_lines:
+                st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
 
             st.divider()
 
