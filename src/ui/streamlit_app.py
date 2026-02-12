@@ -731,9 +731,10 @@ with st.sidebar:
 
     # Initialize axis config in session state
     if "axis_config" not in st.session_state:
-        # Try to load from active workspace if available
-        if rr and rr.run_dir:
-            st.session_state["axis_config"] = load_axis_config(rr.run_dir)
+        # Try to load from active workspace if available from session state
+        _active_rr = st.session_state.get("rr")
+        if _active_rr and hasattr(_active_rr, 'run_dir') and _active_rr.run_dir:
+            st.session_state["axis_config"] = load_axis_config(_active_rr.run_dir)
         else:
             st.session_state["axis_config"] = load_axis_config(workspaces_root)
         st.session_state["current_axis_preset_name"] = None
@@ -741,7 +742,9 @@ with st.sidebar:
     _ax_cfg = st.session_state["axis_config"]
 
     # --- Load axis presets ---
-    workspace_for_axis = rr.run_dir if (rr and rr.run_dir) else workspaces_root
+    _active_rr = st.session_state.get("rr")
+    workspace_for_axis = (_active_rr.run_dir if (_active_rr and hasattr(_active_rr, 'run_dir') and _active_rr.run_dir)
+                          else workspaces_root)
     existing_axis_presets = list_axis_presets(workspace_for_axis)
 
     with st.expander("Load Axis Preset", expanded=False):
