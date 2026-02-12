@@ -487,11 +487,11 @@ with st.sidebar:
         run_download_doi = st.checkbox("Download DOIs", value=True)
         run_extract_figures = st.checkbox("Extract figures", value=True)
         run_extract_tables = st.checkbox("Extract tables", value=True)
+        run_chemical_composition = st.checkbox("Extract chemical composition", value=True)
         run_filter_figures = st.checkbox("Filter figures", value=True)
         run_filter_tables = st.checkbox("Filter tables", value=True)
         run_plextract = st.checkbox("Extract data from figures", value=True)
         run_complete_dataset = st.checkbox("Complete dataset", value=True)
-        run_chemical_composition = st.checkbox("Extract chemical composition", value=True)
         exclude_full_text = st.checkbox("Exclude full text from context", value=True)
 
     st.divider()
