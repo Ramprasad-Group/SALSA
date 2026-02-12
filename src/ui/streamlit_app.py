@@ -838,36 +838,6 @@ with st.sidebar:
             st.session_state["axis_config"]["canonical_targets"] = new_ct
             st.success("Applied canonical target changes")
 
-    with st.expander("Axis Name Aliases", expanded=False):
-        st.caption("Define groups of equivalent axis names. Each group has a canonical name and a list of aliases.")
-        _ana = _ax_cfg.get("axis_name_aliases", {"x": {}, "y": {}})
-
-        for axis_label in ("x", "y"):
-            st.markdown(f"#### {axis_label.upper()}-axis names")
-            axis_groups = _ana.get(axis_label, {})
-            _rows = []
-            for canon, aliases in sorted(axis_groups.items()):
-                _rows.append({"canonical_name": canon, "aliases": ", ".join(aliases)})
-            _ana_df = pd.DataFrame(_rows) if _rows else pd.DataFrame(columns=["canonical_name", "aliases"])
-            _ana_edited = st.data_editor(
-                _ana_df,
-                num_rows="dynamic",
-                use_container_width=True,
-                key=f"sidebar_ax_name_aliases_{axis_label}_editor",
-            )
-            if st.button(f"Apply {axis_label}-axis changes", key=f"apply_name_aliases_{axis_label}"):
-                new_groups = {}
-                for _, row in _ana_edited.iterrows():
-                    canon = str(row.get("canonical_name", "")).strip()
-                    aliases_str = str(row.get("aliases", "")).strip()
-                    if canon:
-                        alias_list = [a.strip() for a in aliases_str.split(",") if a.strip()]
-                        new_groups[canon] = alias_list
-                if "axis_name_aliases" not in st.session_state["axis_config"]:
-                    st.session_state["axis_config"]["axis_name_aliases"] = {"x": {}, "y": {}}
-                st.session_state["axis_config"]["axis_name_aliases"][axis_label] = new_groups
-                st.success(f"Applied {axis_label}-axis name alias changes")
-
     # --- Save axis preset ---
     with st.expander("Save Axis Preset", expanded=False):
         st.subheader("Save Preset")
@@ -1514,42 +1484,6 @@ with tab_chem:
 
             except Exception as e:
                 st.error(f"Chemical composition extraction failed: {e}")
-
-with tab_axes:
-    st.info("⬅️ Axis & Units configuration has been moved to the **sidebar** for easier access. Look for the 'Axis & Units Configuration' section in the left sidebar, where you can also save and load presets.")
-
-    st.subheader("Current Axis Configuration")
-    st.caption("This is a read-only view of the current configuration. Use the sidebar to edit.")
-
-    _ax_cfg_view = load_axis_config(rr.run_dir)
-
-    with st.expander("View Unit Aliases", expanded=False):
-        _ua = _ax_cfg_view.get("unit_aliases", {})
-        if _ua:
-            st.json(_ua)
-        else:
-            st.info("No unit aliases configured")
-
-    with st.expander("View Unit Dimensions", expanded=False):
-        _ud = _ax_cfg_view.get("unit_dimensions", {})
-        if _ud:
-            st.json(_ud)
-        else:
-            st.info("No unit dimensions configured")
-
-    with st.expander("View Canonical Targets", expanded=False):
-        _ct = _ax_cfg_view.get("canonical_targets", {})
-        if _ct:
-            st.json(_ct)
-        else:
-            st.info("No canonical targets configured")
-
-    with st.expander("View Axis Name Aliases", expanded=False):
-        _ana = _ax_cfg_view.get("axis_name_aliases", {})
-        if _ana:
-            st.json(_ana)
-        else:
-            st.info("No axis name aliases configured")
 
 with tab_intervene:
     selected_safe = doi_to_safe(selected_doi)
