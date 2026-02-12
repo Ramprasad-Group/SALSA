@@ -593,7 +593,6 @@ def table_test(meta: dict) -> bool:
             _log_cost(meta,
                 extra={
                     "kind": "filter_figure",
-                    "used_image": bool(use_image and image_path and os.path.exists(image_path)),
                 },
             )
         except Exception as e:
