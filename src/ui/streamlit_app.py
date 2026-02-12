@@ -1080,8 +1080,8 @@ st.session_state["selected_doi"] = selected_doi
 doi_item = next(d for d in rr.dois if d.doi == selected_doi)
 
 # ---------------- Tabs (under DOI dropdown) ----------------
-tab_text, tab_figs, tab_tables, tab_chem, tab_xy, tab_axes, tab_intervene = st.tabs(
-    ["Parsed text", "Figures", "Tables", "Chemical Composition", "Dataset", "Axis & Units", "Interventions"]
+tab_text, tab_figs, tab_tables, tab_chem, tab_xy, tab_intervene = st.tabs(
+    ["Parsed text", "Figures", "Tables", "Chemical Composition", "Dataset", "Interventions"]
 )
 
 with tab_text:
