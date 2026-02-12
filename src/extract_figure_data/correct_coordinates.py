@@ -193,7 +193,13 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
     base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
     print("Converting data points now...")
 
-    with open(f"{base_output_dir}/{img}/lineformer/coordinates.json", "r") as f:
+    coordinates_path = Path(f"{base_output_dir}/{img}/lineformer/coordinates.json")
+    if not coordinates_path.exists():
+        print(f"\tWarning: coordinates.json not found at {coordinates_path}")
+        print(f"\tSkipping data point conversion for {img}")
+        return
+
+    with open(coordinates_path, "r") as f:
         all_lineseries = json.load(f)
 
     x1, y1, x2, y2 = label_coordinates["plot_area"][:4]

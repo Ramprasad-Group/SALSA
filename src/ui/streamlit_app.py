@@ -34,7 +34,13 @@ import numpy as np
 import cv2
 from cropping import save_crops
 from run_plextract_manual import run_plextract_on_manual_crops
-from axis_config import load_axis_config, save_axis_config, reset_axis_config
+from axis_config import (
+    load_axis_config, save_axis_config, reset_axis_config,
+    list_presets as list_axis_presets,
+    save_preset as save_axis_preset,
+    load_preset as load_axis_preset,
+    delete_preset as delete_axis_preset,
+)
 import os
 import sys
 import subprocess
@@ -721,6 +727,187 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
+    st.header("Axis & Units Configuration")
+
+    # Initialize axis config in session state
+    if "axis_config" not in st.session_state:
+        # Try to load from active workspace if available
+        if rr and rr.run_dir:
+            st.session_state["axis_config"] = load_axis_config(rr.run_dir)
+        else:
+            st.session_state["axis_config"] = load_axis_config(workspaces_root)
+        st.session_state["current_axis_preset_name"] = None
+
+    _ax_cfg = st.session_state["axis_config"]
+
+    # --- Load axis presets ---
+    workspace_for_axis = rr.run_dir if (rr and rr.run_dir) else workspaces_root
+    existing_axis_presets = list_axis_presets(workspace_for_axis)
+
+    with st.expander("Load Axis Preset", expanded=False):
+        if existing_axis_presets:
+            col_ax_load_a, col_ax_load_b = st.columns([3, 1])
+            with col_ax_load_a:
+                axis_preset_choice = st.selectbox(
+                    "Select axis preset to load",
+                    options=[""] + existing_axis_presets,
+                    key="axis_preset_choice",
+                )
+            with col_ax_load_b:
+                if st.button("Load", type="secondary", key="load_axis_preset_btn") and axis_preset_choice:
+                    loaded = load_axis_preset(workspace_for_axis, axis_preset_choice)
+                    if loaded:
+                        st.session_state["axis_config"] = loaded
+                        st.session_state["current_axis_preset_name"] = axis_preset_choice
+                        st.success(f"Loaded axis preset: {axis_preset_choice}")
+                        st.rerun()
+        else:
+            st.info("No axis presets saved yet. Create your first preset below.")
+
+        # Show currently loaded preset
+        if st.session_state.get("current_axis_preset_name"):
+            st.caption(f"Currently editing: **{st.session_state['current_axis_preset_name']}**")
+        else:
+            st.caption("Currently editing: **Unsaved changes (default)**")
+
+    # --- Axis config editors in expanders ---
+    with st.expander("Unit Aliases", expanded=False):
+        st.caption("Map raw unit strings (e.g. `sec`, `hrs`) to their canonical form (e.g. `s`, `h`).")
+        _ua = _ax_cfg.get("unit_aliases", {})
+        _ua_rows = [{"raw": k, "canonical": v} for k, v in sorted(_ua.items())]
+        _ua_df = pd.DataFrame(_ua_rows) if _ua_rows else pd.DataFrame(columns=["raw", "canonical"])
+        _ua_edited = st.data_editor(
+            _ua_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="sidebar_ax_unit_aliases_editor",
+        )
+        # Store edited data in session state
+        if st.button("Apply changes", key="apply_unit_aliases"):
+            new_ua = {}
+            for _, row in _ua_edited.iterrows():
+                raw = str(row.get("raw", "")).strip()
+                can = str(row.get("canonical", "")).strip()
+                if raw and can:
+                    new_ua[raw] = can
+            st.session_state["axis_config"]["unit_aliases"] = new_ua
+            st.success("Applied unit alias changes")
+
+    with st.expander("Unit Dimensions", expanded=False):
+        st.caption("Map canonical unit strings to a dimension name (e.g. `s` -> `time`, `mS/cm` -> `conductivity`).")
+        _ud = _ax_cfg.get("unit_dimensions", {})
+        _ud_rows = [{"unit": k, "dimension": v} for k, v in sorted(_ud.items())]
+        _ud_df = pd.DataFrame(_ud_rows) if _ud_rows else pd.DataFrame(columns=["unit", "dimension"])
+        _ud_edited = st.data_editor(
+            _ud_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="sidebar_ax_unit_dims_editor",
+        )
+        if st.button("Apply changes", key="apply_unit_dims"):
+            new_ud = {}
+            for _, row in _ud_edited.iterrows():
+                unit = str(row.get("unit", "")).strip()
+                dim = str(row.get("dimension", "")).strip()
+                if unit and dim:
+                    new_ud[unit] = dim
+            st.session_state["axis_config"]["unit_dimensions"] = new_ud
+            st.success("Applied unit dimension changes")
+
+    with st.expander("Canonical Targets", expanded=False):
+        st.caption("For each dimension, choose the canonical target unit that values are converted to.")
+        _ct = _ax_cfg.get("canonical_targets", {})
+        _ct_rows = [{"dimension": k, "target_unit": v} for k, v in sorted(_ct.items())]
+        _ct_df = pd.DataFrame(_ct_rows) if _ct_rows else pd.DataFrame(columns=["dimension", "target_unit"])
+        _ct_edited = st.data_editor(
+            _ct_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="sidebar_ax_canon_targets_editor",
+        )
+        if st.button("Apply changes", key="apply_canon_targets"):
+            new_ct = {}
+            for _, row in _ct_edited.iterrows():
+                dim = str(row.get("dimension", "")).strip()
+                target = str(row.get("target_unit", "")).strip()
+                if dim and target:
+                    new_ct[dim] = target
+            st.session_state["axis_config"]["canonical_targets"] = new_ct
+            st.success("Applied canonical target changes")
+
+    with st.expander("Axis Name Aliases", expanded=False):
+        st.caption("Define groups of equivalent axis names. Each group has a canonical name and a list of aliases.")
+        _ana = _ax_cfg.get("axis_name_aliases", {"x": {}, "y": {}})
+
+        for axis_label in ("x", "y"):
+            st.markdown(f"#### {axis_label.upper()}-axis names")
+            axis_groups = _ana.get(axis_label, {})
+            _rows = []
+            for canon, aliases in sorted(axis_groups.items()):
+                _rows.append({"canonical_name": canon, "aliases": ", ".join(aliases)})
+            _ana_df = pd.DataFrame(_rows) if _rows else pd.DataFrame(columns=["canonical_name", "aliases"])
+            _ana_edited = st.data_editor(
+                _ana_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                key=f"sidebar_ax_name_aliases_{axis_label}_editor",
+            )
+            if st.button(f"Apply {axis_label}-axis changes", key=f"apply_name_aliases_{axis_label}"):
+                new_groups = {}
+                for _, row in _ana_edited.iterrows():
+                    canon = str(row.get("canonical_name", "")).strip()
+                    aliases_str = str(row.get("aliases", "")).strip()
+                    if canon:
+                        alias_list = [a.strip() for a in aliases_str.split(",") if a.strip()]
+                        new_groups[canon] = alias_list
+                if "axis_name_aliases" not in st.session_state["axis_config"]:
+                    st.session_state["axis_config"]["axis_name_aliases"] = {"x": {}, "y": {}}
+                st.session_state["axis_config"]["axis_name_aliases"][axis_label] = new_groups
+                st.success(f"Applied {axis_label}-axis name alias changes")
+
+    # --- Save axis preset ---
+    with st.expander("Save Axis Preset", expanded=False):
+        st.subheader("Save Preset")
+        col_ax_name, col_ax_save, col_ax_del = st.columns([3, 1, 1])
+
+        with col_ax_name:
+            default_ax_name = st.session_state.get("current_axis_preset_name", "")
+            axis_preset_name = st.text_input(
+                "Axis preset name",
+                value=default_ax_name,
+                key="axis_new_preset_name",
+                placeholder="Enter a name for this axis preset"
+            )
+
+        with col_ax_save:
+            st.write("")  # spacing
+            st.write("")  # spacing
+            if st.button("Save", type="primary", key="save_axis_preset_btn") and axis_preset_name.strip():
+                save_axis_preset(workspace_for_axis, axis_preset_name.strip(), st.session_state["axis_config"])
+                # Also save to the workspace
+                save_axis_config(workspace_for_axis, st.session_state["axis_config"])
+                st.session_state["current_axis_preset_name"] = axis_preset_name.strip()
+                st.success(f"Saved axis preset: {axis_preset_name.strip()}")
+                st.rerun()
+
+        with col_ax_del:
+            st.write("")  # spacing
+            st.write("")  # spacing
+            if existing_axis_presets and st.button("Delete", type="secondary", key="delete_axis_preset_btn") and st.session_state.get("axis_preset_choice"):
+                delete_axis_preset(workspace_for_axis, st.session_state["axis_preset_choice"])
+                if st.session_state.get("current_axis_preset_name") == st.session_state["axis_preset_choice"]:
+                    st.session_state["current_axis_preset_name"] = None
+                st.success(f"Deleted axis preset: {st.session_state['axis_preset_choice']}")
+                st.rerun()
+
+        # --- Reset to defaults button ---
+        if st.button("Reset axis config to defaults", type="secondary", key="reset_axis_btn"):
+            st.session_state["axis_config"] = reset_axis_config(workspace_for_axis)
+            st.session_state["current_axis_preset_name"] = None
+            st.success("Reset axis configuration to defaults")
+            st.rerun()
+
+    st.divider()
     with st.expander("Load an existing run", expanded=False):
 
         # Choose which workspace to browse when loading runs
@@ -1326,123 +1513,40 @@ with tab_chem:
                 st.error(f"Chemical composition extraction failed: {e}")
 
 with tab_axes:
-    st.subheader("Axis Names & Unit Configuration")
-    st.caption("Manage acceptable axis names, unit aliases, dimensions, and canonical targets used during data extraction.")
+    st.info("⬅️ Axis & Units configuration has been moved to the **sidebar** for easier access. Look for the 'Axis & Units Configuration' section in the left sidebar, where you can also save and load presets.")
 
-    _ax_cfg = load_axis_config(rr.run_dir)
+    st.subheader("Current Axis Configuration")
+    st.caption("This is a read-only view of the current configuration. Use the sidebar to edit.")
 
-    _ax_tab_aliases, _ax_tab_dims, _ax_tab_targets, _ax_tab_names = st.tabs(
-        ["Unit Aliases", "Unit Dimensions", "Canonical Targets", "Axis Name Aliases"]
-    )
+    _ax_cfg_view = load_axis_config(rr.run_dir)
 
-    # ---- Unit Aliases ----
-    with _ax_tab_aliases:
-        st.write("Map raw unit strings (e.g. `sec`, `hrs`) to their canonical form (e.g. `s`, `h`).")
-        _ua = _ax_cfg.get("unit_aliases", {})
-        _ua_rows = [{"raw": k, "canonical": v} for k, v in sorted(_ua.items())]
-        _ua_df = pd.DataFrame(_ua_rows) if _ua_rows else pd.DataFrame(columns=["raw", "canonical"])
-        _ua_edited = st.data_editor(
-            _ua_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="ax_unit_aliases_editor",
-        )
-        if st.button("Save unit aliases", key="save_unit_aliases"):
-            new_ua = {}
-            for _, row in _ua_edited.iterrows():
-                raw = str(row.get("raw", "")).strip()
-                can = str(row.get("canonical", "")).strip()
-                if raw and can:
-                    new_ua[raw] = can
-            _ax_cfg["unit_aliases"] = new_ua
-            save_axis_config(rr.run_dir, _ax_cfg)
-            st.success(f"Saved {len(new_ua)} unit aliases.")
+    with st.expander("View Unit Aliases", expanded=False):
+        _ua = _ax_cfg_view.get("unit_aliases", {})
+        if _ua:
+            st.json(_ua)
+        else:
+            st.info("No unit aliases configured")
 
-    # ---- Unit Dimensions ----
-    with _ax_tab_dims:
-        st.write("Map canonical unit strings to a dimension name (e.g. `s` -> `time`, `mS/cm` -> `conductivity`).")
-        _ud = _ax_cfg.get("unit_dimensions", {})
-        _ud_rows = [{"unit": k, "dimension": v} for k, v in sorted(_ud.items())]
-        _ud_df = pd.DataFrame(_ud_rows) if _ud_rows else pd.DataFrame(columns=["unit", "dimension"])
-        _ud_edited = st.data_editor(
-            _ud_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="ax_unit_dims_editor",
-        )
-        if st.button("Save unit dimensions", key="save_unit_dims"):
-            new_ud = {}
-            for _, row in _ud_edited.iterrows():
-                unit = str(row.get("unit", "")).strip()
-                dim = str(row.get("dimension", "")).strip()
-                if unit and dim:
-                    new_ud[unit] = dim
-            _ax_cfg["unit_dimensions"] = new_ud
-            save_axis_config(rr.run_dir, _ax_cfg)
-            st.success(f"Saved {len(new_ud)} unit dimensions.")
+    with st.expander("View Unit Dimensions", expanded=False):
+        _ud = _ax_cfg_view.get("unit_dimensions", {})
+        if _ud:
+            st.json(_ud)
+        else:
+            st.info("No unit dimensions configured")
 
-    # ---- Canonical Targets ----
-    with _ax_tab_targets:
-        st.write("For each dimension, choose the canonical target unit that values are converted to.")
-        _ct = _ax_cfg.get("canonical_targets", {})
-        _ct_rows = [{"dimension": k, "target_unit": v} for k, v in sorted(_ct.items())]
-        _ct_df = pd.DataFrame(_ct_rows) if _ct_rows else pd.DataFrame(columns=["dimension", "target_unit"])
-        _ct_edited = st.data_editor(
-            _ct_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="ax_canon_targets_editor",
-        )
-        if st.button("Save canonical targets", key="save_canon_targets"):
-            new_ct = {}
-            for _, row in _ct_edited.iterrows():
-                dim = str(row.get("dimension", "")).strip()
-                target = str(row.get("target_unit", "")).strip()
-                if dim and target:
-                    new_ct[dim] = target
-            _ax_cfg["canonical_targets"] = new_ct
-            save_axis_config(rr.run_dir, _ax_cfg)
-            st.success(f"Saved {len(new_ct)} canonical targets.")
+    with st.expander("View Canonical Targets", expanded=False):
+        _ct = _ax_cfg_view.get("canonical_targets", {})
+        if _ct:
+            st.json(_ct)
+        else:
+            st.info("No canonical targets configured")
 
-    # ---- Axis Name Aliases ----
-    with _ax_tab_names:
-        st.write(
-            "Define groups of equivalent axis names. Each group has a **canonical name** "
-            "and a list of **aliases** that should be treated as equivalent."
-        )
-        _ana = _ax_cfg.get("axis_name_aliases", {"x": {}, "y": {}})
-
-        for axis_label in ("x", "y"):
-            st.markdown(f"#### {axis_label.upper()}-axis names")
-            axis_groups = _ana.get(axis_label, {})
-            _rows = []
-            for canon, aliases in sorted(axis_groups.items()):
-                _rows.append({"canonical_name": canon, "aliases": ", ".join(aliases)})
-            _ana_df = pd.DataFrame(_rows) if _rows else pd.DataFrame(columns=["canonical_name", "aliases"])
-            _ana_edited = st.data_editor(
-                _ana_df,
-                num_rows="dynamic",
-                use_container_width=True,
-                key=f"ax_name_aliases_{axis_label}_editor",
-            )
-            if st.button(f"Save {axis_label}-axis name aliases", key=f"save_name_aliases_{axis_label}"):
-                new_groups = {}
-                for _, row in _ana_edited.iterrows():
-                    canon = str(row.get("canonical_name", "")).strip()
-                    aliases_str = str(row.get("aliases", "")).strip()
-                    if canon:
-                        alias_list = [a.strip() for a in aliases_str.split(",") if a.strip()]
-                        new_groups[canon] = alias_list
-                _ana[axis_label] = new_groups
-                _ax_cfg["axis_name_aliases"] = _ana
-                save_axis_config(rr.run_dir, _ax_cfg)
-                st.success(f"Saved {axis_label}-axis name aliases.")
-
-    st.divider()
-    if st.button("Reset to defaults", key="reset_axis_config"):
-        _ax_cfg = reset_axis_config(rr.run_dir)
-        st.success("Reset axis configuration to defaults.")
-        st.rerun()
+    with st.expander("View Axis Name Aliases", expanded=False):
+        _ana = _ax_cfg_view.get("axis_name_aliases", {})
+        if _ana:
+            st.json(_ana)
+        else:
+            st.info("No axis name aliases configured")
 
 with tab_intervene:
     selected_safe = doi_to_safe(selected_doi)
@@ -1672,15 +1776,16 @@ with tab_intervene:
                     if found_csvs:
                         for csv_p in found_csvs:
                             fig_folder = csv_p.parent.parent.name
-                            with st.expander(f"{fig_folder} - extracted data", expanded=True):
-                                try:
-                                    df = pd.read_csv(csv_p)
-                                    st.dataframe(df, use_container_width=True, hide_index=True)
-                                except Exception as e:
-                                    st.warning(f"Failed to load: {e}")
-                                final_img = csv_p.parent / "final_image.png"
-                                if final_img.exists():
-                                    st_image_auto(str(final_img), full_width=True)
+                            st.markdown(f"**{fig_folder} - extracted data**")
+                            try:
+                                df = pd.read_csv(csv_p)
+                                st.dataframe(df, use_container_width=True, hide_index=True)
+                            except Exception as e:
+                                st.warning(f"Failed to load: {e}")
+                            final_img = csv_p.parent / "final_image.png"
+                            if final_img.exists():
+                                st_image_auto(str(final_img), full_width=True)
+                            st.divider()
                     else:
                         fig_folders = sorted([p.name for p in out_base.iterdir() if p.is_dir()])
                         st.caption("Figure folders found (no final datasets yet):")
@@ -1767,12 +1872,6 @@ with tab_intervene:
             composite_full = Image.alpha_composite(base_img_rgb, overlay).convert("RGB")
             composite_disp = composite_full.resize((disp_w, disp_h))
 
-            # Show the colored composite immediately
-            st_image_auto(composite_disp, full_width=True)
-            if _legend_lines:
-                st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
-            st.divider()
-
             # ---- Edit or Create Series Mask ----
             st.write("**Edit or Create Series Mask**")
 
@@ -1855,6 +1954,10 @@ with tab_intervene:
                         st_image_auto(cur_mask_img, full_width=True, use_container_width=True)
                     else:
                         st.info("Drawing new series")
+
+                # Show legend below canvas
+                if _legend_lines:
+                    st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
 
                 # Build new mask from canvas strokes
                 if mask_canvas.image_data is not None:
