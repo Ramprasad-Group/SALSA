@@ -156,7 +156,7 @@ def find_next_number(workdir: str) -> int:
     next_number = max(existing_numbers) + 1 if existing_numbers else 0
     return str(next_number)
 
-def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0):
+def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0, skip_lineformer: bool = False):
     # Make workdir absolute and build absolute data paths
     workdir = os.path.abspath(workdir)
     print(f"Processing run with run id: {run_id}...")
@@ -240,15 +240,18 @@ def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0):
 
 
     # LineFormer: extract lines from images
-    print("Extracting lines from images with LineFormer...")
-    lf = LineFormer()
-    for img in input_files:
-        extension = img.split('.')[-1]
-        if extension != 'json':
-            try:
-                lf.inference(img)
-            except Exception as e:
-                logger.warning(f"[LineFormer] Error on {img}: {e}")
+    if skip_lineformer:
+        print("Skipping LineFormer (using existing masks)...")
+    else:
+        print("Extracting lines from images with LineFormer...")
+        lf = LineFormer()
+        for img in input_files:
+            extension = img.split('.')[-1]
+            if extension != 'json':
+                try:
+                    lf.inference(img)
+                except Exception as e:
+                    logger.warning(f"[LineFormer] Error on {img}: {e}")
 
 
     # OCR axis labels (TrOCR via local OCRModel)
@@ -461,10 +464,16 @@ def parse_args():
     )
 
     ap.add_argument(
-        '--log_level', 
-        default='INFO', 
+        '--log_level',
+        default='INFO',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging level (default: INFO)')
+
+    ap.add_argument(
+        '--skip-lineformer',
+        action='store_true',
+        default=False,
+        help='Skip LineFormer mask generation and use existing masks')
 
     return ap.parse_args()
 
@@ -492,6 +501,6 @@ if __name__ == "__main__":
     # exdtract data from figures for each doi
     for subdir in subdirs:
         print(f"=====RUN PIPELINE FOR {subdir}=====")
-        run_pipeline(input_dir=subdir, workdir=args.workdir, run_id=run_id)
+        run_pipeline(input_dir=subdir, workdir=args.workdir, run_id=run_id, skip_lineformer=args.skip_lineformer)
 
     print('=====Finished extracting figure data=====')

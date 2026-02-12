@@ -34,6 +34,7 @@ import numpy as np
 import cv2
 from cropping import save_crops
 from run_plextract_manual import run_plextract_on_manual_crops
+from axis_config import load_axis_config, save_axis_config, reset_axis_config
 import os
 import sys
 import subprocess
@@ -406,11 +407,13 @@ st.title("AEM_OCR")
 
 st.markdown("""
 <style>
-/* Make the expander content scrollable */
+/* Make the expander content scrollable and resizable */
 div[data-testid="stExpanderDetails"] {
-    max-height: 600px;
+    max-height: 800px;
     overflow-y: auto;
     padding-right: 10px;
+    resize: vertical;
+    min-height: 100px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -917,8 +920,8 @@ st.session_state["selected_doi"] = selected_doi
 doi_item = next(d for d in rr.dois if d.doi == selected_doi)
 
 # ---------------- Tabs (under DOI dropdown) ----------------
-tab_text, tab_figs, tab_tables, tab_chem, tab_xy, tab_intervene = st.tabs(
-    ["Parsed text", "Figures", "Tables", "Chemical Composition", "Dataset", "Interventions"]
+tab_text, tab_figs, tab_tables, tab_chem, tab_xy, tab_axes, tab_intervene = st.tabs(
+    ["Parsed text", "Figures", "Tables", "Chemical Composition", "Dataset", "Axis & Units", "Interventions"]
 )
 
 with tab_text:
@@ -1179,7 +1182,9 @@ with tab_chem:
                         _matched_fig = False
                         for _fkey, _fpath in _rc_all_fig_paths.items():
                             if _src_id_norm and (_src_id_norm in _fkey or _fkey in _src_id_norm):
-                                st_image_auto(str(_fpath), full_width=True)
+                                _rc_img_col, _ = st.columns([1, 2])
+                                with _rc_img_col:
+                                    st_image_auto(str(_fpath), full_width=True)
                                 _matched_fig = True
                                 break
                         # Suppress "not found" message - item may have been filtered intentionally
@@ -1319,6 +1324,125 @@ with tab_chem:
 
             except Exception as e:
                 st.error(f"Chemical composition extraction failed: {e}")
+
+with tab_axes:
+    st.subheader("Axis Names & Unit Configuration")
+    st.caption("Manage acceptable axis names, unit aliases, dimensions, and canonical targets used during data extraction.")
+
+    _ax_cfg = load_axis_config(rr.run_dir)
+
+    _ax_tab_aliases, _ax_tab_dims, _ax_tab_targets, _ax_tab_names = st.tabs(
+        ["Unit Aliases", "Unit Dimensions", "Canonical Targets", "Axis Name Aliases"]
+    )
+
+    # ---- Unit Aliases ----
+    with _ax_tab_aliases:
+        st.write("Map raw unit strings (e.g. `sec`, `hrs`) to their canonical form (e.g. `s`, `h`).")
+        _ua = _ax_cfg.get("unit_aliases", {})
+        _ua_rows = [{"raw": k, "canonical": v} for k, v in sorted(_ua.items())]
+        _ua_df = pd.DataFrame(_ua_rows) if _ua_rows else pd.DataFrame(columns=["raw", "canonical"])
+        _ua_edited = st.data_editor(
+            _ua_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="ax_unit_aliases_editor",
+        )
+        if st.button("Save unit aliases", key="save_unit_aliases"):
+            new_ua = {}
+            for _, row in _ua_edited.iterrows():
+                raw = str(row.get("raw", "")).strip()
+                can = str(row.get("canonical", "")).strip()
+                if raw and can:
+                    new_ua[raw] = can
+            _ax_cfg["unit_aliases"] = new_ua
+            save_axis_config(rr.run_dir, _ax_cfg)
+            st.success(f"Saved {len(new_ua)} unit aliases.")
+
+    # ---- Unit Dimensions ----
+    with _ax_tab_dims:
+        st.write("Map canonical unit strings to a dimension name (e.g. `s` -> `time`, `mS/cm` -> `conductivity`).")
+        _ud = _ax_cfg.get("unit_dimensions", {})
+        _ud_rows = [{"unit": k, "dimension": v} for k, v in sorted(_ud.items())]
+        _ud_df = pd.DataFrame(_ud_rows) if _ud_rows else pd.DataFrame(columns=["unit", "dimension"])
+        _ud_edited = st.data_editor(
+            _ud_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="ax_unit_dims_editor",
+        )
+        if st.button("Save unit dimensions", key="save_unit_dims"):
+            new_ud = {}
+            for _, row in _ud_edited.iterrows():
+                unit = str(row.get("unit", "")).strip()
+                dim = str(row.get("dimension", "")).strip()
+                if unit and dim:
+                    new_ud[unit] = dim
+            _ax_cfg["unit_dimensions"] = new_ud
+            save_axis_config(rr.run_dir, _ax_cfg)
+            st.success(f"Saved {len(new_ud)} unit dimensions.")
+
+    # ---- Canonical Targets ----
+    with _ax_tab_targets:
+        st.write("For each dimension, choose the canonical target unit that values are converted to.")
+        _ct = _ax_cfg.get("canonical_targets", {})
+        _ct_rows = [{"dimension": k, "target_unit": v} for k, v in sorted(_ct.items())]
+        _ct_df = pd.DataFrame(_ct_rows) if _ct_rows else pd.DataFrame(columns=["dimension", "target_unit"])
+        _ct_edited = st.data_editor(
+            _ct_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="ax_canon_targets_editor",
+        )
+        if st.button("Save canonical targets", key="save_canon_targets"):
+            new_ct = {}
+            for _, row in _ct_edited.iterrows():
+                dim = str(row.get("dimension", "")).strip()
+                target = str(row.get("target_unit", "")).strip()
+                if dim and target:
+                    new_ct[dim] = target
+            _ax_cfg["canonical_targets"] = new_ct
+            save_axis_config(rr.run_dir, _ax_cfg)
+            st.success(f"Saved {len(new_ct)} canonical targets.")
+
+    # ---- Axis Name Aliases ----
+    with _ax_tab_names:
+        st.write(
+            "Define groups of equivalent axis names. Each group has a **canonical name** "
+            "and a list of **aliases** that should be treated as equivalent."
+        )
+        _ana = _ax_cfg.get("axis_name_aliases", {"x": {}, "y": {}})
+
+        for axis_label in ("x", "y"):
+            st.markdown(f"#### {axis_label.upper()}-axis names")
+            axis_groups = _ana.get(axis_label, {})
+            _rows = []
+            for canon, aliases in sorted(axis_groups.items()):
+                _rows.append({"canonical_name": canon, "aliases": ", ".join(aliases)})
+            _ana_df = pd.DataFrame(_rows) if _rows else pd.DataFrame(columns=["canonical_name", "aliases"])
+            _ana_edited = st.data_editor(
+                _ana_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                key=f"ax_name_aliases_{axis_label}_editor",
+            )
+            if st.button(f"Save {axis_label}-axis name aliases", key=f"save_name_aliases_{axis_label}"):
+                new_groups = {}
+                for _, row in _ana_edited.iterrows():
+                    canon = str(row.get("canonical_name", "")).strip()
+                    aliases_str = str(row.get("aliases", "")).strip()
+                    if canon:
+                        alias_list = [a.strip() for a in aliases_str.split(",") if a.strip()]
+                        new_groups[canon] = alias_list
+                _ana[axis_label] = new_groups
+                _ax_cfg["axis_name_aliases"] = _ana
+                save_axis_config(rr.run_dir, _ax_cfg)
+                st.success(f"Saved {axis_label}-axis name aliases.")
+
+    st.divider()
+    if st.button("Reset to defaults", key="reset_axis_config"):
+        _ax_cfg = reset_axis_config(rr.run_dir)
+        st.success("Reset axis configuration to defaults.")
+        st.rerun()
 
 with tab_intervene:
     selected_safe = doi_to_safe(selected_doi)
@@ -1477,9 +1601,11 @@ with tab_intervene:
             if st.button("Save crops", disabled=len(rects) == 0):
                 saved = save_crops(item.source_image, rects, crops_out_dir, prefix=prefix)
                 st.success(f"Saved {len(saved)} crops to `{crops_out_dir}`")
-                for p in saved:
-                    st_image_auto(str(p), full_width=True)
-                    st.caption(p.name)
+                _save_cols = st.columns(min(len(saved), 4)) if saved else []
+                for _si, p in enumerate(saved):
+                    with _save_cols[_si % len(_save_cols)]:
+                        st.image(str(p), width=200)
+                        st.caption(p.name)
 
         with col2:
             if st.button("Save & run extraction", type="primary", disabled=len(rects) == 0):
@@ -1493,18 +1619,19 @@ with tab_intervene:
                     try:
                         with st.spinner("Running plextract on crops..."):
                             run_plextract_on_manual_crops(scripts_root=scripts_root, run_dir=rr.run_dir)
-                        st.success("Done. Manual-crops plextract run completed.")
+                        st.success("Done. Manual-crops plextract run completed. Series management will use newly processed images.")
                     except Exception as e:
                         st.error(f"Manual plextract failed: {e}")
+                    st.rerun()
 
         # --- Show existing crops (if any) ---
         existing_crops = sorted(crops_out_dir.glob(f"{prefix}_subfig_*.png")) if crops_out_dir.exists() else []
         if existing_crops:
             st.write(f"**Existing crops:** {len(existing_crops)}")
-            crop_cols = st.columns(min(len(existing_crops), 4))
+            crop_cols = st.columns(min(len(existing_crops), 6))
             for ci, cp in enumerate(existing_crops):
                 with crop_cols[ci % len(crop_cols)]:
-                    st_image_auto(str(cp), full_width=True)
+                    st.image(str(cp), width=150)
                     st.caption(cp.name)
 
             col_clear, col_rerun = st.columns(2)
@@ -1525,9 +1652,10 @@ with tab_intervene:
                             shutil.copy2(cp, manual_crops_dir / cp.name)
                         with st.spinner("Running plextract on crops..."):
                             run_plextract_on_manual_crops(scripts_root=scripts_root, run_dir=rr.run_dir)
-                        st.success("Done. Check manual plextract outputs below.")
+                        st.success("Done. Series management will use newly processed images.")
                     except Exception as e:
                         st.error(f"Extraction failed: {e}")
+                    st.rerun()
         else:
             st.info("No crops saved yet. Draw rectangles below to create crops.")
 
@@ -1638,6 +1766,12 @@ with tab_intervene:
 
             composite_full = Image.alpha_composite(base_img_rgb, overlay).convert("RGB")
             composite_disp = composite_full.resize((disp_w, disp_h))
+
+            # Show the colored composite immediately
+            st_image_auto(composite_disp, full_width=True)
+            if _legend_lines:
+                st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
+            st.divider()
 
             # ---- Edit or Create Series Mask ----
             st.write("**Edit or Create Series Mask**")
@@ -1777,12 +1911,6 @@ with tab_intervene:
                             if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
                                 st.rerun()
 
-            # Show the colored composite with legend
-            if _legend_lines:
-                st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
-
-            st.divider()
-
             # ---- Rename / delete section ----
             st.write("**Rename or delete** each series below.")
 
@@ -1829,24 +1957,56 @@ with tab_intervene:
 
       with st.expander("Rerun Figure Data Extraction", expanded=False):
         st.write("This will apply your mask overrides and re-extract data from the figure.")
-        st.info("New masks will replace the old respective masks where you have made changes. The extraction will use the updated masks along with the original masks for unchanged series.")
+        st.info(
+            "New masks will replace the old respective masks where you have made changes. "
+            "The extraction will use the updated masks along with the original masks for "
+            "unchanged series. If crops exist, the cropped images will be used. "
+            "LineFormer will not regenerate masks — existing masks (including any "
+            "edits from Series Management) are reused."
+        )
+
+        # Determine the figure to use: prefer cropped images if they exist
+        _rerun_crops_dir = rr.run_dir / "interventions" / item.safe_doi / Path(item.figure_id).name
+        _rerun_existing_crops = sorted(_rerun_crops_dir.glob(f"{Path(item.figure_id).stem}_subfig_*.png")) if _rerun_crops_dir.exists() else []
+        if _rerun_existing_crops:
+            st.caption(f"Will run on **{len(_rerun_existing_crops)} cropped image(s)** instead of the original figure.")
+        else:
+            st.caption("Will run on the original figure (no crops found).")
 
         if st.button("Rerun figure data extraction", type="primary"):
             try:
                 # First, apply all overrides to the plextract output
                 with st.spinner("Applying mask overrides and series changes..."):
                     apply_overrides_to_plextract(item.figure_dir, rr.run_dir, item.safe_doi, item.figure_id)
-                st.success("✓ Applied overrides to plextract output")
+                st.success("Applied overrides to plextract output")
 
-                # Then re-run the extraction
-                with st.spinner("Re-running data extraction on this figure..."):
-                    run_plextract_single_figure(
-                        scripts_root=scripts_root,
-                        run_dir=rr.run_dir,
-                        safe_doi=item.safe_doi,
-                        figure_path=item.source_image,
-                    )
-                st.success("✓ Data extraction complete! Check plextract_work_interventions/ for results.")
+                # Determine which lineformer dir has the current masks
+                _lf_dir_for_rerun = get_lineformer_dir(item.figure_dir)
+
+                if _rerun_existing_crops:
+                    # Run extraction on each cropped image, reusing existing masks
+                    for crop_path in _rerun_existing_crops:
+                        with st.spinner(f"Re-running extraction on {crop_path.name}..."):
+                            run_plextract_single_figure(
+                                scripts_root=scripts_root,
+                                run_dir=rr.run_dir,
+                                safe_doi=item.safe_doi,
+                                figure_path=crop_path,
+                                skip_lineformer=True,
+                                pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
+                            )
+                else:
+                    # Run on the original figure, skipping LineFormer
+                    with st.spinner("Re-running data extraction on this figure..."):
+                        run_plextract_single_figure(
+                            scripts_root=scripts_root,
+                            run_dir=rr.run_dir,
+                            safe_doi=item.safe_doi,
+                            figure_path=item.source_image,
+                            skip_lineformer=True,
+                            pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
+                        )
+                st.success("Data extraction complete! Check plextract_work_interventions/ for results.")
             except Exception as e:
                 st.error(f"Failed: {e}")
 
