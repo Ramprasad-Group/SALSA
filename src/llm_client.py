@@ -46,6 +46,36 @@ def load_llm_config() -> LLMConfig:
     return LLMConfig(provider="ollama", model=model, base_url=base_url, api_key="ollama")
 
 
+def load_processing_llm_config() -> Optional[LLMConfig]:
+    """
+    Build an LLMConfig for data processing (dataset completion and chemical extraction) from dedicated env vars.
+    Returns None if no processing-specific config is set (falls back to general LLM).
+    """
+    p_provider = os.environ.get("AEM_OCR_PROCESSING_LLM_PROVIDER", "").strip().lower()
+    p_model = os.environ.get("AEM_OCR_PROCESSING_LLM_MODEL", "").strip()
+
+    if not p_model:
+        return None  # no override; use general LLM
+
+    if p_provider in ("openai", "gpt", ""):
+        base_url = os.environ.get(
+            "AEM_OCR_PROCESSING_OPENAI_BASE_URL",
+            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        ).strip()
+        api_key = os.environ.get(
+            "AEM_OCR_PROCESSING_OPENAI_API_KEY",
+            os.environ.get("OPENAI_API_KEY", ""),
+        ).strip() or None
+        return LLMConfig(provider="openai", model=p_model, base_url=base_url, api_key=api_key)
+
+    # ollama
+    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip()
+    if not host.startswith("http"):
+        host = "http://" + host
+    base_url = host.rstrip("/") + "/v1"
+    return LLMConfig(provider="ollama", model=p_model, base_url=base_url, api_key="ollama")
+
+
 # ---- Unified interface ----
 
 class LLMClient:

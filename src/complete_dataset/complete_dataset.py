@@ -19,10 +19,9 @@ import json
 from tqdm import tqdm
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from llm_client import get_llm_client
 from dataclasses import dataclass
 import hashlib
-from llm_client import LLMConfig, get_llm_client
+from llm_client import LLMConfig, get_llm_client, load_processing_llm_config
 
 
 
@@ -88,7 +87,7 @@ args = parser.parse_args()
 _ci = load_instructions_from_env_or_path(args.custom_instructions or None)
 DATASET_COLUMNS = _ci.get("output_columns", list(_DEFAULT_COLUMNS))
 _MISSING_DEFAULTS = _ci.get("missing_value_defaults", {})
-_EXTRA_RULES = _ci.get("dataset_completion_rules", "")
+_EXTRA_RULES = _ci.get("data_processing_rules", "")
 
 # Setup logging
 log_file = f"{args.log_file}/complete_datasets_{datetime.now().strftime(config.DATE_TIME_FORMAT)}.log"
@@ -668,41 +667,11 @@ def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
 # ----------------------------
 # Main
 # ----------------------------
-def _build_completion_llm_config() -> Optional[LLMConfig]:
-    """
-    Build an LLMConfig for the dataset-completion step from dedicated env vars.
-    Returns None if no completion-specific config is set (falls back to general LLM).
-    """
-    c_provider = os.environ.get("AEM_OCR_COMPLETION_LLM_PROVIDER", "").strip().lower()
-    c_model = os.environ.get("AEM_OCR_COMPLETION_LLM_MODEL", "").strip()
-
-    if not c_model:
-        return None  # no override; use general LLM
-
-    if c_provider in ("openai", "gpt", ""):
-        base_url = os.environ.get(
-            "AEM_OCR_COMPLETION_OPENAI_BASE_URL",
-            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        ).strip()
-        api_key = os.environ.get(
-            "AEM_OCR_COMPLETION_OPENAI_API_KEY",
-            os.environ.get("OPENAI_API_KEY", ""),
-        ).strip() or None
-        return LLMConfig(provider="openai", model=c_model, base_url=base_url, api_key=api_key)
-
-    # ollama
-    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip()
-    if not host.startswith("http"):
-        host = "http://" + host
-    base_url = host.rstrip("/") + "/v1"
-    return LLMConfig(provider="ollama", model=c_model, base_url=base_url, api_key="ollama")
-
-
 def main():
-    # Use completion-specific LLM if configured, otherwise fall back to general
-    completion_override = _build_completion_llm_config()
-    if completion_override is not None:
-        client = get_llm_client(override=completion_override)
+    # Use processing-specific LLM if configured, otherwise fall back to general
+    processing_override = load_processing_llm_config()
+    if processing_override is not None:
+        client = get_llm_client(override=processing_override)
     else:
         client = get_llm_client()
 

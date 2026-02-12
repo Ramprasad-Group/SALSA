@@ -6,7 +6,7 @@ Users can override the default prompts/rules for:
   1. Table extraction (merged cell handling, etc.)
   2. Figure filtering (what kinds of figures to keep)
   3. Table filtering (what kinds of tables to keep)
-  4. Dataset completion (extra rules for row emission)
+  4. Data processing (extra rules for row emission and chemical extraction)
   5. Output columns and missing-value defaults
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ or alkaline/chemical stability/retention, AND
 (e.g. time, h, hr, hours, days, d, etc.).
 Return "NO" otherwise."""
 
-DEFAULT_DATASET_COMPLETION_RULES = """\
+DEFAULT_DATA_PROCESSING_RULES = """\
 - Measurements taken before or at the beginning of stability tests \
 MUST have time(h) = 0"""
 
@@ -79,7 +79,7 @@ def default_instructions() -> Dict[str, Any]:
         "table_extraction_rules": DEFAULT_TABLE_EXTRACTION_RULES,
         "figure_filter_criteria": DEFAULT_FIGURE_FILTER_CRITERIA,
         "table_filter_criteria": DEFAULT_TABLE_FILTER_CRITERIA,
-        "dataset_completion_rules": DEFAULT_DATASET_COMPLETION_RULES,
+        "data_processing_rules": DEFAULT_DATA_PROCESSING_RULES,
         "output_columns": list(DEFAULT_OUTPUT_COLUMNS),
         "missing_value_defaults": dict(DEFAULT_MISSING_VALUE_DEFAULTS),
     }

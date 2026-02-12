@@ -22,7 +22,7 @@ _src = Path(__file__).resolve().parent.parent
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from llm_client import get_llm_client
+from llm_client import get_llm_client, load_processing_llm_config
 from ui.openai_cost import append_usage, run_id_from_env
 
 
@@ -180,7 +180,12 @@ def identify_relevant_content(
         return []
 
     prompt = _IDENTIFY_RELEVANT_PROMPT.format(content=combined)
-    client = get_llm_client()
+    # Use processing-specific LLM if configured, otherwise fall back to general
+    processing_override = load_processing_llm_config()
+    if processing_override is not None:
+        client = get_llm_client(override=processing_override)
+    else:
+        client = get_llm_client()
     raw, meta = client.chat(
         [{"role": "user", "content": prompt}],
         temperature=0.0,
@@ -226,7 +231,12 @@ def extract_samples_and_compositions(
         return []
 
     prompt = _EXTRACT_SAMPLES_PROMPT.format(content=combined)
-    client = get_llm_client()
+    # Use processing-specific LLM if configured, otherwise fall back to general
+    processing_override = load_processing_llm_config()
+    if processing_override is not None:
+        client = get_llm_client(override=processing_override)
+    else:
+        client = get_llm_client()
     raw, meta = client.chat(
         [{"role": "user", "content": prompt}],
         temperature=0.0,

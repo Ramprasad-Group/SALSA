@@ -32,7 +32,7 @@ MISSING_VALUE_DEFAULTS = {
     "solvent molarity (M)": "None Not Found",
 }
 
-DATASET_COMPLETION_RULES = """\
+DATA_PROCESSING_RULES = """\
 - Measurements taken before or at the beginning of stability tests MUST have time(h) = 0"""
 
 # ----------------------------
@@ -329,7 +329,7 @@ def infer_rows_for_table(
     """
     cols = output_columns or OUTPUT_COLUMNS
     defaults = missing_value_defaults or MISSING_VALUE_DEFAULTS
-    custom_rules = extra_rules.strip() if extra_rules else DATASET_COMPLETION_RULES.strip()
+    custom_rules = extra_rules.strip() if extra_rules else DATA_PROCESSING_RULES.strip()
 
     if df_table is None or df_table.empty:
         return pd.DataFrame(columns=cols), None
@@ -477,7 +477,7 @@ def infer_rows_for_figure_dataset(
     """
     cols = output_columns or OUTPUT_COLUMNS
     defaults = missing_value_defaults or MISSING_VALUE_DEFAULTS
-    custom_rules = extra_rules.strip() if extra_rules else DATASET_COMPLETION_RULES.strip()
+    custom_rules = extra_rules.strip() if extra_rules else DATA_PROCESSING_RULES.strip()
 
     if df_points is None or df_points.empty:
         return pd.DataFrame(columns=cols), None

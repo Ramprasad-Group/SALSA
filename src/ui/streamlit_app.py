@@ -499,7 +499,7 @@ with st.sidebar:
     with st.expander("LLM", expanded=False):
         # --- General LLM (used for filtering, figure planning, etc.) ---
         st.subheader("General LLM")
-        st.caption("Used for figure/table filtering, figure planning, and other pre-completion steps.")
+        st.caption("Used for figure/table filtering, figure planning, and other pre-processing steps.")
 
         provider = st.radio(
             "Provider",
@@ -530,37 +530,37 @@ with st.sidebar:
                 st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
             selected_model = st.selectbox("Model", options=_openai_models, index=0, key="llm_model")
 
-        # --- Dataset Completion LLM ---
-        st.subheader("Dataset Completion LLM")
-        st.caption("Used for the final dataset completion step. Can differ from the general LLM.")
+        # --- Data Processing LLM ---
+        st.subheader("Data Processing LLM")
+        st.caption("Used for dataset completion and chemical extraction. Can differ from the general LLM.")
 
-        use_separate_completion_llm = st.checkbox(
-            "Use a different LLM for dataset completion",
+        use_separate_processing_llm = st.checkbox(
+            "Use a different LLM for data processing",
             value=False,
-            key="use_separate_completion_llm",
+            key="use_separate_processing_llm",
         )
 
-        if use_separate_completion_llm:
-            completion_provider = st.radio(
-                "Completion provider",
+        if use_separate_processing_llm:
+            processing_provider = st.radio(
+                "Processing provider",
                 options=["Ollama", "Chat GPT"],
                 index=1,
-                key="completion_llm_provider",
+                key="processing_llm_provider",
             )
 
-            if completion_provider == "Ollama":
+            if processing_provider == "Ollama":
                 models = _ollama_models()
                 if models:
-                    st.selectbox("Completion model", options=models, index=0, key="completion_llm_model")
+                    st.selectbox("Processing model", options=models, index=0, key="processing_llm_model")
                 else:
-                    st.text_input("Completion model (no models detected)", value="", key="completion_llm_model")
+                    st.text_input("Processing model (no models detected)", value="", key="processing_llm_model")
             else:
-                # Read completion OpenAI config from environment (not displayed in UI)
-                if "completion_openai_base_url" not in st.session_state:
-                    st.session_state["completion_openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-                if "completion_openai_api_key" not in st.session_state:
-                    st.session_state["completion_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
-                st.selectbox("Completion model", options=_openai_models, index=0, key="completion_llm_model")
+                # Read processing OpenAI config from environment (not displayed in UI)
+                if "processing_openai_base_url" not in st.session_state:
+                    st.session_state["processing_openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+                if "processing_openai_api_key" not in st.session_state:
+                    st.session_state["processing_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+                st.selectbox("Processing model", options=_openai_models, index=0, key="processing_llm_model")
 
     st.divider()
     st.header("Custom Instructions")
@@ -633,16 +633,16 @@ with st.sidebar:
             key="ci_table_filter",
         )
 
-    with st.expander("Dataset completion rules", expanded=False):
+    with st.expander("Data processing rules", expanded=False):
         st.caption(
-            "Extra rules applied when the LLM converts tables/figures into "
-            "the final normalised dataset rows. E.g. 'before = time 0'."
+            "Extra rules applied when the LLM processes data (converts tables/figures into "
+            "final dataset rows, extracts chemical compositions). E.g. 'before = time 0'."
         )
         st.text_area(
-            "Dataset completion extra rules",
-            value=ci.get("dataset_completion_rules", ""),
+            "Data processing extra rules",
+            value=ci.get("data_processing_rules", ""),
             height=120,
-            key="ci_dataset_completion",
+            key="ci_data_processing",
         )
 
     with st.expander("Output columns", expanded=False):
@@ -693,7 +693,7 @@ with st.sidebar:
                 _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
                 _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
                 _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-                _ci_to_save["dataset_completion_rules"] = st.session_state.get("ci_dataset_completion", "")
+                _ci_to_save["data_processing_rules"] = st.session_state.get("ci_data_processing", "")
 
                 raw_cols = st.session_state.get("ci_output_columns", "")
                 _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
@@ -951,26 +951,26 @@ if st.button("Run pipeline", type="primary"):
                 if st.session_state.get("openai_api_key"):
                     os.environ["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
 
-            # --- Apply dataset completion LLM configuration ---
-            if st.session_state.get("use_separate_completion_llm"):
-                c_provider = st.session_state.get("completion_llm_provider", "Chat GPT")
-                c_model = st.session_state.get("completion_llm_model", "")
-                if c_provider == "Ollama":
-                    os.environ["AEM_OCR_COMPLETION_LLM_PROVIDER"] = "ollama"
-                    os.environ["AEM_OCR_COMPLETION_LLM_MODEL"] = c_model
+            # --- Apply data processing LLM configuration ---
+            if st.session_state.get("use_separate_processing_llm"):
+                p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
+                p_model = st.session_state.get("processing_llm_model", "")
+                if p_provider == "Ollama":
+                    os.environ["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
+                    os.environ["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
                 else:
-                    os.environ["AEM_OCR_COMPLETION_LLM_PROVIDER"] = "openai"
-                    os.environ["AEM_OCR_COMPLETION_LLM_MODEL"] = c_model
-                    c_base = st.session_state.get("completion_openai_base_url", "https://api.openai.com/v1")
-                    c_key = st.session_state.get("completion_openai_api_key", "")
-                    if c_base:
-                        os.environ["AEM_OCR_COMPLETION_OPENAI_BASE_URL"] = c_base
-                    if c_key:
-                        os.environ["AEM_OCR_COMPLETION_OPENAI_API_KEY"] = c_key
+                    os.environ["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
+                    os.environ["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                    p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
+                    p_key = st.session_state.get("processing_openai_api_key", "")
+                    if p_base:
+                        os.environ["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
+                    if p_key:
+                        os.environ["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
             else:
-                # Clear completion-specific env vars so complete_dataset uses the general LLM
-                for k in ["AEM_OCR_COMPLETION_LLM_PROVIDER", "AEM_OCR_COMPLETION_LLM_MODEL",
-                           "AEM_OCR_COMPLETION_OPENAI_BASE_URL", "AEM_OCR_COMPLETION_OPENAI_API_KEY"]:
+                # Clear processing-specific env vars so processing uses the general LLM
+                for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
+                           "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
                     os.environ.pop(k, None)
 
             if custom_run_id:
