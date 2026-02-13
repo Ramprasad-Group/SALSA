@@ -169,7 +169,9 @@ class SeriesItem:
 def load_series_catalog(lineformer_dir: Path) -> List[SeriesItem]:
     cat = lineformer_dir / "series_catalog.json"
     if not cat.exists():
-        raise FileNotFoundError(f"Missing: {cat}")
+        # Return empty list instead of raising error - lineformer may have failed
+        print(f"Warning: No series_catalog.json found at {cat}")
+        return []
     raw = json.loads(cat.read_text())
     out: List[SeriesItem] = []
     for r in raw:

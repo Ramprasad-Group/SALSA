@@ -1863,6 +1863,19 @@ with tab_intervene:
             st.warning("No lineformer directory found for this figure.")
         else:
             series_items = load_series_catalog(lf_dir)
+
+            # Check if series catalog is empty (lineformer may have failed)
+            if not series_items:
+                st.info("No line series masks found. LineFormer may not have detected any series, or the extraction may have failed.")
+                st.write("This can happen when:")
+                st.write("- The figure doesn't contain line plots")
+                st.write("- LineFormer failed to process the image")
+                st.write("- The image quality is too low")
+                st.write("")
+                st.write("You can try:")
+                st.write("- Re-running extraction on this figure")
+                st.write("- Cropping the image to isolate the plot area")
+
             mapping = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
             names = mapping.get("series_names", {})
             deleted = set(int(x) for x in mapping.get("deleted", []))
@@ -2168,6 +2181,7 @@ with tab_intervene:
                             pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
                         )
                 st.success("Data extraction complete! Check plextract_work_interventions/ for results.")
+                st.rerun()  # Reload to show updated series
             except Exception as e:
                 st.error(f"Failed: {e}")
 
