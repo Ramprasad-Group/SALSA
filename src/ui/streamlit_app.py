@@ -1148,7 +1148,11 @@ selected_doi = st.selectbox(
 )
 st.session_state["selected_doi"] = selected_doi
 
-doi_item = next(d for d in rr.dois if d.doi == selected_doi)
+doi_item = next((d for d in rr.dois if d.doi == selected_doi), None)
+
+if doi_item is None:
+    st.error(f"Could not find DOI '{selected_doi}' in the loaded run. The data may have changed since this session was saved.")
+    st.stop()
 
 # ---------------- Tabs (under DOI dropdown) ----------------
 tab_text, tab_figs, tab_tables, tab_chem, tab_xy, tab_intervene = st.tabs(
