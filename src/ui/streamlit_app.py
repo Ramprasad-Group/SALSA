@@ -1285,6 +1285,26 @@ with tab_figs:
                                 if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
                                     with st.spinner(f"Running data completion for {subfig_dir.name}..."):
                                         try:
+                                            # Verify index.csv exists
+                                            papers_dir = rr.run_dir / "papers"
+                                            index_csv_path = papers_dir / "index.csv"
+
+                                            if not index_csv_path.exists():
+                                                error_msg = f"**Required file not found:** `{index_csv_path.relative_to(rr.run_dir)}`\n\n"
+
+                                                if not papers_dir.exists():
+                                                    error_msg += "The `papers/` directory doesn't exist. "
+                                                else:
+                                                    error_msg += "The `papers/` directory exists but `index.csv` is missing. "
+
+                                                error_msg += ("This file is created during the 'Download DOIs' stage of the pipeline.\n\n"
+                                                             "**To fix this:**\n"
+                                                             "1. Run the full pipeline with 'Download DOIs' enabled, OR\n"
+                                                             "2. If you've already downloaded papers, check if `index.csv` exists in a different workspace")
+
+                                                st.error(error_msg)
+                                                continue
+
                                             # Create temporary CSV with this DOI
                                             import tempfile
                                             import subprocess
@@ -1300,7 +1320,7 @@ with tab_figs:
                                                 "python", str(complete_dataset_script),
                                                 "--file_path", tmp_path,
                                                 "--output_dir", str(rr.run_dir / "complete_dataset"),
-                                                "--index_csv_path", str(rr.run_dir / "papers" / "index.csv"),
+                                                "--index_csv_path", str(index_csv_path),
                                                 "--figures_tables_dir", str(rr.run_dir),
                                                 "--extracted_figures_root", str(latest_manual / "output"),
                                             ]
