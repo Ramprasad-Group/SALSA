@@ -1958,9 +1958,50 @@ with tab_intervene:
       with st.expander("Series Management", expanded=False):
         st.subheader("Series management")
 
-        lf_dir = get_lineformer_dir(item.figure_dir)
+        # Check if there are cropped subfigures in plextract_work_manual
+        manual_workdir = rr.run_dir / "plextract_work_manual"
+        selected_figure_dir = item.figure_dir
+        selected_figure_id = item.figure_id
+        selected_source_image = item.source_image
+
+        if manual_workdir.exists():
+            from intervention import latest_plextract_run_dir
+            latest_manual = latest_plextract_run_dir(manual_workdir)
+            if latest_manual:
+                safe_doi = item.safe_doi
+                out_base = latest_manual / "output" / safe_doi
+                if out_base.exists():
+                    # Find all subfigures that match this figure
+                    fig_stem = Path(item.figure_id).stem
+                    subfig_dirs = sorted([
+                        d for d in out_base.iterdir()
+                        if d.is_dir() and d.name.startswith(fig_stem + "_subfig_")
+                    ])
+
+                    if subfig_dirs:
+                        st.info(f"Found {len(subfig_dirs)} cropped subfigure(s). Select one to manage its series:")
+                        subfig_options = ["Original figure"] + [d.name for d in subfig_dirs]
+                        selected_subfig = st.selectbox(
+                            "Select figure/subfigure for series management",
+                            subfig_options,
+                            key=f"series_subfig_sel_{item.safe_doi}_{item.figure_id}"
+                        )
+
+                        if selected_subfig != "Original figure":
+                            # Use the selected subfigure's directory
+                            subfig_idx = subfig_options.index(selected_subfig) - 1
+                            selected_figure_dir = subfig_dirs[subfig_idx]
+                            selected_figure_id = subfig_dirs[subfig_idx].name
+
+                            # Try to find the source image for this subfigure
+                            crops_dir = rr.run_dir / "interventions" / safe_doi / Path(item.figure_id).name
+                            subfig_source = crops_dir / f"{fig_stem}_subfig_{subfig_idx}.png"
+                            if subfig_source.exists():
+                                selected_source_image = subfig_source
+
+        lf_dir = get_lineformer_dir(selected_figure_dir)
         if not lf_dir.exists():
-            st.warning("No lineformer directory found for this figure.")
+            st.warning(f"No lineformer directory found for {selected_figure_id}.")
         else:
             series_items = load_series_catalog(lf_dir)
 
@@ -1976,10 +2017,10 @@ with tab_intervene:
                 st.write("- Re-running extraction on this figure")
                 st.write("- Cropping the image to isolate the plot area")
 
-            mapping = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
+            mapping = load_mapping(rr.run_dir, item.safe_doi, selected_figure_id)
             names = mapping.get("series_names", {})
             deleted = set(int(x) for x in mapping.get("deleted", []))
-            override_masks = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
+            override_masks = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
 
             # --- Helper: get display name for a series index ---
             _SERIES_COLORS = [
@@ -1990,7 +2031,7 @@ with tab_intervene:
 
             # Try to load actual series labels from plextract final_dataset.csv
             _plextract_series_labels: dict[int, str] = {}
-            _final_csv_path = item.final_dir / "final_dataset.csv"
+            _final_csv_path = selected_figure_dir / "final" / "final_dataset.csv"
             if _final_csv_path.exists():
                 try:
                     _fdf = pd.read_csv(_final_csv_path)
@@ -2015,7 +2056,7 @@ with tab_intervene:
                 return f"Series {idx}"
 
             # ---- Generate colored series masks composite ----
-            base_img_rgb = Image.open(item.source_image).convert("RGBA")
+            base_img_rgb = Image.open(selected_source_image).convert("RGBA")
             w, h = base_img_rgb.size
 
             # Add image width control for series management
@@ -2026,7 +2067,7 @@ with tab_intervene:
                 max_value=min(w, 1500),
                 value=default_series_width,
                 step=50,
-                key=f"series_width_{item.safe_doi}_{item.figure_id}"
+                key=f"series_width_{item.safe_doi}_{selected_figure_id}"
             )
             disp_w = series_width
             disp_h = int(h * (disp_w / w))
@@ -2066,7 +2107,7 @@ with tab_intervene:
             mode = st.radio(
                 "Mode",
                 mode_options,
-                key=f"series_mode_{item.safe_doi}_{item.figure_id}",
+                key=f"series_mode_{item.safe_doi}_{selected_figure_id}",
                 horizontal=True,
             )
 
@@ -2077,7 +2118,7 @@ with tab_intervene:
                 series_name = st.text_input(
                     "Name for new series",
                     value=f"Series {next_idx}",
-                    key=f"new_series_name_{item.safe_doi}_{item.figure_id}",
+                    key=f"new_series_name_{item.safe_doi}_{selected_figure_id}",
                 )
                 cur_mask_img = None
             else:
@@ -2090,7 +2131,7 @@ with tab_intervene:
                         "Select series to edit",
                         range(len(active_series)),
                         format_func=lambda i: sel_series_name_options[i],
-                        key=f"mask_edit_sel_{item.safe_doi}_{item.figure_id}",
+                        key=f"mask_edit_sel_{item.safe_doi}_{selected_figure_id}",
                     )
                     sel_s = active_series[sel_series_ui]
                     selected_idx = sel_s.series_index
@@ -2117,7 +2158,7 @@ with tab_intervene:
 
                 with c1:
                     st.write("Draw on the colored series image below")
-                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{item.figure_id}_{selected_idx}")
+                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{selected_figure_id}_{selected_idx}")
                     mask_canvas = st_canvas(
                         background_image=composite_disp,
                         drawing_mode="freedraw",
@@ -2127,7 +2168,7 @@ with tab_intervene:
                         update_streamlit=True,
                         height=disp_h,
                         width=disp_w,
-                        key=f"mask_canvas_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}",
+                        key=f"mask_canvas_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
                     )
 
                 with c2:
@@ -2160,15 +2201,15 @@ with tab_intervene:
                         colA, colB = st.columns(2)
                         with colA:
                             save_label = "Create new series" if is_creating else f"Save edited mask"
-                            if st.button(save_label, type="primary", key=f"save_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
-                                outp = save_mask_override(rr.run_dir, item.safe_doi, item.figure_id, selected_idx, new_mask_pil)
+                            if st.button(save_label, type="primary", key=f"save_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                                outp = save_mask_override(rr.run_dir, item.safe_doi, selected_figure_id, selected_idx, new_mask_pil)
 
                                 if is_creating:
-                                    mapping_updated = load_mapping(rr.run_dir, item.safe_doi, item.figure_id)
+                                    mapping_updated = load_mapping(rr.run_dir, item.safe_doi, selected_figure_id)
                                     if "series_names" not in mapping_updated:
                                         mapping_updated["series_names"] = {}
                                     mapping_updated["series_names"][str(selected_idx)] = series_name
-                                    save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping_updated)
+                                    save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping_updated)
 
                                     mask_arr = np.array(new_mask_pil)
                                     y_coords, x_coords = np.where(mask_arr > 0)
@@ -2189,11 +2230,11 @@ with tab_intervene:
                                 else:
                                     st.success(f"Saved override mask for {series_name}")
 
-                                override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, item.figure_id)
-                                write_series_catalog_override(rr.run_dir, item.safe_doi, item.figure_id, series_items, override_masks_updated)
+                                override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
+                                write_series_catalog_override(rr.run_dir, item.safe_doi, selected_figure_id, series_items, override_masks_updated)
                                 st.rerun()
                         with colB:
-                            if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{item.figure_id}_{selected_idx}_{mode}"):
+                            if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
                                 st.rerun()
 
             # ---- Rename / delete section ----
@@ -2217,14 +2258,14 @@ with tab_intervene:
                     new_names[str(i)] = st.text_input(
                         f"Name for series {i}",
                         value=default_name,
-                        key=f"series_name_{item.safe_doi}_{item.figure_id}_{i}",
+                        key=f"series_name_{item.safe_doi}_{selected_figure_id}_{i}",
                         label_visibility="collapsed",
                     )
                 with cols[2]:
                     del_flag = st.checkbox(
                         "Delete",
                         value=(i in new_deleted),
-                        key=f"series_del_{item.safe_doi}_{item.figure_id}_{i}",
+                        key=f"series_del_{item.safe_doi}_{selected_figure_id}_{i}",
                     )
                     if del_flag:
                         new_deleted.add(i)
@@ -2236,7 +2277,7 @@ with tab_intervene:
                     "series_names": new_names,
                     "deleted": sorted(list(new_deleted)),
                 }
-                p = save_mapping(rr.run_dir, item.safe_doi, item.figure_id, mapping2)
+                p = save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping2)
                 st.success(f"Saved mapping: {p}")
                 st.rerun()
 
@@ -2262,11 +2303,11 @@ with tab_intervene:
             try:
                 # First, apply all overrides to the plextract output
                 with st.spinner("Applying mask overrides and series changes..."):
-                    apply_overrides_to_plextract(item.figure_dir, rr.run_dir, item.safe_doi, item.figure_id)
+                    apply_overrides_to_plextract(selected_figure_dir, rr.run_dir, item.safe_doi, selected_figure_id)
                 st.success("Applied overrides to plextract output")
 
                 # Determine which lineformer dir has the current masks
-                _lf_dir_for_rerun = get_lineformer_dir(item.figure_dir)
+                _lf_dir_for_rerun = get_lineformer_dir(selected_figure_dir)
 
                 if _rerun_existing_crops:
                     # Run extraction on each cropped image, reusing existing masks
