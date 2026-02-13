@@ -971,9 +971,13 @@ with st.sidebar:
             )
 
             load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
-            
-            
-            existing_runs = sorted([p.name for p in load_workspace_dir.iterdir() if p.is_dir()], reverse=True)
+
+
+            # Filter out axis_presets and instruction_presets directories
+            existing_runs = sorted([
+                p.name for p in load_workspace_dir.iterdir()
+                if p.is_dir() and p.name not in ("axis_presets", "instruction_presets")
+            ], reverse=True)
             pick = st.selectbox("Run ID", options=[""] + existing_runs, key="load_run_id")
 
             if st.button("Load run") and pick:
@@ -1173,12 +1177,21 @@ with tab_text:
 with tab_figs:
     if not doi_item.figures:
         st.warning("No figures found.")
+    # Add width control for figure images
+    fig_img_width = st.slider(
+        "Figure image width (px)",
+        min_value=200,
+        max_value=1200,
+        value=600,
+        step=50,
+        key=f"fig_img_width_{selected_doi}"
+    )
     for f in doi_item.figures:
         with st.expander(f"{f.id}"):
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
             if f.figure_path and f.figure_path.exists():
-                st_image_auto(str(f.figure_path), full_width=True)
+                st.image(str(f.figure_path), width=fig_img_width)
                 st.caption(str(f.figure_path))
             
             # --- Extracted dataset table (plextract final_dataset.csv) ---
@@ -1646,8 +1659,15 @@ with tab_intervene:
     else:
         # Browse all figures from the DOI
         from intervention import InterventionItem, _try_find_source_image, latest_plextract_run_dir as _lpr
+
+        # Check plextract_work_manual first, then fall back to plextract_work
+        plextract_workdir_manual = rr.run_dir / "plextract_work_manual"
         plextract_workdir = rr.run_dir / "plextract_work"
-        latest = _lpr(plextract_workdir)
+
+        latest = _lpr(plextract_workdir_manual)
+        if not latest:
+            latest = _lpr(plextract_workdir)
+
         filtered_fig_root = rr.run_dir / "figures_tables" / "figures"
 
         all_items = []
@@ -1704,7 +1724,18 @@ with tab_intervene:
 
         pil_img = Image.open(item.source_image).convert("RGB")
         orig_w, orig_h = pil_img.size
-        display_w = min(orig_w, 1100)
+
+        # Add image width control
+        default_crop_width = min(orig_w, 600)
+        crop_width = st.slider(
+            "Image display width (px)",
+            min_value=200,
+            max_value=min(orig_w, 1500),
+            value=default_crop_width,
+            step=50,
+            key=f"crop_width_{item.safe_doi}_{item.figure_id}"
+        )
+        display_w = crop_width
         display_h = int(orig_h * (display_w / orig_w))
         # Resize to display dimensions for canvas (avoids Streamlit media file errors)
         pil_img_disp = pil_img.resize((display_w, display_h))
@@ -1715,7 +1746,18 @@ with tab_intervene:
 
         # --- Drawing canvas ---
         st.write("**Draw crop regions** on the figure below.")
-        # show_bg = st.checkbox("Show image in crop canvas", value=True, key=f"crop_bg_{item.safe_doi}_{item.figure_id}")
+
+        # Add drawing mode selector to enable reshaping
+        col_mode1, col_mode2 = st.columns(2)
+        with col_mode1:
+            drawing_mode = st.radio(
+                "Canvas mode",
+                ["rect", "transform"],
+                format_func=lambda x: "Draw new rectangles" if x == "rect" else "Edit/reshape rectangles",
+                key=f"canvas_mode_{item.safe_doi}_{item.figure_id}",
+                horizontal=True
+            )
+
         show_bg = True
 
         canvas_kwargs = dict(
@@ -1724,7 +1766,7 @@ with tab_intervene:
             update_streamlit=True,
             height=display_h,
             width=display_w,
-            drawing_mode="rect",
+            drawing_mode=drawing_mode,
             key=f"canvas_{item.safe_doi}_{item.figure_id}",
         )
 
@@ -1832,6 +1874,15 @@ with tab_intervene:
                 if out_base.exists():
                     found_csvs = list(out_base.glob("**/final/final_dataset.csv"))
                     if found_csvs:
+                        # Add width control for final images
+                        final_img_width = st.slider(
+                            "Final image width (px)",
+                            min_value=200,
+                            max_value=1200,
+                            value=600,
+                            step=50,
+                            key=f"final_img_width_{item.safe_doi}_{item.figure_id}"
+                        )
                         for csv_p in found_csvs:
                             fig_folder = csv_p.parent.parent.name
                             st.markdown(f"**{fig_folder} - extracted data**")
@@ -1842,7 +1893,7 @@ with tab_intervene:
                                 st.warning(f"Failed to load: {e}")
                             final_img = csv_p.parent / "final_image.png"
                             if final_img.exists():
-                                st_image_auto(str(final_img), full_width=True)
+                                st.image(str(final_img), width=final_img_width)
                             st.divider()
                     else:
                         fig_folders = sorted([p.name for p in out_base.iterdir() if p.is_dir()])
@@ -1917,7 +1968,18 @@ with tab_intervene:
             # ---- Generate colored series masks composite ----
             base_img_rgb = Image.open(item.source_image).convert("RGBA")
             w, h = base_img_rgb.size
-            disp_w = min(w, 1100)
+
+            # Add image width control for series management
+            default_series_width = min(w, 600)
+            series_width = st.slider(
+                "Series overlay image width (px)",
+                min_value=200,
+                max_value=min(w, 1500),
+                value=default_series_width,
+                step=50,
+                key=f"series_width_{item.safe_doi}_{item.figure_id}"
+            )
+            disp_w = series_width
             disp_h = int(h * (disp_w / w))
 
             # Build colored overlay for all existing series
