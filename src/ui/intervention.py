@@ -66,7 +66,7 @@ def find_interventions(run_dir: Path, plextract_workdir_name: str = "plextract_w
                     figure_dir=fig_dir,
                     final_dir=final_dir,
                     source_image=_try_find_source_image(filtered_fig_root, safe_doi, figure_id),
-                    reason="Missing final/ directory",
+                    reason="Missing final dataset",
                 ))
                 continue
 
