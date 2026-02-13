@@ -1249,33 +1249,37 @@ with tab_figs:
                             st.divider()
                             st.markdown("**Cropped Subfigures**")
                             for subfig_dir in subfig_dirs:
-                                with st.expander(f"📐 {subfig_dir.name}", expanded=False):
-                                    final_dir = subfig_dir / "final"
-                                    if final_dir.exists():
-                                        # Show final image
-                                        final_img = final_dir / "final_image.png"
-                                        if final_img.exists():
-                                            st.image(str(final_img), width=fig_img_width)
+                                st.markdown(f"##### 📐 {subfig_dir.name}")
+                                final_dir = subfig_dir / "final"
+                                if final_dir.exists():
+                                    # Show final image
+                                    final_img = final_dir / "final_image.png"
+                                    if final_img.exists():
+                                        st.image(str(final_img), width=fig_img_width)
 
-                                        # Show extracted dataset
-                                        final_csv = final_dir / "final_dataset.csv"
-                                        if final_csv.exists():
-                                            try:
-                                                df_subfig = pd.read_csv(final_csv)
-                                                st.markdown("**Extracted Data**")
-                                                st.dataframe(df_subfig, use_container_width=True, hide_index=True)
-                                            except Exception as e:
-                                                st.warning(f"Failed to load: {e}")
+                                    # Show extracted dataset
+                                    final_csv = final_dir / "final_dataset.csv"
+                                    if final_csv.exists():
+                                        try:
+                                            df_subfig = pd.read_csv(final_csv)
+                                            st.markdown("**Extracted Data**")
+                                            st.dataframe(df_subfig, use_container_width=True, hide_index=True)
+                                        except Exception as e:
+                                            st.warning(f"Failed to load: {e}")
 
-                                        # Show emit_rows for this subfigure
-                                        emit_rows_path_subfig = find_emit_rows_for_source(
-                                            rr.run_dir, selected_doi, "figure", subfig_dir.name
-                                        )
-                                        if emit_rows_path_subfig:
-                                            df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
-                                            if df_emit_subfig is not None and not df_emit_subfig.empty:
-                                                st.markdown("**🤖 LLM-Generated Rows (sent to final dataset)**")
-                                                st.dataframe(df_emit_subfig, use_container_width=True, hide_index=True)
+                                    # Show emit_rows for this subfigure
+                                    emit_rows_path_subfig = find_emit_rows_for_source(
+                                        rr.run_dir, selected_doi, "figure", subfig_dir.name
+                                    )
+                                    if emit_rows_path_subfig:
+                                        df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
+                                        if df_emit_subfig is not None and not df_emit_subfig.empty:
+                                            st.markdown("**🤖 LLM-Generated Rows (sent to final dataset)**")
+                                            st.dataframe(df_emit_subfig, use_container_width=True, hide_index=True)
+
+                                # Add separator between subfigures if there are multiple
+                                if subfig_dir != subfig_dirs[-1]:
+                                    st.markdown("---")
 
             if f.metadata_path and f.metadata_path.exists():
                 st.markdown("**Metadata**")
