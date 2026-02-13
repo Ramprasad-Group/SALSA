@@ -1273,52 +1273,66 @@ with tab_figs:
                     ])
 
                     if subfig_dirs:
-                        # Header with data completion button
-                        col_header, col_button = st.columns([3, 1])
-                        with col_header:
-                            st.markdown("**Cropped Subfigures**")
-                        with col_button:
-                            if st.button("Run Data Completion", key=f"complete_{f.id}", help="Run complete_dataset.py to extract dataset rows from cropped subfigures"):
-                                with st.spinner("Running data completion..."):
-                                    try:
-                                        # Create temporary CSV with this DOI
-                                        import tempfile
-                                        import subprocess
-
-                                        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
-                                            tmp.write(f"DOI\n{selected_doi}\n")
-                                            tmp_path = tmp.name
-
-                                        # Run complete_dataset.py
-                                        complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-
-                                        cmd = [
-                                            "python", str(complete_dataset_script),
-                                            "--file_path", tmp_path,
-                                            "--output_dir", str(rr.run_dir / "complete_dataset"),
-                                            "--index_csv_path", str(rr.run_dir / "papers" / "index.csv"),
-                                            "--figures_tables_dir", str(rr.run_dir),
-                                            "--extracted_figures_root", str(latest_manual / "output"),
-                                        ]
-
-                                        print("====TEST=====")
-                                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-                                        print(result)
-                                        # Clean up temp file
-                                        Path(tmp_path).unlink(missing_ok=True)
-
-                                        if result.returncode == 0:
-                                            st.success("Data completion completed! Refresh to see updated row_cache data.")
-                                            st.rerun()
-                                        else:
-                                            st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
-                                    except subprocess.TimeoutExpired:
-                                        st.error("Data completion timed out (>5 minutes)")
-                                    except Exception as e:
-                                        st.error(f"Error running data completion: {e}")
+                        # Header for subfigures section
+                        st.markdown("**Cropped Subfigures**")
 
                         for subfig_dir in subfig_dirs:
-                            st.markdown(f"### {subfig_dir.name}")
+                            # Subfigure header with data completion button
+                            col_header, col_button = st.columns([3, 1])
+                            with col_header:
+                                st.markdown(f"### {subfig_dir.name}")
+                            with col_button:
+                                if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
+                                    with st.spinner(f"Running data completion for {subfig_dir.name}..."):
+                                        try:
+                                            # Create temporary CSV with this DOI
+                                            import tempfile
+                                            import subprocess
+
+                                            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
+                                                tmp.write(f"DOI\n{selected_doi}\n")
+                                                tmp_path = tmp.name
+
+                                            # Run complete_dataset.py
+                                            complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+
+                                            cmd = [
+                                                "python", str(complete_dataset_script),
+                                                "--file_path", tmp_path,
+                                                "--output_dir", str(rr.run_dir / "complete_dataset"),
+                                                "--index_csv_path", str(rr.run_dir / "papers" / "index.csv"),
+                                                "--figures_tables_dir", str(rr.run_dir),
+                                                "--extracted_figures_root", str(latest_manual / "output"),
+                                            ]
+
+                                            # Pass LLM configuration environment variables to subprocess
+                                            env = os.environ.copy()
+
+                                            # Ensure LLM config is set for the subprocess
+                                            if "AEM_OCR_LLM_MODEL" not in env or not env.get("AEM_OCR_LLM_MODEL"):
+                                                # Try to use processing LLM config if available
+                                                if "AEM_OCR_PROCESSING_LLM_MODEL" in env and env.get("AEM_OCR_PROCESSING_LLM_MODEL"):
+                                                    st.info("Using processing LLM configuration for data completion")
+                                                else:
+                                                    st.error("No LLM model configured. Please configure LLM settings in the Pipeline tab before running data completion.")
+                                                    Path(tmp_path).unlink(missing_ok=True)
+                                                    continue
+
+                                            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+
+                                            # Clean up temp file
+                                            Path(tmp_path).unlink(missing_ok=True)
+
+                                            if result.returncode == 0:
+                                                st.success(f"Data completion completed for {subfig_dir.name}! Refresh to see updated row_cache data.")
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
+                                        except subprocess.TimeoutExpired:
+                                            st.error("Data completion timed out (>5 minutes)")
+                                        except Exception as e:
+                                            st.error(f"Error running data completion: {e}")
+
                             with st.expander(f"### {subfig_dir.name}"):
                                 final_dir = subfig_dir / "final"
                                 if final_dir.exists():
