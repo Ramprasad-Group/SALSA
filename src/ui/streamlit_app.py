@@ -1308,15 +1308,51 @@ with tab_figs:
                                             # Pass LLM configuration environment variables to subprocess
                                             env = os.environ.copy()
 
-                                            # Ensure LLM config is set for the subprocess
-                                            if "AEM_OCR_LLM_MODEL" not in env or not env.get("AEM_OCR_LLM_MODEL"):
-                                                # Try to use processing LLM config if available
-                                                if "AEM_OCR_PROCESSING_LLM_MODEL" in env and env.get("AEM_OCR_PROCESSING_LLM_MODEL"):
-                                                    st.info("Using processing LLM configuration for data completion")
+                                            # Apply LLM configuration from session state
+                                            provider = st.session_state.get("llm_provider", "Ollama")
+                                            model = st.session_state.get("llm_model", "")
+
+                                            if provider == "Ollama":
+                                                env["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                                                env["AEM_OCR_LLM_MODEL"] = model
+                                                env["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                                ollama_models_dir = st.session_state.get("ollama_models_dir", "")
+                                                if ollama_models_dir:
+                                                    env["OLLAMA_MODELS"] = ollama_models_dir
+                                            else:
+                                                env["AEM_OCR_LLM_PROVIDER"] = "openai"
+                                                env["AEM_OCR_LLM_MODEL"] = model
+                                                env["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                                                if st.session_state.get("openai_api_key"):
+                                                    env["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+                                            # Apply data processing LLM configuration if separate
+                                            if st.session_state.get("use_separate_processing_llm"):
+                                                p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
+                                                p_model = st.session_state.get("processing_llm_model", "")
+                                                if p_provider == "Ollama":
+                                                    env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
+                                                    env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
                                                 else:
-                                                    st.error("No LLM model configured. Please configure LLM settings in the Pipeline tab before running data completion.")
-                                                    Path(tmp_path).unlink(missing_ok=True)
-                                                    continue
+                                                    env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
+                                                    env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                                                    p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
+                                                    p_key = st.session_state.get("processing_openai_api_key", "")
+                                                    if p_base:
+                                                        env["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
+                                                    if p_key:
+                                                        env["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
+                                            else:
+                                                # Clear processing-specific env vars so processing uses the general LLM
+                                                for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
+                                                           "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
+                                                    env.pop(k, None)
+
+                                            # Validate that a model is configured
+                                            if not model and not st.session_state.get("processing_llm_model"):
+                                                st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
+                                                Path(tmp_path).unlink(missing_ok=True)
+                                                continue
 
                                             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
 
