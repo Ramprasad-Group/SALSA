@@ -1323,6 +1323,7 @@ with tab_figs:
                                                 "--index_csv_path", str(index_csv_path),
                                                 "--figures_tables_dir", str(rr.run_dir),
                                                 "--extracted_figures_root", str(latest_manual / "output"),
+                                                "--target_figure", subfig_dir.name,
                                             ]
 
                                             # Pass LLM configuration environment variables to subprocess
@@ -1373,6 +1374,14 @@ with tab_figs:
                                                 st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
                                                 Path(tmp_path).unlink(missing_ok=True)
                                                 continue
+
+                                            # Set custom instructions path if it exists in the workspace
+                                            ci_path = rr.run_dir.parent / "custom_instructions" / "default.json"
+                                            if ci_path.exists():
+                                                env["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+
+                                            # Set run ID for cost tracking
+                                            env["AEM_OCR_RUN_ID"] = rr.run_id
 
                                             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
 

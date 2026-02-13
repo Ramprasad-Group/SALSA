@@ -81,6 +81,10 @@ parser.add_argument('--plan_cache_dir', default='',
 parser.add_argument('--custom_instructions', default='',
                     help="Path to custom_instructions.json (overrides AEM_OCR_CUSTOM_INSTRUCTIONS env var)")
 
+parser.add_argument('--target_figure', default='',
+                    help="Optional: target a specific figure/subfigure by name (e.g., 'Figure_1_subfig_0'). "
+                         "If specified, only this figure/subfigure will be processed.")
+
 args = parser.parse_args()
 
 # --- Load custom instructions ---
@@ -286,6 +290,14 @@ def load_extracted_figure_datasets(modified_doi: str) -> List[FigurePointDataset
     out: List[FigurePointDataset] = []
     for fp in doi_dir.glob("**/final/final_dataset.csv"):
         try:
+            # If target_figure is specified, filter to only that figure/subfigure
+            if args.target_figure:
+                # Extract the figure/subfigure name from the path
+                # Path structure: {doi_dir}/{figure_name}/final/final_dataset.csv
+                figure_name = fp.parent.parent.name
+                if figure_name != args.target_figure:
+                    continue
+
             df = pd.read_csv(fp)
             if not all(c in df.columns for c in keep):
                 continue
