@@ -1135,8 +1135,13 @@ except Exception:
 
 # Keep selected DOI in session_state so table + dropdown stay in sync
 doi_options = [d.doi for d in rr.dois]
+
+if not doi_options:
+    st.warning("No DOIs found in the loaded run. The run may be empty or incomplete.")
+    st.stop()
+
 if "selected_doi" not in st.session_state:
-    st.session_state["selected_doi"] = doi_options[0] if doi_options else None
+    st.session_state["selected_doi"] = doi_options[0]
 
 if df_selected_doi:
     st.session_state["selected_doi"] = df_selected_doi
