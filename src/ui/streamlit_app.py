@@ -373,7 +373,9 @@ def find_emit_rows_for_source(
     Find the emit_rows cache file for a specific table/figure.
 
     Cache key format: emit_rows::{source_kind}::{doi}::{source_name}::{hash}
-    Filename: emit_rows__{source_kind}__{doi}__{source_name}__{hash}.json
+    Actual filename patterns (tries both):
+      - emit_rows_{source_kind}_{doi}_{source_name}_{hash}.json (single underscores, / -> _)
+      - emit_rows__{source_kind}__{doi}__{source_name}__{hash}.json (double underscores, / -> @)
 
     Returns path to cache file if found, None otherwise.
     """
@@ -381,19 +383,31 @@ def find_emit_rows_for_source(
     if not cache_dir.exists():
         return None
 
-    # Safe DOI (with @ instead of /)
-    safe_doi = doi_to_safe(doi)
+    # Sanitize source_name for filename matching
+    safe_source_name = source_name.replace('/', '_').replace(':', '_')
 
-    # Pattern to match: emit_rows__<kind>__<doi>__<name>__*.json
-    # Note: source_name may have special chars that are sanitized in filename
-    pattern_prefix = f"emit_rows__{source_kind}__{safe_doi}"
-
-    # Find matching files
+    # Try both patterns
     candidates = []
-    for cache_file in cache_dir.glob(f"{pattern_prefix}*.json"):
-        # Check if source_name appears in filename (may be sanitized)
-        if source_name.replace('/', '_').replace(':', '_') in cache_file.stem:
-            candidates.append(cache_file)
+
+    # Pattern 1: Single underscores with / -> _ (actual format in complete_dataset.py)
+    safe_doi_underscore = doi.replace("/", "_").strip()
+    pattern1 = f"emit_rows_{source_kind}_{safe_doi_underscore}_{safe_source_name}_*.json"
+    for cache_file in cache_dir.glob(pattern1):
+        candidates.append(cache_file)
+
+    # Pattern 2: Double underscores with / -> @ (legacy/alternate format)
+    safe_doi_at = doi_to_safe(doi)
+    pattern2 = f"emit_rows__{source_kind}__{safe_doi_at}_{safe_source_name}_*.json"
+    for cache_file in cache_dir.glob(pattern2):
+        candidates.append(cache_file)
+
+    # If no exact matches, try loose matching on source_name only
+    if not candidates:
+        pattern_prefix = f"emit_rows_{source_kind}_"
+        for cache_file in cache_dir.glob(f"{pattern_prefix}*.json"):
+            # Check if source_name appears in filename (may be sanitized)
+            if safe_source_name in cache_file.stem:
+                candidates.append(cache_file)
 
     # Return most recent if multiple found
     if candidates:
@@ -1258,7 +1272,49 @@ with tab_figs:
                     ])
 
                     if subfig_dirs:
-                        st.markdown("**Cropped Subfigures**")
+                        # Header with data completion button
+                        col_header, col_button = st.columns([3, 1])
+                        with col_header:
+                            st.markdown("**Cropped Subfigures**")
+                        with col_button:
+                            if st.button("🔄 Run Data Completion", key=f"complete_{f.id}", help="Run complete_dataset.py to extract dataset rows from cropped subfigures"):
+                                with st.spinner("Running data completion..."):
+                                    try:
+                                        # Create temporary CSV with this DOI
+                                        import tempfile
+                                        import subprocess
+
+                                        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
+                                            tmp.write(f"DOI\n{selected_doi}\n")
+                                            tmp_path = tmp.name
+
+                                        # Run complete_dataset.py
+                                        complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+
+                                        cmd = [
+                                            "python", str(complete_dataset_script),
+                                            "--file_path", tmp_path,
+                                            "--output_dir", str(rr.run_dir / "complete_dataset"),
+                                            "--index_csv_path", str(rr.run_dir / "papers" / "index.csv"),
+                                            "--figures_tables_dir", str(rr.run_dir),
+                                            "--extracted_figures_root", str(latest_manual / "output"),
+                                        ]
+
+                                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+                                        # Clean up temp file
+                                        Path(tmp_path).unlink(missing_ok=True)
+
+                                        if result.returncode == 0:
+                                            st.success("✅ Data completion completed! Refresh to see updated row_cache data.")
+                                            st.rerun()
+                                        else:
+                                            st.error(f"❌ Data completion failed:\n```\n{result.stderr}\n```")
+                                    except subprocess.TimeoutExpired:
+                                        st.error("❌ Data completion timed out (>5 minutes)")
+                                    except Exception as e:
+                                        st.error(f"❌ Error running data completion: {e}")
+
                         for subfig_dir in subfig_dirs:
                             st.markdown(f"##### 📐 {subfig_dir.name}")
                             final_dir = subfig_dir / "final"
