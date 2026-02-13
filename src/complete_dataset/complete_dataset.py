@@ -475,11 +475,12 @@ def load_extracted_figure_datasets(modified_doi: str) -> List[FigurePointDataset
 
 
 def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
-    
+
     # print('=====COMPLETE_RECORD=====', complete_record)
 
     doi = complete_record.get("doi", "")
-    full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+    full_text_raw = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+    full_text = _filter_full_text_sections(full_text_raw) if full_text_raw else {}
 
     ef = complete_record.get("extracted_figure_data", {})
     datasets = (ef or {}).get("datasets", [])
@@ -546,7 +547,8 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
 def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
     doi = complete_record.get("doi", "")
     tables = complete_record.get("tables", [])
-    full_text = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+    full_text_raw = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
+    full_text = _filter_full_text_sections(full_text_raw) if full_text_raw else {}
 
     if not tables:
         return pd.DataFrame(columns=DATASET_COLUMNS)
@@ -593,6 +595,60 @@ def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
         return pd.DataFrame(columns=DATASET_COLUMNS)
 
     return pd.concat(dfs, ignore_index=True).reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)
+
+
+def _filter_full_text_sections(
+    full_text: Optional[Dict[str, Any]],
+    exclude_sections: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Filter out specified sections from full text before sending to LLM.
+
+    Args:
+        full_text: Parsed JSON structure with Sections array
+        exclude_sections: List of section names to exclude (case-insensitive)
+
+    Returns:
+        Filtered full_text dict with excluded sections removed
+    """
+    if not full_text or not isinstance(full_text, dict):
+        return full_text or {}
+
+    # Default sections to exclude
+    if exclude_sections is None:
+        exclude_sections = [
+            "Introduction", "Conclusions", "Conclusion", "References",
+            "Bibliography", "Acknowledgments", "Acknowledgements",
+            "Supporting Information", "Supplementary Material"
+        ]
+
+    # Normalize to lowercase for comparison
+    exclude_lower = {s.lower() for s in exclude_sections}
+
+    # Create filtered copy
+    filtered = full_text.copy()
+
+    if "Sections" in filtered and isinstance(filtered["Sections"], list):
+        original_sections = filtered["Sections"]
+        filtered_sections = []
+
+        for section in original_sections:
+            if not isinstance(section, dict):
+                filtered_sections.append(section)
+                continue
+
+            section_name = section.get("name", "").strip()
+
+            # Keep section if not in exclude list
+            if section_name.lower() not in exclude_lower:
+                filtered_sections.append(section)
+            else:
+                log.debug(f"Filtering out section: {section_name}")
+
+        filtered["Sections"] = filtered_sections
+
+    return filtered
+
 
 def _load_chemical_samples(modified_doi: str) -> List[Dict[str, Any]]:
     """
@@ -647,6 +703,34 @@ def _expand_dataset_by_samples(
     return pd.concat(parts, ignore_index=True)
 
 
+def _filter_missing_sample_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove rows where sample name is missing or invalid.
+    Returns filtered dataframe with only valid sample names.
+    """
+    if df.empty or "Sample Name" not in df.columns:
+        return df
+
+    original_count = len(df)
+
+    # Filter out rows with missing/invalid sample names
+    df_filtered = df[
+        (df['Sample Name'].notna()) &
+        (df['Sample Name'].str.strip() != '') &
+        (~df['Sample Name'].str.contains('Not Found', case=False, na=False)) &
+        (~df['Sample Name'].str.contains('Unknown', case=False, na=False))
+    ].copy()
+
+    filtered_count = original_count - len(df_filtered)
+    if filtered_count > 0:
+        log.info(
+            f"Filtered out {filtered_count} rows with missing sample names "
+            f"({original_count} → {len(df_filtered)} rows)"
+        )
+
+    return df_filtered.reset_index(drop=True)
+
+
 def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
     df_tables = complete_dataset_from_tables_llm(complete_record, client)
     df_figs = complete_dataset_from_figures_llm(complete_record, client)
@@ -661,6 +745,9 @@ def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
     if chem_samples:
         df_all = _expand_dataset_by_samples(df_all, chem_samples)
         df_all = df_all.drop_duplicates()
+
+    # Filter out rows without valid sample names
+    df_all = _filter_missing_sample_names(df_all)
 
     return df_all
 

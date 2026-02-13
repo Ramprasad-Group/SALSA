@@ -373,6 +373,13 @@ def infer_rows_for_table(
         - A "data point" is defined as ONE (x_value, y_value) pair from the figure.
         - DO NOT aggregate, average, group, summarize, or combine points.
 
+        SAMPLE NAME EXTRACTION - CRITICAL RULES:
+        1. ALWAYS attempt to identify or construct a sample name for each data point
+        2. Extract sample names from table columns, rows, or headers
+        3. If sample names are implicit, construct from identifying columns (composition, ID, designation, etc.)
+        4. Use descriptive identifiers based on varying parameters (e.g., "IEC_1.5", "80C_sample")
+        5. ONLY leave Sample Name empty if absolutely no identifying information is available
+
         Output schema:
         Convert the data into rows with EXACTLY the following output_columns:
         {json.dumps(cols, indent=2)}
@@ -518,6 +525,36 @@ def infer_rows_for_figure_dataset(
         - Create ONE output row for EVERY individual data point.
         - A "data point" is defined as ONE (x_value, y_value) pair from the figure.
         - DO NOT aggregate, average, group, summarize, or combine points.
+
+        SAMPLE NAME EXTRACTION - CRITICAL RULES:
+        1. ALWAYS attempt to identify or construct a sample name for each data point
+        2. Priority order for finding sample names:
+           a) Explicit sample names in caption or full text
+           b) Series label from the legend (use as-is if it represents a sample)
+           c) Construct from series_label if it contains identifying information (e.g., "IEC=1.5" → "Sample_IEC_1.5")
+           d) Extract from dataset metadata or figure annotations
+           e) Use parameter values to create descriptive identifier (e.g., "80C_60RH" for temp/humidity conditions)
+
+        3. Examples of constructing sample names from extracted data:
+           - series_label="IEC=1.5 mS/cm" → Sample Name: "IEC_1.5" or "Sample_1.5_mS_cm"
+           - series_label="n=8" → Sample Name: "n8_spacer" or "C8_chain"
+           - series_label="t=24h" AND time series → Sample Name: Use sample from caption if available
+           - series_label="80°C" → Sample Name: "Sample_80C" (if temperature is the varying parameter)
+
+        4. For time series where series_label is a time point:
+           - Extract the actual sample name from caption/full text
+           - Use the time value in the "time(h)" column
+           - If no sample name in caption, create identifier like "Sample_TimeSeries_1"
+
+        5. ONLY leave Sample Name empty as absolute last resort when:
+           - No legend information available
+           - No identifying information in caption
+           - No parameter values to construct from
+
+        6. When constructing sample names:
+           - Use descriptive identifiers based on the varying parameter
+           - Include units or values that distinguish samples
+           - Be consistent across all data points from same series
 
         Output schema:
         Convert the data into rows with EXACTLY the following output_columns:
