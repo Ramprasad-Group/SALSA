@@ -30,75 +30,49 @@ from ui.openai_cost import append_usage, run_id_from_env
 # Prompts
 # ---------------------------------------------------------------------------
 
-_IDENTIFY_RELEVANT_PROMPT = """\
+_COMBINED_EXTRACTION_PROMPT = """\
 You are an expert materials-science chemist.
 
-Given the following parsed content from a scientific paper, identify ALL
-sections of text, tables, and figures that are relevant to the **chemical
-structures, chemical reactions, and chemical composition** of the materials
-discussed.
+Given the following parsed content from a scientific paper, perform TWO tasks:
+
+TASK 1: Identify ALL sections of text, tables, and figures that are relevant to the **chemical structures, chemical reactions, and chemical composition** of the materials discussed.
 
 IMPORTANT — you MUST include:
-- Figures or schemes that **depict chemical structures**, molecular
-  diagrams, polymerisation reactions, synthesis routes, or reaction
-  mechanisms (e.g. "Scheme 1", "Figure 1 – synthesis of …").
-  These are extremely important even if they contain no numerical data.
-- Figures that show chemical drawings, repeat-unit structures, monomer
-  structures, cross-linking diagrams, or any graphical representation of
-  molecules.
-- Tables listing polymer compositions, monomer feed ratios, IEC values,
-  water uptake, degree of functionalization, etc.
-- Body-text paragraphs describing synthesis procedures, reagent amounts,
-  grafting degrees, functionalization steps, or naming conventions for
-  samples.
+- Figures or schemes that **depict chemical structures**, molecular diagrams, polymerisation reactions, synthesis routes, or reaction mechanisms (e.g. "Scheme 1", "Figure 1 – synthesis of …"). These are extremely important even if they contain no numerical data.
+- Figures that show chemical drawings, repeat-unit structures, monomer structures, cross-linking diagrams, or any graphical representation of molecules.
+- Tables listing polymer compositions, monomer feed ratios, IEC values, water uptake, degree of functionalization, etc.
+- Body-text paragraphs describing synthesis procedures, reagent amounts, grafting degrees, functionalization steps, or naming conventions for samples.
 
-For each relevant item, return a JSON array of objects with these keys:
-- "source_type": one of "text", "table", "figure/scheme"
-- "source_id": the ID as used in the paper (e.g. "Table 1", "Figure 3",
-  "Scheme 1") or "body_text" for inline passages
-- "excerpt": the relevant passage (≤500 chars) or caption/description
-- "relevance": brief explanation of why this is relevant to chemical
-  composition or structure
+TASK 2: From the paper content, identify every **unique sample name** that has associated **materials-property data** reported in this manuscript (e.g. conductivity, stability/retention, IEC, water uptake, swelling ratio, mechanical properties, or any other measured property).
 
-Return ONLY a JSON array.  No markdown fences.
-
-Paper content:
-{content}
-"""
-
-_EXTRACT_SAMPLES_PROMPT = """\
-You are an expert materials-science chemist.
-
-From the paper content below, identify every **unique sample name** that
-has associated **materials-property data** reported in this manuscript
-(e.g. conductivity, stability/retention, IEC, water uptake, swelling
-ratio, mechanical properties, or any other measured property).
-
-Do NOT include samples that are only mentioned as literature references,
-reagents consumed during synthesis, or comparison points from other
-papers without new measurements in this manuscript.
+Do NOT include samples that are only mentioned as literature references, reagents consumed during synthesis, or comparison points from other papers without new measurements in this manuscript.
 
 For each qualifying sample extract:
 - Its chemical components (monomers, polymers, fillers, dopants, solvents…)
-- The composition of each component (mole %, weight %, volume %, ratio,
-  or however it is expressed in the paper)
+- The composition of each component (mole %, weight %, volume %, ratio, or however it is expressed in the paper)
 - Any SMILES or molecular formula you can determine from the paper text
-- The chemical structure class (e.g. "quaternary ammonium", "imidazolium",
-  "polysulfone", "PEEK", …)
+- The chemical structure class (e.g. "quaternary ammonium", "imidazolium", "polysulfone", "PEEK", …)
 
-Return a JSON array of objects.  Each object MUST have these keys:
-- "sample_name": str – the exact sample label used in the paper
-- "components": list of objects, each with:
-    - "name": str – component name
-    - "role": str – one of "polymer_backbone", "functional_group",
-      "crosslinker", "filler", "dopant", "solvent", "other"
-    - "formula": str or null – molecular formula if available
-    - "smiles": str or null – SMILES string if determinable
-    - "amount": str or null – composition amount as stated
-- "structure_class": str or null – high-level classification
-- "notes": str or null – any additional context
+Return a JSON object with TWO keys:
 
-Return ONLY a JSON array.  No markdown fences.
+1. "relevant_content": array of objects, each with:
+   - "source_type": one of "text", "table", "figure/scheme"
+   - "source_id": the ID as used in the paper (e.g. "Table 1", "Figure 3", "Scheme 1") or "body_text" for inline passages
+   - "excerpt": the relevant passage (≤500 chars) or caption/description
+   - "relevance": brief explanation of why this is relevant to chemical composition or structure
+
+2. "samples": array of objects, each with:
+   - "sample_name": str – the exact sample label used in the paper
+   - "components": list of objects, each with:
+       - "name": str – component name
+       - "role": str – one of "polymer_backbone", "functional_group", "crosslinker", "filler", "dopant", "solvent", "other"
+       - "formula": str or null – molecular formula if available
+       - "smiles": str or null – SMILES string if determinable
+       - "amount": str or null – composition amount as stated
+   - "structure_class": str or null – high-level classification
+   - "notes": str or null – any additional context
+
+Return ONLY a JSON object with these two keys.  No markdown fences.
 
 Paper content:
 {content}
@@ -140,17 +114,16 @@ def _log_cost(meta: Any, *, doi: str = "", extra: Optional[Dict] = None):
         print(f"[chemical_composition] WARNING: failed to log cost: {e}")
 
 
-def identify_relevant_content(
+def extract_chemical_composition_combined(
     parsed_text: str,
     tables_text: str = "",
     figures_text: str = "",
     *,
     doi: str = "",
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Ask the LLM to identify which parts of the paper are relevant to
-    chemical composition — including figures/schemes depicting structures
-    or reactions.
+    Combined function that identifies relevant content AND extracts samples
+    in a single LLM call.
 
     Parameters
     ----------
@@ -165,8 +138,9 @@ def identify_relevant_content(
 
     Returns
     -------
-    list of dicts
-        Each dict has source_type, source_id, excerpt, relevance.
+    dict with keys:
+        - "relevant_content": list of dicts (source_type, source_id, excerpt, relevance)
+        - "samples": list of dicts (sample_name, components, structure_class, notes)
     """
     combined = ""
     if parsed_text:
@@ -177,9 +151,9 @@ def identify_relevant_content(
         combined += "=== FIGURE CAPTIONS ===\n" + _truncate(figures_text, 10000) + "\n\n"
 
     if not combined.strip():
-        return []
+        return {"relevant_content": [], "samples": []}
 
-    prompt = _IDENTIFY_RELEVANT_PROMPT.format(content=combined)
+    prompt = _COMBINED_EXTRACTION_PROMPT.format(content=combined)
     # Use processing-specific LLM if configured, otherwise fall back to general
     processing_override = load_processing_llm_config()
     if processing_override is not None:
@@ -192,15 +166,40 @@ def identify_relevant_content(
         return_meta=True,
     )
 
-    _log_cost(meta, doi=doi, extra={"kind": "chemical_composition_identify"})
+    # Log cost for combined call
+    _log_cost(meta, doi=doi, extra={"kind": "chemical_composition_combined"})
 
     try:
-        items = json.loads(_clean_json_response(raw))
-        if isinstance(items, list):
-            return items
+        result = json.loads(_clean_json_response(raw))
+        if isinstance(result, dict):
+            # Validate structure
+            if "relevant_content" in result and "samples" in result:
+                return result
     except json.JSONDecodeError:
         pass
-    return []
+
+    # Return empty structure if parsing failed
+    return {"relevant_content": [], "samples": []}
+
+
+# Legacy functions kept for backward compatibility
+def identify_relevant_content(
+    parsed_text: str,
+    tables_text: str = "",
+    figures_text: str = "",
+    *,
+    doi: str = "",
+) -> List[Dict[str, Any]]:
+    """
+    DEPRECATED: Use extract_chemical_composition_combined instead.
+
+    This function is kept for backward compatibility but now calls
+    the combined extraction function and returns only relevant_content.
+    """
+    result = extract_chemical_composition_combined(
+        parsed_text, tables_text, figures_text, doi=doi
+    )
+    return result.get("relevant_content", [])
 
 
 def extract_samples_and_compositions(
@@ -211,47 +210,15 @@ def extract_samples_and_compositions(
     doi: str = "",
 ) -> List[Dict[str, Any]]:
     """
-    Ask the LLM to extract every unique sample that has associated
-    materials-property data, along with its chemical composition.
+    DEPRECATED: Use extract_chemical_composition_combined instead.
 
-    Returns
-    -------
-    list of dicts
-        Each dict has sample_name, components, structure_class, notes.
+    This function is kept for backward compatibility but now calls
+    the combined extraction function and returns only samples.
     """
-    combined = ""
-    if parsed_text:
-        combined += "=== BODY TEXT ===\n" + _truncate(parsed_text) + "\n\n"
-    if tables_text:
-        combined += "=== TABLES ===\n" + _truncate(tables_text, 20000) + "\n\n"
-    if figures_text:
-        combined += "=== FIGURE CAPTIONS ===\n" + _truncate(figures_text, 10000) + "\n\n"
-
-    if not combined.strip():
-        return []
-
-    prompt = _EXTRACT_SAMPLES_PROMPT.format(content=combined)
-    # Use processing-specific LLM if configured, otherwise fall back to general
-    processing_override = load_processing_llm_config()
-    if processing_override is not None:
-        client = get_llm_client(override=processing_override)
-    else:
-        client = get_llm_client()
-    raw, meta = client.chat(
-        [{"role": "user", "content": prompt}],
-        temperature=0.0,
-        return_meta=True,
+    result = extract_chemical_composition_combined(
+        parsed_text, tables_text, figures_text, doi=doi
     )
-
-    _log_cost(meta, doi=doi, extra={"kind": "chemical_composition_extract"})
-
-    try:
-        items = json.loads(_clean_json_response(raw))
-        if isinstance(items, list):
-            return items
-    except json.JSONDecodeError:
-        pass
-    return []
+    return result.get("samples", [])
 
 
 # ---------------------------------------------------------------------------
@@ -345,20 +312,21 @@ def run_chemical_composition_extraction(
                 parts.append(f"### {img.stem}\n(figure image: {img.name})\n")
         figures_text = "\n".join(parts)
 
-    # --- LLM calls ---
-    relevant = identify_relevant_content(
-        parsed_text, tables_text, figures_text, doi=doi_str,
-    )
-    samples = extract_samples_and_compositions(
+    # --- Combined LLM call ---
+    extraction_result = extract_chemical_composition_combined(
         parsed_text, tables_text, figures_text, doi=doi_str,
     )
 
     result = {
         "doi": doi_str,
         "safe_doi": safe_doi,
-        "relevant_content": relevant,
-        "samples": samples,
+        "relevant_content": extraction_result.get("relevant_content", []),
+        "samples": extraction_result.get("samples", []),
     }
+
+    # Extract for convenience
+    relevant = result["relevant_content"]
+    samples = result["samples"]
 
     # --- persist ---
     out_dir = run_dir / "chemical_composition" / safe_doi

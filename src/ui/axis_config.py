@@ -8,34 +8,15 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Default configuration matching what finalize_labels.py ships with
+# Default configuration: blank for raw data extraction
+# Users can add their own axis/unit configurations as needed
 _DEFAULT_CONFIG: Dict[str, Any] = {
-    "unit_aliases": {
-        "s": "s", "sec": "s", "secs": "s", "second": "s", "seconds": "s",
-        "min": "min", "mins": "min", "minute": "min", "minutes": "min",
-        "h": "h", "hr": "h", "hrs": "h", "hour": "h", "hours": "h",
-        "days": "day", "day": "day",
-        "s/cm": "S/cm", "S/cm": "S/cm",
-        "ms/cm": "mS/cm", "mS/cm": "mS/cm",
-    },
-    "unit_dimensions": {
-        "s": "time", "min": "time", "h": "time",
-        "S/cm": "conductivity", "mS/cm": "conductivity",
-        "S/m": "conductivity", "mS/m": "conductivity",
-    },
-    "canonical_targets": {
-        "time": "h",
-        "conductivity": "mS/cm",
-    },
+    "unit_aliases": {},
+    "unit_dimensions": {},
+    "canonical_targets": {},
     "axis_name_aliases": {
-        "x": {
-            "time": ["Time", "time", "t"],
-            "cycle number": ["Cycle Number", "Cycle number", "cycle number", "Cycles", "cycles", "Cycle", "cycle"],
-        },
-        "y": {
-            "conductivity": ["Conductivity", "conductivity", "Hydroxide Conductivity", "OH- Conductivity", "Ionic Conductivity"],
-            "current density": ["Current Density", "current density", "Current density", "J"],
-        },
+        "x": {},
+        "y": {},
     },
 }
 
