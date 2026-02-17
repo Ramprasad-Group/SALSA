@@ -639,13 +639,6 @@ with st.sidebar:
     st.divider()
     st.header("Select LLM(s)")
     with st.expander("LLM", expanded=False):
-        # Initialise defaults so index=0 (gpt-4o) is used on a fresh session,
-        # rather than whatever value Streamlit persisted from a previous interaction.
-        if "llm_model" not in st.session_state:
-            st.session_state["llm_model"] = "gpt-4o"
-        if "processing_llm_model" not in st.session_state:
-            st.session_state["processing_llm_model"] = "gpt-4o"
-
         # --- General LLM (used for filtering, figure planning, etc.) ---
         st.subheader("General LLM")
         st.caption("Used for figure/table filtering, figure planning, and other pre-processing steps.")
@@ -663,6 +656,9 @@ with st.sidebar:
 
             models = _ollama_models()
             if models:
+                # Clear stale value from a previous provider so index=0 takes effect.
+                if st.session_state.get("llm_model") not in models:
+                    st.session_state.pop("llm_model", None)
                 selected_model = st.selectbox("Model", options=models, index=0, key="llm_model")
             else:
                 selected_model = st.text_input(
@@ -677,6 +673,9 @@ with st.sidebar:
                 st.session_state["openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
             if "openai_api_key" not in st.session_state:
                 st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+            # Clear stale value from a previous provider so index=0 (gpt-4o) takes effect.
+            if st.session_state.get("llm_model") not in _openai_models:
+                st.session_state.pop("llm_model", None)
             selected_model = st.selectbox("Model", options=_openai_models, index=0, key="llm_model")
 
         # --- Data Processing LLM ---
@@ -700,6 +699,8 @@ with st.sidebar:
             if processing_provider == "Ollama":
                 models = _ollama_models()
                 if models:
+                    if st.session_state.get("processing_llm_model") not in models:
+                        st.session_state.pop("processing_llm_model", None)
                     st.selectbox("Processing model", options=models, index=0, key="processing_llm_model")
                 else:
                     st.text_input("Processing model (no models detected)", value="", key="processing_llm_model")
@@ -709,6 +710,8 @@ with st.sidebar:
                     st.session_state["processing_openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
                 if "processing_openai_api_key" not in st.session_state:
                     st.session_state["processing_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+                if st.session_state.get("processing_llm_model") not in _openai_models:
+                    st.session_state.pop("processing_llm_model", None)
                 st.selectbox("Processing model", options=_openai_models, index=0, key="processing_llm_model")
 
     st.divider()
