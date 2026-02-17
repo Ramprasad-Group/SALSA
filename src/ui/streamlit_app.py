@@ -639,6 +639,13 @@ with st.sidebar:
     st.divider()
     st.header("Select LLM(s)")
     with st.expander("LLM", expanded=False):
+        # Initialise defaults so index=0 (gpt-4o) is used on a fresh session,
+        # rather than whatever value Streamlit persisted from a previous interaction.
+        if "llm_model" not in st.session_state:
+            st.session_state["llm_model"] = "gpt-4o"
+        if "processing_llm_model" not in st.session_state:
+            st.session_state["processing_llm_model"] = "gpt-4o"
+
         # --- General LLM (used for filtering, figure planning, etc.) ---
         st.subheader("General LLM")
         st.caption("Used for figure/table filtering, figure planning, and other pre-processing steps.")
