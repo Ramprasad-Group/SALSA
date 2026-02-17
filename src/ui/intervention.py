@@ -79,6 +79,16 @@ def find_interventions(run_dir: Path, plextract_workdir_name: str = "plextract_w
             if unknown_units.exists():
                 reasons.append("unknown_units.json present")
 
+            # Check axis title count: expect exactly 2 (one x, one y)
+            chartdete_dir = fig_dir / "chartdete"
+            if chartdete_dir.exists():
+                title_files = [
+                    f for f in chartdete_dir.iterdir()
+                    if "title" in f.name.lower() and not f.name.lower().endswith(".json")
+                ]
+                if len(title_files) != 2:
+                    reasons.append(f"Expected 2 axis titles, found {len(title_files)}")
+
             if reasons:
                 items.append(InterventionItem(
                     safe_doi=safe_doi,

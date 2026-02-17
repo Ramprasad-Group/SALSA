@@ -2250,6 +2250,21 @@ with tab_intervene:
             deleted = set(int(x) for x in mapping.get("deleted", []))
             override_masks = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
 
+            # Include any newly-created series (present in override masks but not in original catalog)
+            original_indices = {s.series_index for s in series_items}
+            for _idx, _mask_path in sorted(override_masks.items()):
+                if _idx not in original_indices:
+                    try:
+                        _mask_img = Image.open(_mask_path).convert("L")
+                        _mask_arr = np.array(_mask_img)
+                        _ys, _xs = np.where(_mask_arr > 0)
+                        _cx = float(np.mean(_xs)) if len(_xs) > 0 else 0.0
+                        _cy = float(np.mean(_ys)) if len(_ys) > 0 else 0.0
+                    except Exception:
+                        _cx, _cy = 0.0, 0.0
+                    from intervention import SeriesItem as _SeriesItem
+                    series_items.append(_SeriesItem(series_index=_idx, mask_path=_mask_path, centroid=(_cx, _cy)))
+
             # --- Helper: get display name for a series index ---
             _SERIES_COLORS = [
                 (255, 0, 0), (0, 128, 255), (0, 200, 0), (255, 165, 0),
@@ -2473,6 +2488,9 @@ with tab_intervene:
 
             for s in sorted(series_items, key=lambda x: x.series_index):
                 i = s.series_index
+                # Skip already-deleted series — they are gone from the UI
+                if i in deleted:
+                    continue
                 color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
                 hex_color = "#{:02x}{:02x}{:02x}".format(*color)
                 cols = st.columns([0.5, 3, 1])
@@ -2492,13 +2510,11 @@ with tab_intervene:
                 with cols[2]:
                     del_flag = st.checkbox(
                         "Delete",
-                        value=(i in new_deleted),
+                        value=False,
                         key=f"series_del_{item.safe_doi}_{selected_figure_id}_{i}",
                     )
                     if del_flag:
                         new_deleted.add(i)
-                    else:
-                        new_deleted.discard(i)
 
             if st.button("Save series mapping", type="primary"):
                 mapping2 = {
