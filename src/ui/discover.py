@@ -132,7 +132,7 @@ def _find_chemical_composition(chem_comp_dir: Path) -> Dict[str, Path]:
 def discover_run(run_dir: Path) -> RunResult:
     reparsed = run_dir / "reparsed"
     figures_tables = run_dir / "figures_tables"
-    plextract_workdir = run_dir / "plextract_work"
+    plextract_workdir = run_dir / "plextract"
     complete_dataset_dir = run_dir / "complete_dataset"
     chem_comp_dir = run_dir / "chemical_composition"
 

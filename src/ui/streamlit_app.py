@@ -473,7 +473,7 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
                 all_dfs.append(df)
 
     # Collect emit_rows from all subfigures (manual crops)
-    manual_workdir = run_dir / "plextract_work_manual"
+    manual_workdir = run_dir / "plextract"
     if manual_workdir.exists():
         latest_manual = latest_plextract_run_dir(manual_workdir)
         if latest_manual:
@@ -1321,7 +1321,7 @@ with tab_figs:
                     st.info(f"No row_cache data found for {f.id}. Cache may not have been generated yet.")
 
         # --- Display cropped subfigures from manual plextract ---
-        manual_workdir = rr.run_dir / "plextract_work_manual"
+        manual_workdir = rr.run_dir / "plextract"
         if manual_workdir.exists():
             from intervention import latest_plextract_run_dir
             latest_manual = latest_plextract_run_dir(manual_workdir)
@@ -1947,13 +1947,8 @@ with tab_intervene:
         # Browse all figures from the DOI
         from intervention import InterventionItem, _try_find_source_image, latest_plextract_run_dir as _lpr
 
-        # Check plextract_work_manual first, then fall back to plextract_work
-        plextract_workdir_manual = rr.run_dir / "plextract_work_manual"
-        plextract_workdir = rr.run_dir / "plextract_work"
-
-        latest = _lpr(plextract_workdir_manual)
-        if not latest:
-            latest = _lpr(plextract_workdir)
+        # Use plextract outputs
+        latest = _lpr(rr.run_dir / "plextract")
 
         filtered_fig_root = rr.run_dir / "figures_tables" / "figures"
 
@@ -2102,17 +2097,16 @@ with tab_intervene:
             if st.button("Save & run extraction", type="primary", disabled=len(rects) == 0):
                 saved = save_crops(item.source_image, rects, crops_out_dir, prefix=prefix)
                 if saved:
-                    manual_crops_dir = rr.run_dir / "manual_crops" / item.safe_doi
-                    manual_crops_dir.mkdir(parents=True, exist_ok=True)
-                    import shutil
-                    for cp in saved:
-                        shutil.copy2(cp, manual_crops_dir / cp.name)
                     try:
                         with st.spinner("Running plextract on crops..."):
-                            run_plextract_on_manual_crops(scripts_root=scripts_root, run_dir=rr.run_dir)
-                        st.success("Done. Manual-crops plextract run completed. Series management will use newly processed images.")
+                            run_plextract_on_manual_crops(
+                                scripts_root=scripts_root,
+                                run_dir=rr.run_dir,
+                                safe_doi=item.safe_doi,
+                            )
+                        st.success("Done. Crop extraction completed. Series management will use newly processed images.")
                     except Exception as e:
-                        st.error(f"Manual plextract failed: {e}")
+                        st.error(f"Crop extraction failed: {e}")
                     st.rerun()
 
         # --- Show existing crops (if any) ---
@@ -2136,13 +2130,12 @@ with tab_intervene:
             with col_rerun:
                 if st.button("Re-run extraction on existing crops", type="primary"):
                     try:
-                        manual_crops_dir = rr.run_dir / "manual_crops" / item.safe_doi
-                        manual_crops_dir.mkdir(parents=True, exist_ok=True)
-                        import shutil
-                        for cp in existing_crops:
-                            shutil.copy2(cp, manual_crops_dir / cp.name)
                         with st.spinner("Running plextract on crops..."):
-                            run_plextract_on_manual_crops(scripts_root=scripts_root, run_dir=rr.run_dir)
+                            run_plextract_on_manual_crops(
+                                scripts_root=scripts_root,
+                                run_dir=rr.run_dir,
+                                safe_doi=item.safe_doi,
+                            )
                         st.success("Done. Series management will use newly processed images.")
                     except Exception as e:
                         st.error(f"Extraction failed: {e}")
@@ -2153,7 +2146,7 @@ with tab_intervene:
         # --- Show manual plextract outputs ---
         st.divider()
         st.subheader("Manual-crops extraction outputs")
-        manual_workdir = rr.run_dir / "plextract_work_manual"
+        manual_workdir = rr.run_dir / "plextract"
         if manual_workdir.exists():
             latest_manual = latest_plextract_run_dir(manual_workdir)
             if latest_manual:
@@ -2196,8 +2189,8 @@ with tab_intervene:
       with st.expander("Series Management", expanded=False):
         st.subheader("Series management")
 
-        # Check if there are cropped subfigures in plextract_work_manual
-        manual_workdir = rr.run_dir / "plextract_work_manual"
+        # Check if there are cropped subfigures in plextract
+        manual_workdir = rr.run_dir / "plextract"
         selected_figure_dir = item.figure_dir
         selected_figure_id = item.figure_id
         selected_source_image = item.source_image
@@ -2586,7 +2579,7 @@ with tab_intervene:
                             skip_lineformer=True,
                             pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
                         )
-                st.success("Data extraction complete! Check plextract_work_interventions/ for results.")
+                st.success("Data extraction complete! Check plextract/ for updated results.")
                 st.rerun()  # Reload to show updated series
             except Exception as e:
                 st.error(f"Failed: {e}")
