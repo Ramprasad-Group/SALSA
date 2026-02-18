@@ -12,7 +12,7 @@ def run_plextract_single_figure(
     run_dir: Path,
     safe_doi: str,
     figure_path: Path,
-    workdir_name: str = "plextract_work_interventions",
+    workdir_name: str = "plextract",
     skip_lineformer: bool = False,
     pre_populate_lineformer_dir: Optional[Path] = None,
 ) -> None:
@@ -44,8 +44,8 @@ def run_plextract_single_figure(
         existing = [int(p.name) for p in results_root.iterdir() if p.is_dir() and p.name.isdigit()]
         next_id = str(max(existing) + 1 if existing else 0)
         # Build the output lineformer dir path
-        fig_stem = figure_path.stem
-        out_lf_dir = results_root / next_id / "output" / safe_doi / fig_stem / "lineformer"
+        figure_dir_name = figure_path.name
+        out_lf_dir = results_root / next_id / "output" / safe_doi / figure_dir_name / "lineformer"
         out_lf_dir.mkdir(parents=True, exist_ok=True)
         # Copy all mask and catalog files
         for src_file in pre_populate_lineformer_dir.iterdir():

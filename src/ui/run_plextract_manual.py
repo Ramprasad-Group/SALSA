@@ -1,34 +1,54 @@
 from __future__ import annotations
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+
 
 def run_plextract_on_manual_crops(
     scripts_root: Path,   # /home/wschertzer3/AEM_OCR/src
     run_dir: Path,        # /home/.../ui_runs/<run_id>
+    safe_doi: str,
 ) -> None:
-    manual_crops = run_dir / "manual_crops"
-    if not manual_crops.exists():
-        raise FileNotFoundError(f"No manual crops directory found: {manual_crops}")
+    """
+    Runs plextract on intervention crops for a single DOI.
 
-    # only run if there is at least one DOI subdir with at least one image
-    has_any = any(p.is_file() and p.suffix.lower() in {".png",".jpg",".jpeg",".gif"}
-                  for p in manual_crops.rglob("*"))
-    if not has_any:
-        raise FileNotFoundError(f"manual_crops exists but contains no images: {manual_crops}")
+    Crops are stored at:
+      <run_dir>/interventions/<safe_doi>/<figure_id>/<figure_stem>_subfig_<n>.png
+
+    This function stages those files into a temporary input directory with the
+    layout expected by plextract (<tmp>/figures/<safe_doi>/*.png), avoiding
+    persistent duplicate crop storage.
+    """
+    interventions_dir = run_dir / "interventions" / safe_doi
+    if not interventions_dir.exists():
+        raise FileNotFoundError(f"No interventions directory found for DOI {safe_doi}: {interventions_dir}")
+
+    crop_files = sorted(
+        p for p in interventions_dir.glob("**/*")
+        if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif"}
+    )
+    if not crop_files:
+        raise FileNotFoundError(f"No intervention crop images found for DOI {safe_doi}: {interventions_dir}")
 
     plextract_py = scripts_root / "extract_figure_data" / "plextract.py"
 
-    workdir = run_dir / "plextract_work_manual"
+    workdir = run_dir / "plextract"
     logs_dir = workdir / "logs"
     workdir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "python", str(plextract_py),
-        "--input", str(manual_crops),
-        "--workdir", str(workdir),
-        "--log_file", str(logs_dir),
-        # optional:
-        # "--log_level", "INFO",
-    ]
-    subprocess.run(cmd, check=True)
+    with tempfile.TemporaryDirectory(prefix="plextract_interventions_") as td:
+        staged_root = Path(td) / "figures" / safe_doi
+        staged_root.mkdir(parents=True, exist_ok=True)
+
+        for cp in crop_files:
+            shutil.copy2(cp, staged_root / cp.name)
+
+        cmd = [
+            "python", str(plextract_py),
+            "--input", str(staged_root.parent),
+            "--workdir", str(workdir),
+            "--log_file", str(logs_dir),
+        ]
+        subprocess.run(cmd, check=True)
