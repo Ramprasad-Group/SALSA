@@ -27,9 +27,9 @@ def _latest_matching_csv(dir_: Path, glob_pat: str) -> Path:
 def _plextract_results_root(plextract_workdir: Path) -> Optional[Path]:
     """
     Your plextract output example:
-      plextract_work/results/0/output/<modified_doi>/Figure_.../final/final_dataset.csv
+      plextract/results/0/output/<modified_doi>/Figure_.../final/final_dataset.csv
 
-    We want to pass --extracted_figures_root = plextract_work/results/<latest>/output
+    We want to pass --extracted_figures_root = plextract/results/<latest>/output
     so complete-dataset can find <modified_doi> subdirs under it.
     """
     results_dir = plextract_workdir / "results"
@@ -71,7 +71,7 @@ def _plextract_results_root(plextract_workdir: Path) -> Optional[Path]:
 def _copy_figure_metadata_to_plextract(figures_tables_dir: Path, plextract_output_root: Path):
     """
     Copy <run>/figures_tables/figures/<doi>/Figure_X_metadata.json
-    into <run>/plextract_work/results/<n>/output/<doi>/Figure_X.<ext>/final/Figure_X_metadata.json
+    into <run>/plextract/results/<n>/output/<doi>/Figure_X.<ext>/final/Figure_X_metadata.json
     """
     figures_root = figures_tables_dir / "figures"
     if not figures_root.exists():
@@ -173,7 +173,7 @@ def run_full_pipeline(
     papers_dir = run_dir / "papers"
     reparsed_dir = run_dir / "reparsed"
     figures_tables_dir = run_dir / "figures_tables"
-    plextract_workdir = run_dir / "plextract_work"
+    plextract_workdir = run_dir / "plextract"
     complete_dataset_dir = run_dir / "complete_dataset"  # NEW
 
     for d in [records_dir, papers_dir, reparsed_dir, figures_tables_dir, plextract_workdir, complete_dataset_dir]:

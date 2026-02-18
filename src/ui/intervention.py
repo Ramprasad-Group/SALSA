@@ -29,15 +29,13 @@ def latest_plextract_run_dir(plextract_workdir: Path) -> Optional[Path]:
     run_dirs.sort(key=lambda p: int(p.name), reverse=True)
     return run_dirs[0]
 
-def find_interventions(run_dir: Path, plextract_workdir_name: str = "plextract_work") -> list[InterventionItem]:
+def find_interventions(run_dir: Path, plextract_workdir_name: str = "plextract") -> list[InterventionItem]:
     plextract_workdir = run_dir / plextract_workdir_name
     latest = latest_plextract_run_dir(plextract_workdir)
     """
     run_dir = <workspace>/<run_id> (the UI run workspace)
-    expects plextract outputs in: run_dir/plextract_work/results/<n>/output/<safe_doi>/<figure>/final/
+    expects plextract outputs in: run_dir/plextract/results/<n>/output/<safe_doi>/<figure>/final/
     """
-    # plextract_workdir = run_dir / "plextract_work"
-    # latest = latest_plextract_run_dir(plextract_workdir)
     if latest is None:
         return []
 
