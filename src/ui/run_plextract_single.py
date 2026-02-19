@@ -15,6 +15,7 @@ def run_plextract_single_figure(
     workdir_name: str = "plextract",
     skip_lineformer: bool = False,
     pre_populate_lineformer_dir: Optional[Path] = None,
+    output_workdir: Optional[Path] = None,
 ) -> None:
     """
     Runs plextract on a single figure by creating a minimal input tree:
@@ -26,13 +27,20 @@ def run_plextract_single_figure(
     If pre_populate_lineformer_dir is set, copies its contents into the
     plextract output lineformer directory before running extraction, so the
     pipeline uses the pre-existing masks.
+
+    If output_workdir is set, writes results to that directory instead of
+    the default workdir. Useful for intervention-specific extractions.
     """
     input_root = run_dir / "single_input" / "figures" / safe_doi
     input_root.mkdir(parents=True, exist_ok=True)
     dst = input_root / figure_path.name
     shutil.copy2(figure_path, dst)
 
-    workdir = run_dir / workdir_name
+    # Use custom output workdir if specified, otherwise use default
+    if output_workdir is None:
+        workdir = run_dir / workdir_name
+    else:
+        workdir = output_workdir
     workdir.mkdir(parents=True, exist_ok=True)
 
     # If we need to pre-populate lineformer masks into the output tree,

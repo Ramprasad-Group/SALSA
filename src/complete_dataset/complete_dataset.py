@@ -18,7 +18,7 @@ import logging
 import json
 from tqdm import tqdm
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
 import hashlib
 from llm_client import LLMConfig, get_llm_client, load_processing_llm_config
@@ -276,18 +276,58 @@ def _stable_name_from_path(fp: Path) -> str:
     return f"{fp.parent.parent.name}__{fp.parent.name}__{fp.stem}__{h}"
     # Example: <some_dir>__final__final_dataset__a1b2c3d4e5
 
-def load_extracted_figure_datasets(modified_doi: str) -> List[FigurePointDataset]:
+def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = None) -> List[FigurePointDataset]:
+    """
+    Load extracted figure datasets from both plextract and interventions_plextract directories.
+    Checks interventions_plextract first (for intervention-based extractions), then falls back
+    to plextract (for original extractions).
+
+    Args:
+        modified_doi: Safe DOI string for lookup
+        run_dir: Optional run directory to check for interventions_plextract.
+                If provided, will check {run_dir}/interventions/{safe_doi}/*/interventions_plextract/
+    """
     root = (args.extracted_figures_root or "").strip()
+
+    keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
+    out: List[FigurePointDataset] = []
+
+    # Priority 1: Check interventions_plextract if run_dir is provided
+    if run_dir:
+        int_base = Path(run_dir) / "interventions" / modified_doi
+        if int_base.is_dir():
+            for fp in int_base.glob("*/interventions_plextract/results/*/output/*/final/final_dataset.csv"):
+                try:
+                    # If target_figure is specified, filter to only that figure/subfigure
+                    if args.target_figure:
+                        # Extract the figure/subfigure name from the path
+                        # Path: .../{figure_id}/interventions_plextract/results/{n}/output/{doi}/{figure_id}/final/final_dataset.csv
+                        figure_name = fp.parent.parent.parent.parent.parent.name
+                        if figure_name != args.target_figure:
+                            continue
+
+                    df = pd.read_csv(fp)
+                    if not all(c in df.columns for c in keep):
+                        continue
+                    df = df[keep].copy()
+                    if df.empty:
+                        continue
+                    out.append(FigurePointDataset(
+                        name=_stable_name_from_path(fp),
+                        path=str(fp),
+                        df=df
+                    ))
+                except Exception:
+                    continue
+
+    # Priority 2: Check plextract (fall back to original extractions)
     if not root:
-        return []
+        return out
 
     doi_dir = Path(root) / modified_doi
     if not doi_dir.is_dir():
-        return []
+        return out
 
-    keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
-
-    out: List[FigurePointDataset] = []
     for fp in doi_dir.glob("**/final/final_dataset.csv"):
         try:
             # If target_figure is specified, filter to only that figure/subfigure
@@ -304,11 +344,15 @@ def load_extracted_figure_datasets(modified_doi: str) -> List[FigurePointDataset
             df = df[keep].copy()
             if df.empty:
                 continue
-            out.append(FigurePointDataset(
-                name=_stable_name_from_path(fp),
-                path=str(fp),
-                df=df
-            ))
+
+            # Only add if not already loaded from interventions_plextract
+            stable_name = _stable_name_from_path(fp)
+            if not any(ds.name == stable_name for ds in out):
+                out.append(FigurePointDataset(
+                    name=stable_name,
+                    path=str(fp),
+                    df=df
+                ))
         except Exception:
             continue
 
@@ -806,7 +850,12 @@ def main():
 
         tables = collect_tables(doi, tables_dir)
         figures = collect_figures(doi, figures_dir)
-        fig_datasets = load_extracted_figure_datasets(modified_doi)
+
+        # Get run_dir from environment for checking interventions_plextract
+        run_dir = os.environ.get("AEM_OCR_RUN_DIR", "").strip()
+        run_dir_path = Path(run_dir) if run_dir else None
+
+        fig_datasets = load_extracted_figure_datasets(modified_doi, run_dir=run_dir_path)
 
         extracted_figure_data = {
             "type": "plextract_final_dataset_bundle",

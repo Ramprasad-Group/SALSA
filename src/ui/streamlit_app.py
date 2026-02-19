@@ -2528,61 +2528,66 @@ with tab_intervene:
                 st.success(f"Saved mapping: {p}")
                 st.rerun()
 
-      with st.expander("Rerun Figure Data Extraction", expanded=False):
-        st.write("This will apply your mask overrides and re-extract data from the figure.")
-        st.info(
-            "New masks will replace the old respective masks where you have made changes. "
-            "The extraction will use the updated masks along with the original masks for "
-            "unchanged series. If crops exist, the cropped images will be used. "
-            "LineFormer will not regenerate masks — existing masks (including any "
-            "edits from Series Management) are reused."
-        )
+            # ---- Rerun data extraction with updated masks ----
+            st.write("**Rerun Data Extraction**")
+            st.write("Apply your mask edits and re-extract data from this figure.")
+            st.info(
+                "Updated masks will replace the old masks where you made changes. "
+                "LineFormer will not regenerate masks — existing masks (including your edits) "
+                "will be reused. Results will be saved to the interventions directory."
+            )
 
-        # Determine the figure to use: prefer cropped images if they exist
-        _rerun_crops_dir = rr.run_dir / "interventions" / item.safe_doi / Path(item.figure_id).name
-        _rerun_existing_crops = sorted(_rerun_crops_dir.glob(f"{Path(item.figure_id).stem}_subfig_*.png")) if _rerun_crops_dir.exists() else []
-        if _rerun_existing_crops:
-            st.caption(f"Will run on **{len(_rerun_existing_crops)} cropped image(s)** instead of the original figure.")
-        else:
-            st.caption("Will run on the original figure (no crops found).")
+            # Check if there are crops for this figure
+            _int_crops_dir = rr.run_dir / "interventions" / item.safe_doi / Path(item.figure_id).name
+            _int_existing_crops = sorted(_int_crops_dir.glob(f"{Path(item.figure_id).stem}_subfig_*.png")) if _int_crops_dir.exists() else []
+            if _int_existing_crops:
+                st.caption(f"Will run on **{len(_int_existing_crops)} cropped image(s)**.")
+            else:
+                st.caption("Will run on the original figure (no crops found).")
 
-        if st.button("Rerun figure data extraction", type="primary"):
-            try:
-                # First, apply all overrides to the plextract output
-                with st.spinner("Applying mask overrides and series changes..."):
-                    apply_overrides_to_plextract(selected_figure_dir, rr.run_dir, item.safe_doi, selected_figure_id)
-                st.success("Applied overrides to plextract output")
+            if st.button("Rerun data extraction", type="primary", key=f"rerun_extraction_{item.safe_doi}_{selected_figure_id}"):
+                try:
+                    # Apply all overrides to the plextract output
+                    with st.spinner("Applying mask overrides and series changes..."):
+                        apply_overrides_to_plextract(selected_figure_dir, rr.run_dir, item.safe_doi, selected_figure_id)
+                    st.success("Applied overrides to plextract output")
 
-                # Determine which lineformer dir has the current masks
-                _lf_dir_for_rerun = get_lineformer_dir(selected_figure_dir)
+                    # Determine which lineformer dir has the current masks
+                    _lf_dir_for_rerun = get_lineformer_dir(selected_figure_dir)
 
-                if _rerun_existing_crops:
-                    # Run extraction on each cropped image, reusing existing masks
-                    for crop_path in _rerun_existing_crops:
-                        with st.spinner(f"Re-running extraction on {crop_path.name}..."):
+                    # Create intervention-specific output directory
+                    _int_output_workdir = rr.run_dir / "interventions" / item.safe_doi / selected_figure_id / "interventions_plextract"
+
+                    if _int_existing_crops:
+                        # Run extraction on each cropped image, reusing existing masks
+                        for crop_path in _int_existing_crops:
+                            with st.spinner(f"Re-running extraction on {crop_path.name}..."):
+                                run_plextract_single_figure(
+                                    scripts_root=scripts_root,
+                                    run_dir=rr.run_dir,
+                                    safe_doi=item.safe_doi,
+                                    figure_path=crop_path,
+                                    skip_lineformer=True,
+                                    pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
+                                    output_workdir=_int_output_workdir,
+                                )
+                    else:
+                        # Run on the original figure, skipping LineFormer
+                        with st.spinner("Re-running data extraction on this figure..."):
                             run_plextract_single_figure(
                                 scripts_root=scripts_root,
                                 run_dir=rr.run_dir,
                                 safe_doi=item.safe_doi,
-                                figure_path=crop_path,
+                                figure_path=selected_source_image,
                                 skip_lineformer=True,
                                 pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
+                                output_workdir=_int_output_workdir,
                             )
-                else:
-                    # Run on the original figure, skipping LineFormer
-                    with st.spinner("Re-running data extraction on this figure..."):
-                        run_plextract_single_figure(
-                            scripts_root=scripts_root,
-                            run_dir=rr.run_dir,
-                            safe_doi=item.safe_doi,
-                            figure_path=item.source_image,
-                            skip_lineformer=True,
-                            pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
-                        )
-                st.success("Data extraction complete! Check plextract/ for updated results.")
-                st.rerun()  # Reload to show updated series
-            except Exception as e:
-                st.error(f"Failed: {e}")
+                    st.success(f"Data extraction complete! Results saved to interventions directory.")
+                    st.rerun()  # Reload to show updated series
+                except Exception as e:
+                    st.error(f"Failed: {e}")
+
 
 
 
