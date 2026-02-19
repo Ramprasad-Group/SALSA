@@ -2143,14 +2143,14 @@ with tab_intervene:
         else:
             st.info("No crops saved yet. Draw rectangles below to create crops.")
 
-        # --- Show manual plextract outputs ---
+        # --- Show intervention extraction outputs ---
         st.divider()
-        st.subheader("Manual-crops extraction outputs")
-        manual_workdir = rr.run_dir / "plextract"
-        if manual_workdir.exists():
-            latest_manual = latest_plextract_run_dir(manual_workdir)
-            if latest_manual:
-                out_base = latest_manual / "output" / item.safe_doi
+        st.subheader("Intervention extraction outputs")
+        _int_plextract_workdir = rr.run_dir / "interventions" / "interventions_plextract"
+        if _int_plextract_workdir.exists():
+            latest_int_run = latest_plextract_run_dir(_int_plextract_workdir)
+            if latest_int_run:
+                out_base = latest_int_run / "output" / item.safe_doi
                 if out_base.exists():
                     found_csvs = list(out_base.glob("**/final/final_dataset.csv"))
                     if found_csvs:
@@ -2180,24 +2180,24 @@ with tab_intervene:
                         st.caption("Figure folders found (no final datasets yet):")
                         st.code("\n".join(fig_folders[:50]) or "(none)")
                 else:
-                    st.info("No outputs found for this DOI in manual run.")
+                    st.info("No outputs found for this DOI in intervention extraction.")
         else:
-            st.info("No manual plextract run found yet. Save crops and run extraction above.")
+            st.info("No intervention extraction run found yet. Save crops and run extraction above.")
 
                   # --- Show colored series overlay in its own expander ---
       
       with st.expander("Series Management", expanded=False):
         st.subheader("Series management")
 
-        # Check if there are cropped subfigures in plextract
-        manual_workdir = rr.run_dir / "plextract"
+        # Check if there are cropped subfigures in interventions_plextract
+        _int_plextract_workdir_sm = rr.run_dir / "interventions" / "interventions_plextract"
         selected_figure_dir = item.figure_dir
         selected_figure_id = item.figure_id
         selected_source_image = item.source_image
 
-        if manual_workdir.exists():
+        if _int_plextract_workdir_sm.exists():
             from intervention import latest_plextract_run_dir
-            latest_manual = latest_plextract_run_dir(manual_workdir)
+            latest_manual = latest_plextract_run_dir(_int_plextract_workdir_sm)
             if latest_manual:
                 safe_doi = item.safe_doi
                 out_base = latest_manual / "output" / safe_doi
@@ -2557,8 +2557,8 @@ with tab_intervene:
                     # Determine which lineformer dir has the current masks
                     _lf_dir_for_rerun = get_lineformer_dir(selected_figure_dir)
 
-                    # Create intervention-specific output directory (under original figure ID)
-                    _int_output_workdir = rr.run_dir / "interventions" / item.safe_doi / _original_figure_id / "interventions_plextract"
+                    # Create intervention-specific output directory
+                    _int_output_workdir = rr.run_dir / "interventions" / "interventions_plextract"
 
                     if _int_existing_crops:
                         # Run extraction on each cropped image, reusing existing masks

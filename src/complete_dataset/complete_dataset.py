@@ -278,33 +278,35 @@ def _stable_name_from_path(fp: Path) -> str:
 
 def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = None) -> List[FigurePointDataset]:
     """
-    Load extracted figure datasets from both plextract and interventions_plextract directories.
+    Load extracted figure datasets from both interventions_plextract and plextract directories.
     Checks interventions_plextract first (for intervention-based extractions), then falls back
     to plextract (for original extractions).
+
+    For figures that have intervention results, those take priority over original plextract.
 
     Args:
         modified_doi: Safe DOI string for lookup
         run_dir: Optional run directory to check for interventions_plextract.
-                If provided, will check {run_dir}/interventions/{safe_doi}/*/interventions_plextract/
+                Structure: {run_dir}/interventions/interventions_plextract/results/{n}/output/{doi}/{figure}/final/
     """
     root = (args.extracted_figures_root or "").strip()
 
     keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
     out: List[FigurePointDataset] = []
+    # Track which figure names have intervention results so we can skip them in plextract
+    intervention_figure_names: set = set()
 
     # Priority 1: Check interventions_plextract if run_dir is provided
     if run_dir:
-        int_base = Path(run_dir) / "interventions" / modified_doi
-        if int_base.is_dir():
-            for fp in int_base.glob("*/interventions_plextract/results/*/output/*/final/final_dataset.csv"):
+        int_workdir = Path(run_dir) / "interventions" / "interventions_plextract"
+        if int_workdir.is_dir():
+            # Structure: interventions_plextract/results/{n}/output/{doi}/{figure}/final/final_dataset.csv
+            for fp in int_workdir.glob(f"results/*/output/{modified_doi}/*/final/final_dataset.csv"):
                 try:
-                    # If target_figure is specified, filter to only that figure/subfigure
-                    if args.target_figure:
-                        # Extract the figure/subfigure name from the path
-                        # Path: .../{figure_id}/interventions_plextract/results/{n}/output/{doi}/{figure_id}/final/final_dataset.csv
-                        figure_name = fp.parent.parent.parent.parent.parent.name
-                        if figure_name != args.target_figure:
-                            continue
+                    # figure name is the parent of final/
+                    figure_name = fp.parent.parent.name
+                    if args.target_figure and figure_name != args.target_figure:
+                        continue
 
                     df = pd.read_csv(fp)
                     if not all(c in df.columns for c in keep):
@@ -317,10 +319,11 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
                         path=str(fp),
                         df=df
                     ))
+                    intervention_figure_names.add(figure_name)
                 except Exception:
                     continue
 
-    # Priority 2: Check plextract (fall back to original extractions)
+    # Priority 2: Check plextract (fall back for figures without intervention results)
     if not root:
         return out
 
@@ -330,13 +333,13 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
 
     for fp in doi_dir.glob("**/final/final_dataset.csv"):
         try:
-            # If target_figure is specified, filter to only that figure/subfigure
-            if args.target_figure:
-                # Extract the figure/subfigure name from the path
-                # Path structure: {doi_dir}/{figure_name}/final/final_dataset.csv
-                figure_name = fp.parent.parent.name
-                if figure_name != args.target_figure:
-                    continue
+            figure_name = fp.parent.parent.name
+            if args.target_figure and figure_name != args.target_figure:
+                continue
+
+            # Skip figures that already have intervention results
+            if figure_name in intervention_figure_names:
+                continue
 
             df = pd.read_csv(fp)
             if not all(c in df.columns for c in keep):
@@ -345,14 +348,11 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
             if df.empty:
                 continue
 
-            # Only add if not already loaded from interventions_plextract
-            stable_name = _stable_name_from_path(fp)
-            if not any(ds.name == stable_name for ds in out):
-                out.append(FigurePointDataset(
-                    name=stable_name,
-                    path=str(fp),
-                    df=df
-                ))
+            out.append(FigurePointDataset(
+                name=_stable_name_from_path(fp),
+                path=str(fp),
+                df=df
+            ))
         except Exception:
             continue
 

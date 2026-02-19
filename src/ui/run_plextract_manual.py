@@ -16,6 +16,9 @@ def run_plextract_on_manual_crops(
     Crops are stored at:
       <run_dir>/interventions/<safe_doi>/<figure_id>/<figure_stem>_subfig_<n>.png
 
+    Output goes to:
+      <run_dir>/interventions/interventions_plextract/results/<n>/output/<safe_doi>/...
+
     This function stages those files into a temporary input directory with the
     layout expected by plextract (<tmp>/figures/<safe_doi>/*.png), avoiding
     persistent duplicate crop storage.
@@ -33,7 +36,7 @@ def run_plextract_on_manual_crops(
 
     plextract_py = scripts_root / "extract_figure_data" / "plextract.py"
 
-    workdir = run_dir / "plextract"
+    workdir = run_dir / "interventions" / "interventions_plextract"
     logs_dir = workdir / "logs"
     workdir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
