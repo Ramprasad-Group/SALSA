@@ -2537,26 +2537,28 @@ with tab_intervene:
                 "will be reused. Results will be saved to the interventions directory."
             )
 
-            # Check if there are crops for this figure
-            _int_crops_dir = rr.run_dir / "interventions" / item.safe_doi / Path(item.figure_id).name
-            _int_existing_crops = sorted(_int_crops_dir.glob(f"{Path(item.figure_id).stem}_subfig_*.png")) if _int_crops_dir.exists() else []
+            # Check if there are crops for this figure (using original figure ID, not subfigure)
+            _original_figure_id = item.figure_id
+            _original_figure_stem = Path(_original_figure_id).stem
+            _int_crops_dir = rr.run_dir / "interventions" / item.safe_doi / _original_figure_id
+            _int_existing_crops = sorted(_int_crops_dir.glob(f"{_original_figure_stem}_subfig_*.png")) if _int_crops_dir.exists() else []
             if _int_existing_crops:
                 st.caption(f"Will run on **{len(_int_existing_crops)} cropped image(s)**.")
             else:
                 st.caption("Will run on the original figure (no crops found).")
 
-            if st.button("Rerun data extraction", type="primary", key=f"rerun_extraction_{item.safe_doi}_{selected_figure_id}"):
+            if st.button("Rerun data extraction", type="primary", key=f"rerun_extraction_{item.safe_doi}_{_original_figure_id}"):
                 try:
-                    # Apply all overrides to the plextract output
+                    # Always apply overrides using the original figure ID, not the selected subfigure
                     with st.spinner("Applying mask overrides and series changes..."):
-                        apply_overrides_to_plextract(selected_figure_dir, rr.run_dir, item.safe_doi, selected_figure_id)
+                        apply_overrides_to_plextract(selected_figure_dir, rr.run_dir, item.safe_doi, _original_figure_id)
                     st.success("Applied overrides to plextract output")
 
                     # Determine which lineformer dir has the current masks
                     _lf_dir_for_rerun = get_lineformer_dir(selected_figure_dir)
 
-                    # Create intervention-specific output directory
-                    _int_output_workdir = rr.run_dir / "interventions" / item.safe_doi / selected_figure_id / "interventions_plextract"
+                    # Create intervention-specific output directory (under original figure ID)
+                    _int_output_workdir = rr.run_dir / "interventions" / item.safe_doi / _original_figure_id / "interventions_plextract"
 
                     if _int_existing_crops:
                         # Run extraction on each cropped image, reusing existing masks
