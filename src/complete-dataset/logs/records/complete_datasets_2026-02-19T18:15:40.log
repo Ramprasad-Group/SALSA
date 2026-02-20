@@ -1,0 +1,7 @@
+2026-02-19 18:15:41,370 Loaded CSV file: /tmp/tmpm6z_9kl5.csv
+2026-02-19 18:15:41,370 Original DataFrame size: 1 rows
+2026-02-19 18:15:41,371 After removing empty DOI strings: 1 rows
+2026-02-19 18:15:41,377 Tables directory does not exist for DOI 10.1016/j.electacta.2015.12.181: /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_codex/tables/10.1016@j.electacta.2015.12.181
+2026-02-19 18:15:41,377 Figures directory does not exist for DOI 10.1016/j.electacta.2015.12.181: /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_codex/figures/10.1016@j.electacta.2015.12.181
+2026-02-19 18:15:41,378 Wrote combined record for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_codex/complete_dataset/10.1016@j.electacta.2015.12.181_complete.json
+2026-02-19 18:15:41,381 Wrote completed dataset CSV for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_codex/complete_dataset/10.1016@j.electacta.2015.12.181_dataset.csv (0 rows)

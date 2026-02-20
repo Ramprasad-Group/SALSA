@@ -1,0 +1,7 @@
+2026-02-17 20:50:39,085 Loaded CSV file: /tmp/tmpkueo2m4t.csv
+2026-02-17 20:50:39,085 Original DataFrame size: 1 rows
+2026-02-17 20:50:39,087 After removing empty DOI strings: 1 rows
+2026-02-17 20:50:39,092 Tables directory does not exist for DOI 10.1016/j.memsci.2011.12.041: /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1/notext_allprops_empty/tables/10.1016@j.memsci.2011.12.041
+2026-02-17 20:50:39,092 Figures directory does not exist for DOI 10.1016/j.memsci.2011.12.041: /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1/notext_allprops_empty/figures/10.1016@j.memsci.2011.12.041
+2026-02-17 20:50:39,093 Wrote combined record for DOI 10.1016/j.memsci.2011.12.041 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1/notext_allprops_empty/complete_dataset/10.1016@j.memsci.2011.12.041_complete.json
+2026-02-17 20:50:39,096 Wrote completed dataset CSV for DOI 10.1016/j.memsci.2011.12.041 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1/notext_allprops_empty/complete_dataset/10.1016@j.memsci.2011.12.041_dataset.csv (0 rows)
