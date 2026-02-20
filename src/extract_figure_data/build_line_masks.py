@@ -197,3 +197,52 @@ def build_masks_for_image(
     # cv2.imwrite(str(lineformer_dir / "mask_overlay.png"), ov)
 
     return mask_paths
+
+
+def regenerate_coordinates_from_masks(lineformer_dir: Path) -> None:
+    """
+    Rebuild ``coordinates.json`` from ``mask_series_*.png`` files.
+
+    For each mask the function extracts the centerline by averaging y for
+    every unique x column, producing an ordered polyline that
+    ``correct_coordinates`` can consume.  This is needed when masks have
+    been edited by the user and LineFormer is skipped (``--skip-lineformer``).
+    """
+    import glob as _glob
+
+    mask_files = sorted(_glob.glob(str(lineformer_dir / "mask_series_*.png")))
+    if not mask_files:
+        return
+
+    all_series: List[List[Dict[str, float]]] = []
+    for mask_path in mask_files:
+        m = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        if m is None:
+            all_series.append([])
+            continue
+
+        ys, xs = np.where(m > 127)
+        if len(xs) == 0:
+            all_series.append([])
+            continue
+
+        # For each unique x column, average the y values to get the centerline
+        unique_xs = np.unique(xs)
+        points: List[Dict[str, float]] = []
+        for ux in unique_xs:
+            mean_y = float(np.mean(ys[xs == ux]))
+            points.append({"x": float(ux), "y": mean_y})
+
+        points.sort(key=lambda p: p["x"])
+
+        # Downsample if too many points (keeps file size manageable)
+        if len(points) > 2000:
+            indices = np.linspace(0, len(points) - 1, 2000).astype(int)
+            points = [points[i] for i in indices]
+
+        all_series.append(points)
+
+    coords_path = lineformer_dir / "coordinates.json"
+    with open(coords_path, "w") as f:
+        json.dump(all_series, f)
+    print(f"[lineformer] Regenerated coordinates.json from masks: {coords_path}")

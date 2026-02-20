@@ -36,7 +36,7 @@ from pathlib import Path
 from match_legend import legend_descriptors_from_json, series_descriptors, build_cost_matrix_with_fallback, hungarian_match
 from finalize_labels import export_labeled_dataset_and_plot
 from correct_coordinates import correct_coordinates
-from build_line_masks import build_masks_for_image
+from build_line_masks import build_masks_for_image, regenerate_coordinates_from_masks
 from run_lineformer import LineFormer
 from run_chartdete import ChartDete
 from run_ocr import OCRModel
@@ -242,6 +242,16 @@ def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0, skip_linef
     # LineFormer: extract lines from images
     if skip_lineformer:
         print("Skipping LineFormer (using existing masks)...")
+        # Masks may have been edited by the user via the intervention UI.
+        # Regenerate coordinates.json from the current masks so that
+        # correct_coordinates (and ultimately the final dataset) reflects
+        # the edits rather than the stale LineFormer output.
+        for img in input_files:
+            extension = img.split('.')[-1]
+            if extension != 'json':
+                lf_dir = Path(os.path.join(base_output, img, "lineformer"))
+                if lf_dir.is_dir():
+                    regenerate_coordinates_from_masks(lf_dir)
     else:
         print("Extracting lines from images with LineFormer...")
         lf = LineFormer()
