@@ -33,6 +33,7 @@ from custom_instructions import (
 import numpy as np
 import cv2
 from cropping import save_crops
+from run_plextract_manual import run_plextract_on_manual_crops
 from axis_config import (
     load_axis_config, save_axis_config, reset_axis_config,
     list_presets as list_axis_presets,
@@ -371,13 +372,10 @@ def find_emit_rows_for_source(
     """
     Find the emit_rows cache file for a specific table/figure.
 
-    Cache key format used by row_emitter.py:
-      emit_rows::{source_kind}::{doi}::{source_name}::{hash}
-
-    The _safe_filename() in row_emitter replaces non-alphanumeric chars with '_',
-    then _cache_path appends '__<sha256[:20]>.json'.  So the on-disk name is:
-      emit_rows__{source_kind}__{sanitized_doi}_{sanitized_source_name}__{sha256}__{sha256}.json
-    (double underscores between cache_key segments, single underscores within segments)
+    Cache key format: emit_rows::{source_kind}::{doi}::{source_name}::{hash}
+    Actual filename patterns (tries both):
+      - emit_rows_{source_kind}_{doi}_{source_name}_{hash}.json (single underscores, / -> _)
+      - emit_rows__{source_kind}__{doi}__{source_name}__{hash}.json (double underscores, / -> @)
 
     Returns path to cache file if found, None otherwise.
     """
@@ -385,27 +383,31 @@ def find_emit_rows_for_source(
     if not cache_dir.exists():
         return None
 
-    # Build the exact prefix that row_emitter._safe_filename would produce from
-    # the cache key "emit_rows::{source_kind}::{doi}::{source_name}::".
-    # _safe_filename replaces any non-[a-zA-Z0-9._-] with '_', so :: -> __ and / -> _
-    def _safe_filename_compat(s: str) -> str:
-        """Reproduce row_emitter._safe_filename logic."""
-        import re as _re
-        return _re.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+    # Sanitize source_name for filename matching
+    safe_source_name = source_name.replace('/', '_').replace(':', '_')
 
-    # The cache key always starts with "emit_rows::{kind}::{doi}::{name}::"
-    # After _safe_filename this becomes "emit_rows__{kind}__{doi_safe}__{name_safe}__"
-    cache_key_prefix = f"emit_rows::{source_kind}::{doi}::{source_name}::"
-    safe_prefix = _safe_filename_compat(cache_key_prefix)
-
+    # Try both patterns
     candidates = []
-    for cache_file in cache_dir.iterdir():
-        if cache_file.suffix != ".json":
-            continue
-        # Files are named: <safe_prefix><hash>__<sha256>.json
-        # Check that the filename starts with our safe_prefix
-        if cache_file.stem.startswith(safe_prefix) or cache_file.name.startswith(safe_prefix):
-            candidates.append(cache_file)
+
+    # Pattern 1: Single underscores with / -> _ (actual format in complete_dataset.py)
+    safe_doi_underscore = doi.replace("/", "_").strip()
+    pattern1 = f"emit_rows_{source_kind}_{safe_doi_underscore}_{safe_source_name}_*.json"
+    for cache_file in cache_dir.glob(pattern1):
+        candidates.append(cache_file)
+
+    # Pattern 2: Double underscores with / -> @ (legacy/alternate format)
+    safe_doi_at = doi_to_safe(doi)
+    pattern2 = f"emit_rows__{source_kind}__{safe_doi_at}_{safe_source_name}_*.json"
+    for cache_file in cache_dir.glob(pattern2):
+        candidates.append(cache_file)
+
+    # If no exact matches, try loose matching on source_name only
+    if not candidates:
+        pattern_prefix = f"emit_rows_{source_kind}_"
+        for cache_file in cache_dir.glob(f"{pattern_prefix}*.json"):
+            # Check if source_name appears in filename (may be sanitized)
+            if safe_source_name in cache_file.stem:
+                candidates.append(cache_file)
 
     # Return most recent if multiple found
     if candidates:
@@ -453,47 +455,39 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
     This creates a reactive dataset that updates whenever emit_rows are regenerated.
     """
     all_dfs = []
-    safe_doi = doi.replace("/", "@").strip()
-    seen_source_names: set[str] = set()
 
-    def _add_emit(source_kind: str, source_name: str):
-        if source_name in seen_source_names:
-            return
-        seen_source_names.add(source_name)
-        emit_path = find_emit_rows_for_source(run_dir, doi, source_kind, source_name)
+    # Collect emit_rows from all tables
+    for table in doi_item.tables:
+        emit_path = find_emit_rows_for_source(run_dir, doi, "table", table.id)
         if emit_path:
             df = load_emit_rows(emit_path)
             if df is not None and not df.empty:
                 all_dfs.append(df)
 
-    # Collect emit_rows from all tables
-    for table in doi_item.tables:
-        _add_emit("table", table.id)
-
     # Collect emit_rows from all figures
     for figure in doi_item.figures:
-        _add_emit("figure", figure.id)
+        emit_path = find_emit_rows_for_source(run_dir, doi, "figure", figure.id)
+        if emit_path:
+            df = load_emit_rows(emit_path)
+            if df is not None and not df.empty:
+                all_dfs.append(df)
 
-    # Collect emit_rows from subfigures in both plextract workdirs.
-    # Subfigures can appear in:
-    #   1. <run_dir>/plextract/results/<n>/output/<safe_doi>/<subfig_name>/
-    #   2. <run_dir>/interventions/interventions_plextract/results/<n>/output/<safe_doi>/<subfig_name>/
-    _workdirs_to_scan = [
-        run_dir / "plextract",
-        run_dir / "interventions" / "interventions_plextract",
-    ]
-    for wd in _workdirs_to_scan:
-        if not wd.exists():
-            continue
-        latest = latest_plextract_run_dir(wd)
-        if not latest:
-            continue
-        out_base = latest / "output" / safe_doi
-        if not out_base.exists():
-            continue
-        for subfig_dir in out_base.iterdir():
-            if subfig_dir.is_dir() and "_subfig_" in subfig_dir.name:
-                _add_emit("figure", subfig_dir.name)
+    # Collect emit_rows from all subfigures (manual crops)
+    manual_workdir = run_dir / "plextract"
+    if manual_workdir.exists():
+        latest_manual = latest_plextract_run_dir(manual_workdir)
+        if latest_manual:
+            safe_doi = doi.replace("/", "@").strip()
+            out_base = latest_manual / "output" / safe_doi
+            if out_base.exists():
+                # Find all subfigure directories
+                for subfig_dir in out_base.iterdir():
+                    if subfig_dir.is_dir() and "_subfig_" in subfig_dir.name:
+                        emit_path = find_emit_rows_for_source(run_dir, doi, "figure", subfig_dir.name)
+                        if emit_path:
+                            df = load_emit_rows(emit_path)
+                            if df is not None and not df.empty:
+                                all_dfs.append(df)
 
     # Concatenate all dataframes
     if not all_dfs:
@@ -1326,230 +1320,189 @@ with tab_figs:
                 with st.expander("LLM-Generated Dataset Rows", expanded=False):
                     st.info(f"No row_cache data found for {f.id}. Cache may not have been generated yet.")
 
-        # --- Display cropped subfigures from plextract and interventions_plextract ---
-        # Collect subfigure dirs from both workdirs, deduplicating by name.
-        # Intervention results take priority over original plextract results.
-        safe_doi = selected_doi.replace("/", "@").strip()
-        fig_stem = Path(f.id).stem
-        _subfig_map: dict[str, Path] = {}  # name -> dir (intervention wins)
-
-        for _wd in [
-            rr.run_dir / "interventions" / "interventions_plextract",
-            rr.run_dir / "plextract",
-        ]:
-            if not _wd.exists():
-                continue
+        # --- Display cropped subfigures from manual plextract ---
+        manual_workdir = rr.run_dir / "plextract"
+        if manual_workdir.exists():
             from intervention import latest_plextract_run_dir
-            _latest = latest_plextract_run_dir(_wd)
-            if not _latest:
-                continue
-            _out_base = _latest / "output" / safe_doi
-            if not _out_base.exists():
-                continue
-            for _d in _out_base.iterdir():
-                if _d.is_dir() and _d.name.startswith(fig_stem + "_subfig_"):
-                    # First match wins (interventions checked first)
-                    if _d.name not in _subfig_map:
-                        _subfig_map[_d.name] = _d
+            latest_manual = latest_plextract_run_dir(manual_workdir)
+            if latest_manual:
+                safe_doi = selected_doi.replace("/", "@").strip()
+                out_base = latest_manual / "output" / safe_doi
+                if out_base.exists():
+                    # Find all subfigures that match this figure
+                    fig_stem = Path(f.id).stem
+                    subfig_dirs = sorted([
+                        d for d in out_base.iterdir()
+                        if d.is_dir() and d.name.startswith(fig_stem + "_subfig_")
+                    ])
 
-        subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
-        # Also set out_base / latest_manual for later use by the data completion button
-        _int_wd = rr.run_dir / "interventions" / "interventions_plextract"
-        _main_wd = rr.run_dir / "plextract"
-        latest_manual = None
-        out_base = None
-        for _wd in [_int_wd, _main_wd]:
-            if _wd.exists():
-                _lat = latest_plextract_run_dir(_wd)
-                if _lat:
-                    _ob = _lat / "output" / safe_doi
-                    if _ob.exists():
-                        latest_manual = _lat
-                        out_base = _ob
-                        break
+                    if subfig_dirs:
+                        # Header for subfigures section
+                        st.markdown("**Cropped Subfigures**")
 
-        if subfig_dirs:
-                # Header for subfigures section
-                st.markdown("**Cropped Subfigures**")
+                        for subfig_dir in subfig_dirs:
+                            # Subfigure header with data completion button
+                            col_header, col_button = st.columns([3, 1])
+                            with col_header:
+                                st.markdown(f"### {subfig_dir.name}")
+                            with col_button:
+                                if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
+                                    with st.spinner(f"Running data completion for {subfig_dir.name}..."):
+                                        try:
+                                            # Verify index.csv exists
+                                            reparsed_dir = rr.run_dir / "reparsed"
+                                            index_csv_path = reparsed_dir / "index.csv"
 
-                for subfig_dir in subfig_dirs:
-                    # Subfigure header with data completion button
-                    col_header, col_button = st.columns([3, 1])
-                    with col_header:
-                        st.markdown(f"### {subfig_dir.name}")
-                    with col_button:
-                        if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
-                            with st.spinner(f"Running data completion for {subfig_dir.name}..."):
-                                try:
-                                    # Verify index.csv exists
-                                    reparsed_dir = rr.run_dir / "reparsed"
-                                    index_csv_path = reparsed_dir / "index.csv"
+                                            if not index_csv_path.exists():
+                                                error_msg = f"**Required file not found:** `{index_csv_path.relative_to(rr.run_dir)}`\n\n"
 
-                                    if not index_csv_path.exists():
-                                        error_msg = f"**Required file not found:** `{index_csv_path.relative_to(rr.run_dir)}`\n\n"
+                                                if not reparsed_dir.exists():
+                                                    error_msg += "The `reparsed/` directory doesn't exist. "
+                                                else:
+                                                    error_msg += "The `reparsed/` directory exists but `index.csv` is missing. "
 
-                                        if not reparsed_dir.exists():
-                                            error_msg += "The `reparsed/` directory doesn't exist. "
-                                        else:
-                                            error_msg += "The `reparsed/` directory exists but `index.csv` is missing. "
+                                                error_msg += ("This file is created during the 'Download DOIs' stage of the pipeline.\n\n"
+                                                             "**To fix this:**\n"
+                                                             "1. Run the full pipeline with 'Download DOIs' enabled, OR\n"
+                                                             "2. If you've already downloaded papers, check if `index.csv` exists in a different workspace")
 
-                                        error_msg += ("This file is created during the 'Download DOIs' stage of the pipeline.\n\n"
-                                                     "**To fix this:**\n"
-                                                     "1. Run the full pipeline with 'Download DOIs' enabled, OR\n"
-                                                     "2. If you've already downloaded papers, check if `index.csv` exists in a different workspace")
+                                                st.error(error_msg)
+                                                continue
 
-                                        st.error(error_msg)
-                                        continue
+                                            # Create temporary CSV with this DOI
+                                            import tempfile
+                                            import subprocess
 
-                                    # Create temporary CSV with this DOI
-                                    import tempfile
-                                    import subprocess
+                                            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
+                                                tmp.write(f"DOI\n{selected_doi}\n")
+                                                tmp_path = tmp.name
 
-                                    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
-                                        tmp.write(f"DOI\n{selected_doi}\n")
-                                        tmp_path = tmp.name
+                                            # Run complete_dataset.py
+                                            complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
 
-                                    # Run complete_dataset.py
-                                    complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+                                            cmd = [
+                                                "python", str(complete_dataset_script),
+                                                "--file_path", tmp_path,
+                                                "--output_dir", str(rr.run_dir / "complete_dataset"),
+                                                "--index_csv_path", str(index_csv_path),
+                                                "--figures_tables_dir", str(rr.run_dir),
+                                                "--extracted_figures_root", str(latest_manual / "output"),
+                                                "--target_figure", subfig_dir.name,
+                                            ]
 
-                                    # Determine the best extracted_figures_root for this subfigure.
-                                    # The subfig_dir already points to the correct output directory.
-                                    _efr = subfig_dir.parent.parent  # .../output
-                                    cmd = [
-                                        "python", str(complete_dataset_script),
-                                        "--file_path", tmp_path,
-                                        "--output_dir", str(rr.run_dir / "complete_dataset"),
-                                        "--index_csv_path", str(index_csv_path),
-                                        "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
-                                        "--extracted_figures_root", str(_efr),
-                                        "--target_figure", subfig_dir.name,
-                                    ]
+                                            # Pass LLM configuration environment variables to subprocess
+                                            env = os.environ.copy()
 
-                                    # Pass LLM configuration environment variables to subprocess
-                                    env = os.environ.copy()
+                                            # Apply LLM configuration from session state
+                                            provider = st.session_state.get("llm_provider", "Ollama")
+                                            model = st.session_state.get("llm_model", "")
 
-                                    # Apply LLM configuration from session state
-                                    provider = st.session_state.get("llm_provider", "Ollama")
-                                    model = st.session_state.get("llm_model", "")
+                                            if provider == "Ollama":
+                                                env["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                                                env["AEM_OCR_LLM_MODEL"] = model
+                                                env["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                                ollama_models_dir = st.session_state.get("ollama_models_dir", "")
+                                                if ollama_models_dir:
+                                                    env["OLLAMA_MODELS"] = ollama_models_dir
+                                            else:
+                                                env["AEM_OCR_LLM_PROVIDER"] = "openai"
+                                                env["AEM_OCR_LLM_MODEL"] = model
+                                                env["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                                                if st.session_state.get("openai_api_key"):
+                                                    env["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
 
-                                    if provider == "Ollama":
-                                        env["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                        env["AEM_OCR_LLM_MODEL"] = model
-                                        env["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                        ollama_models_dir = st.session_state.get("ollama_models_dir", "")
-                                        if ollama_models_dir:
-                                            env["OLLAMA_MODELS"] = ollama_models_dir
-                                    else:
-                                        env["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                        env["AEM_OCR_LLM_MODEL"] = model
-                                        env["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                        if st.session_state.get("openai_api_key"):
-                                            env["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+                                            # Apply data processing LLM configuration if separate
+                                            if st.session_state.get("use_separate_processing_llm"):
+                                                p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
+                                                p_model = st.session_state.get("processing_llm_model", "")
+                                                if p_provider == "Ollama":
+                                                    env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
+                                                    env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                                                else:
+                                                    env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
+                                                    env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                                                    p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
+                                                    p_key = st.session_state.get("processing_openai_api_key", "")
+                                                    if p_base:
+                                                        env["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
+                                                    if p_key:
+                                                        env["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
+                                            else:
+                                                # Clear processing-specific env vars so processing uses the general LLM
+                                                for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
+                                                           "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
+                                                    env.pop(k, None)
 
-                                    # Apply data processing LLM configuration if separate
-                                    if st.session_state.get("use_separate_processing_llm"):
-                                        p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
-                                        p_model = st.session_state.get("processing_llm_model", "")
-                                        if p_provider == "Ollama":
-                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                                        else:
-                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                                            p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                            p_key = st.session_state.get("processing_openai_api_key", "")
-                                            if p_base:
-                                                env["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
-                                            if p_key:
-                                                env["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
-                                    else:
-                                        # Clear processing-specific env vars so processing uses the general LLM
-                                        for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                                   "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                                            env.pop(k, None)
+                                            # Validate that a model is configured
+                                            if not model and not st.session_state.get("processing_llm_model"):
+                                                st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
+                                                Path(tmp_path).unlink(missing_ok=True)
+                                                continue
 
-                                    # Validate that a model is configured
-                                    if not model and not st.session_state.get("processing_llm_model"):
-                                        st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
-                                        Path(tmp_path).unlink(missing_ok=True)
-                                        continue
+                                            # Set custom instructions path if it exists in the workspace
+                                            ci_path = rr.run_dir.parent / "custom_instructions" / "default.json"
+                                            if ci_path.exists():
+                                                env["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
 
-                                    # Set custom instructions path if it exists in the workspace
-                                    ci_path = rr.run_dir.parent / "custom_instructions" / "default.json"
-                                    if ci_path.exists():
-                                        env["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+                                            # Set run ID and run directory for cost tracking
+                                            env["AEM_OCR_RUN_ID"] = rr.run_id
+                                            env["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
 
-                                    # Set run ID and run directory for cost tracking
-                                    env["AEM_OCR_RUN_ID"] = rr.run_id
-                                    env["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+                                            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
 
-                                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+                                            # Clean up temp file
+                                            Path(tmp_path).unlink(missing_ok=True)
 
-                                    # Clean up temp file
-                                    Path(tmp_path).unlink(missing_ok=True)
+                                            if result.returncode == 0:
+                                                st.success(f"Data completion completed for {subfig_dir.name}! Refresh to see updated row_cache data.")
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
+                                        except subprocess.TimeoutExpired:
+                                            st.error("Data completion timed out (>5 minutes)")
+                                        except Exception as e:
+                                            st.error(f"Error running data completion: {e}")
 
-                                    if result.returncode == 0:
-                                        st.success(f"Data completion completed for {subfig_dir.name}! Refresh to see updated row_cache data.")
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
-                                except subprocess.TimeoutExpired:
-                                    st.error("Data completion timed out (>5 minutes)")
-                                except Exception as e:
-                                    st.error(f"Error running data completion: {e}")
+                            with st.expander(f"### {subfig_dir.name}"):
+                                # Show original cropped image instead of recreated image
+                                # Original image is in input directory of plextract workdir
+                                input_dir = latest_manual / "input" / safe_doi
+                                original_img = input_dir / f"{subfig_dir.name}.png"
+                                if original_img.exists():
+                                    st.image(str(original_img), width=fig_img_width, caption="Original cropped image")
+                                else:
+                                    # Fallback to recreated image if original not found
+                                    final_dir = subfig_dir / "final"
+                                    if final_dir.exists():
+                                        final_img = final_dir / "final_image.png"
+                                        if final_img.exists():
+                                            st.image(str(final_img), width=fig_img_width, caption="Recreated image (original not found)")
 
-                    with st.expander(f"### {subfig_dir.name}"):
-                        # Show original cropped image instead of recreated image
-                        # Try multiple locations for the source image
-                        _subfig_img_found = False
-                        if latest_manual:
-                            input_dir = latest_manual / "input" / safe_doi
-                            original_img = input_dir / f"{subfig_dir.name}.png"
-                            if original_img.exists():
-                                st.image(str(original_img), width=fig_img_width, caption="Original cropped image")
-                                _subfig_img_found = True
-                        if not _subfig_img_found:
-                            # Fallback: check interventions crop directory
-                            _crops_dir = rr.run_dir / "interventions" / safe_doi
-                            for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
-                                _candidate = _fig_d / f"{subfig_dir.name}.png"
-                                if _candidate.exists():
-                                    st.image(str(_candidate), width=fig_img_width, caption="Original cropped image")
-                                    _subfig_img_found = True
-                                    break
-                        if not _subfig_img_found:
-                            # Fallback to recreated image
+                            # Show extracted dataset in expander
                             final_dir = subfig_dir / "final"
-                            if final_dir.exists():
-                                final_img = final_dir / "final_image.png"
-                                if final_img.exists():
-                                    st.image(str(final_img), width=fig_img_width, caption="Recreated image (original not found)")
+                            final_csv = final_dir / "final_dataset.csv"
+                            if final_csv.exists():
+                                with st.expander("Extracted Data", expanded=False):
+                                    try:
+                                        df_subfig = pd.read_csv(final_csv)
+                                        st.data_editor(df_subfig, use_container_width=True, hide_index=True, key=f"subfig_extracted_{selected_doi}_{subfig_dir.name}")
+                                    except Exception as e:
+                                        st.warning(f"Failed to load: {e}")
 
-                    # Show extracted dataset in expander
-                    final_dir = subfig_dir / "final"
-                    final_csv = final_dir / "final_dataset.csv"
-                    if final_csv.exists():
-                        with st.expander("Extracted Data", expanded=False):
-                            try:
-                                df_subfig = pd.read_csv(final_csv)
-                                st.data_editor(df_subfig, use_container_width=True, hide_index=True, key=f"subfig_extracted_{selected_doi}_{subfig_dir.name}")
-                            except Exception as e:
-                                st.warning(f"Failed to load: {e}")
+                                # Show emit_rows for this subfigure from row_cache
+                                emit_rows_path_subfig = find_emit_rows_for_source(
+                                    rr.run_dir, selected_doi, "figure", subfig_dir.name
+                                )
+                                if emit_rows_path_subfig:
+                                    df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
+                                    if df_emit_subfig is not None and not df_emit_subfig.empty:
+                                        with st.expander("LLM-Generated Dataset Rows", expanded=False):
+                                            st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
+                                            st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
 
-                        # Show emit_rows for this subfigure from row_cache
-                        emit_rows_path_subfig = find_emit_rows_for_source(
-                            rr.run_dir, selected_doi, "figure", subfig_dir.name
-                        )
-                        if emit_rows_path_subfig:
-                            df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
-                            if df_emit_subfig is not None and not df_emit_subfig.empty:
-                                with st.expander("LLM-Generated Dataset Rows", expanded=False):
-                                    st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
-                                    st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
-
-                    # Add separator between subfigures if there are multiple
-                    if subfig_dir != subfig_dirs[-1]:
-                        st.markdown("---")
+                            # Add separator between subfigures if there are multiple
+                            if subfig_dir != subfig_dirs[-1]:
+                                st.markdown("---")
 
         # Metadata expander
         if f.metadata_path and f.metadata_path.exists():
@@ -1952,6 +1905,684 @@ with tab_chem:
 
             except Exception as e:
                 st.error(f"Chemical composition extraction failed: {e}")
+
+with tab_intervene:
+    selected_safe = doi_to_safe(selected_doi)
+
+    # --- Mode: flagged only vs all figures ---
+    col_scan, col_mode = st.columns([1, 2])
+    with col_scan:
+        if st.button("Scan for interventions", type="primary"):
+            st.session_state["flagged_all"] = _cached_flagged(str(rr.run_dir))
+    with col_mode:
+        browse_mode = st.radio(
+            "Browse",
+            ["Flagged figures only", "All figures"],
+            horizontal=True,
+            key=f"intervene_mode_{selected_safe}",
+        )
+
+    flagged_all = st.session_state.get("flagged_all", [])
+    flagged = [x for x in flagged_all if x.safe_doi == selected_safe]
+
+    item = None
+    _intervene_ready = True  # gate for rendering the rest of the tab
+
+    if browse_mode == "Flagged figures only":
+        st.write(f"Flagged for this DOI: **{len(flagged)}**")
+        if not flagged:
+            st.info("No flagged figures for this DOI (or scan hasn't been run yet).")
+            _intervene_ready = False
+        else:
+            labels = [f"{x.figure_id} | {x.reason}" for x in flagged]
+            idx = st.selectbox(
+                "Select flagged figure",
+                range(len(labels)),
+                format_func=lambda i: labels[i],
+                key=f"flagged_sel_{selected_safe}",
+            )
+            item = flagged[idx]
+            st.markdown(f"**Reason:** {item.reason}")
+    else:
+        # Browse all figures from the DOI
+        from intervention import InterventionItem, _try_find_source_image, latest_plextract_run_dir as _lpr
+
+        # Use plextract outputs
+        latest = _lpr(rr.run_dir / "plextract")
+
+        filtered_fig_root = rr.run_dir / "figures_tables" / "figures"
+
+        all_items = []
+        if latest:
+            output_root = latest / "output"
+            doi_dir = output_root / selected_safe if output_root.exists() else None
+            if doi_dir and doi_dir.exists():
+                for fig_dir in sorted(doi_dir.iterdir()):
+                    if not fig_dir.is_dir():
+                        continue
+                    figure_id = fig_dir.name
+                    final_dir = fig_dir / "final"
+                    source_image = _try_find_source_image(filtered_fig_root, selected_safe, figure_id)
+                    # Check if this is flagged
+                    reason = ""
+                    for f in flagged:
+                        if f.figure_id == figure_id:
+                            reason = f.reason
+                            break
+                    all_items.append(InterventionItem(
+                        safe_doi=selected_safe,
+                        figure_id=figure_id,
+                        figure_dir=fig_dir,
+                        final_dir=final_dir,
+                        source_image=source_image,
+                        reason=reason,
+                    ))
+
+        if not all_items:
+            st.info("No plextract outputs found for this DOI.")
+            _intervene_ready = False
+        else:
+            labels = [f"{x.figure_id}{' | ' + x.reason if x.reason else ''}" for x in all_items]
+            idx = st.selectbox(
+                "Select figure",
+                range(len(labels)),
+                format_func=lambda i: labels[i],
+                key=f"all_fig_sel_{selected_safe}",
+            )
+            item = all_items[idx]
+            if item.reason:
+                st.markdown(f"**Flagged:** {item.reason}")
+
+    if _intervene_ready and item is not None and (item.source_image is None or not item.source_image.exists()):
+        st.error("Could not find source image. Check figures_tables/figures/ directory.")
+        _intervene_ready = False
+
+    if not _intervene_ready or item is None:
+        st.info("Select a figure above to view intervention options.")
+    else:
+      # Use expanders instead of tabs for better organization
+      with st.expander("Cropping", expanded=True):
+        st.subheader("Crop & extract data from sub-regions")
+
+        pil_img = Image.open(item.source_image).convert("RGB")
+        orig_w, orig_h = pil_img.size
+
+        # Add image width control
+        default_crop_width = min(orig_w, 600)
+        crop_width = st.slider(
+            "Image display width (px)",
+            min_value=200,
+            max_value=min(orig_w, 1500),
+            value=default_crop_width,
+            step=50,
+            key=f"crop_width_{item.safe_doi}_{item.figure_id}"
+        )
+        display_w = crop_width
+        display_h = int(orig_h * (display_w / orig_w))
+        # Resize to display dimensions for canvas (avoids Streamlit media file errors)
+        pil_img_disp = pil_img.resize((display_w, display_h))
+
+        img_name = Path(item.figure_id).name
+        crops_out_dir = rr.run_dir / "interventions" / item.safe_doi / img_name
+        prefix = Path(item.figure_id).stem
+
+        # --- Drawing canvas ---
+        st.write("**Draw crop regions** on the figure below.")
+
+        # Add drawing mode selector to enable reshaping
+        col_mode1, col_mode2 = st.columns(2)
+        with col_mode1:
+            drawing_mode = st.radio(
+                "Canvas mode",
+                ["rect", "transform"],
+                format_func=lambda x: "Draw new rectangles" if x == "rect" else "Edit/reshape rectangles",
+                key=f"canvas_mode_{item.safe_doi}_{item.figure_id}",
+                horizontal=True
+            )
+
+        show_bg = True
+
+        canvas_kwargs = dict(
+            fill_color="rgba(0, 0, 0, 0.0)",
+            stroke_width=2,
+            update_streamlit=True,
+            height=display_h,
+            width=display_w,
+            drawing_mode=drawing_mode,
+            key=f"canvas_{item.safe_doi}_{item.figure_id}",
+        )
+
+        try:
+            if show_bg:
+                canvas = st_canvas(background_image=pil_img_disp, **canvas_kwargs)
+            else:
+                canvas = st_canvas(background_color="rgba(255,255,255,0.0)", **canvas_kwargs)
+        except Exception as e:
+            st.warning(f"Canvas background failed: {e}. Showing image below for reference.")
+            st_image_auto(pil_img_disp, full_width=True)
+            canvas = st_canvas(background_color="rgba(255,255,255,0.0)", **canvas_kwargs)
+
+        scale_x = orig_w / display_w
+        scale_y = orig_h / display_h
+
+        rects = []
+        if canvas.json_data and "objects" in canvas.json_data:
+            for obj in canvas.json_data["objects"]:
+                if obj.get("type") != "rect":
+                    continue
+                left = float(obj.get("left", 0))
+                top = float(obj.get("top", 0))
+                width = float(obj.get("width", 0)) * float(obj.get("scaleX", 1))
+                height = float(obj.get("height", 0)) * float(obj.get("scaleY", 1))
+                x1 = int(left * scale_x)
+                y1 = int(top * scale_y)
+                x2 = int((left + width) * scale_x)
+                y2 = int((top + height) * scale_y)
+                rects.append((x1, y1, x2, y2))
+
+        st.write(f"Rectangles drawn: **{len(rects)}**")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Save crops", disabled=len(rects) == 0):
+                saved = save_crops(item.source_image, rects, crops_out_dir, prefix=prefix)
+                st.success(f"Saved {len(saved)} crops to `{crops_out_dir}`")
+                _save_cols = st.columns(min(len(saved), 4)) if saved else []
+                for _si, p in enumerate(saved):
+                    with _save_cols[_si % len(_save_cols)]:
+                        st.image(str(p), width=200)
+                        st.caption(p.name)
+
+        with col2:
+            if st.button("Save & run extraction", type="primary", disabled=len(rects) == 0):
+                saved = save_crops(item.source_image, rects, crops_out_dir, prefix=prefix)
+                if saved:
+                    try:
+                        with st.spinner("Running plextract on crops..."):
+                            run_plextract_on_manual_crops(
+                                scripts_root=scripts_root,
+                                run_dir=rr.run_dir,
+                                safe_doi=item.safe_doi,
+                            )
+                        st.success("Done. Crop extraction completed. Series management will use newly processed images.")
+                    except Exception as e:
+                        st.error(f"Crop extraction failed: {e}")
+                    st.rerun()
+
+        # --- Show existing crops (if any) ---
+        existing_crops = sorted(crops_out_dir.glob(f"{prefix}_subfig_*.png")) if crops_out_dir.exists() else []
+        if existing_crops:
+            st.write(f"**Existing crops:** {len(existing_crops)}")
+            crop_cols = st.columns(min(len(existing_crops), 6))
+            for ci, cp in enumerate(existing_crops):
+                with crop_cols[ci % len(crop_cols)]:
+                    st.image(str(cp), width=150)
+                    st.caption(cp.name)
+
+            col_clear, col_rerun = st.columns(2)
+            with col_clear:
+                if st.button("Clear all crops"):
+                    import shutil
+                    for cp in existing_crops:
+                        cp.unlink(missing_ok=True)
+                    st.success("Cleared existing crops.")
+                    st.rerun()
+            with col_rerun:
+                if st.button("Re-run extraction on existing crops", type="primary"):
+                    try:
+                        with st.spinner("Running plextract on crops..."):
+                            run_plextract_on_manual_crops(
+                                scripts_root=scripts_root,
+                                run_dir=rr.run_dir,
+                                safe_doi=item.safe_doi,
+                            )
+                        st.success("Done. Series management will use newly processed images.")
+                    except Exception as e:
+                        st.error(f"Extraction failed: {e}")
+                    st.rerun()
+        else:
+            st.info("No crops saved yet. Draw rectangles below to create crops.")
+
+        # --- Show manual plextract outputs ---
+        st.divider()
+        st.subheader("Manual-crops extraction outputs")
+        manual_workdir = rr.run_dir / "plextract"
+        if manual_workdir.exists():
+            latest_manual = latest_plextract_run_dir(manual_workdir)
+            if latest_manual:
+                out_base = latest_manual / "output" / item.safe_doi
+                if out_base.exists():
+                    found_csvs = list(out_base.glob("**/final/final_dataset.csv"))
+                    if found_csvs:
+                        # Add width control for final images
+                        final_img_width = st.slider(
+                            "Final image width (px)",
+                            min_value=200,
+                            max_value=1200,
+                            value=600,
+                            step=50,
+                            key=f"final_img_width_{item.safe_doi}_{item.figure_id}"
+                        )
+                        for csv_p in found_csvs:
+                            fig_folder = csv_p.parent.parent.name
+                            st.markdown(f"**{fig_folder} - extracted data**")
+                            try:
+                                df = pd.read_csv(csv_p)
+                                st.dataframe(df, use_container_width=True, hide_index=True)
+                            except Exception as e:
+                                st.warning(f"Failed to load: {e}")
+                            final_img = csv_p.parent / "final_image.png"
+                            if final_img.exists():
+                                st.image(str(final_img), width=final_img_width)
+                            st.divider()
+                    else:
+                        fig_folders = sorted([p.name for p in out_base.iterdir() if p.is_dir()])
+                        st.caption("Figure folders found (no final datasets yet):")
+                        st.code("\n".join(fig_folders[:50]) or "(none)")
+                else:
+                    st.info("No outputs found for this DOI in manual run.")
+        else:
+            st.info("No manual plextract run found yet. Save crops and run extraction above.")
+
+                  # --- Show colored series overlay in its own expander ---
+      
+      with st.expander("Series Management", expanded=False):
+        st.subheader("Series management")
+
+        # Check if there are cropped subfigures in plextract
+        manual_workdir = rr.run_dir / "plextract"
+        selected_figure_dir = item.figure_dir
+        selected_figure_id = item.figure_id
+        selected_source_image = item.source_image
+
+        if manual_workdir.exists():
+            from intervention import latest_plextract_run_dir
+            latest_manual = latest_plextract_run_dir(manual_workdir)
+            if latest_manual:
+                safe_doi = item.safe_doi
+                out_base = latest_manual / "output" / safe_doi
+                if out_base.exists():
+                    # Find all subfigures that match this figure
+                    fig_stem = Path(item.figure_id).stem
+                    subfig_dirs = sorted([
+                        d for d in out_base.iterdir()
+                        if d.is_dir() and d.name.startswith(fig_stem + "_subfig_")
+                    ])
+
+                    if subfig_dirs:
+                        st.info(f"Found {len(subfig_dirs)} cropped subfigure(s). Select one to manage its series:")
+                        subfig_options = ["Original figure"] + [d.name for d in subfig_dirs]
+                        selected_subfig = st.selectbox(
+                            "Select figure/subfigure for series management",
+                            subfig_options,
+                            key=f"series_subfig_sel_{item.safe_doi}_{item.figure_id}"
+                        )
+
+                        if selected_subfig != "Original figure":
+                            # Use the selected subfigure's directory
+                            subfig_idx = subfig_options.index(selected_subfig) - 1
+                            selected_figure_dir = subfig_dirs[subfig_idx]
+                            selected_figure_id = subfig_dirs[subfig_idx].name
+
+                            # Try to find the source image for this subfigure
+                            crops_dir = rr.run_dir / "interventions" / safe_doi / Path(item.figure_id).name
+                            subfig_source = crops_dir / f"{fig_stem}_subfig_{subfig_idx}.png"
+                            if subfig_source.exists():
+                                selected_source_image = subfig_source
+
+        lf_dir = get_lineformer_dir(selected_figure_dir)
+        if not lf_dir.exists():
+            st.warning(f"No lineformer directory found for {selected_figure_id}.")
+        else:
+            series_items = load_series_catalog(lf_dir)
+
+            # Check if series catalog is empty (lineformer may have failed)
+            if not series_items:
+                st.info("No line series masks found. LineFormer may not have detected any series, or the extraction may have failed.")
+                st.write("This can happen when:")
+                st.write("- The figure doesn't contain line plots")
+                st.write("- LineFormer failed to process the image")
+                st.write("- The image quality is too low")
+                st.write("")
+                st.write("You can try:")
+                st.write("- Re-running extraction on this figure")
+                st.write("- Cropping the image to isolate the plot area")
+
+            mapping = load_mapping(rr.run_dir, item.safe_doi, selected_figure_id)
+            names = mapping.get("series_names", {})
+            deleted = set(int(x) for x in mapping.get("deleted", []))
+            override_masks = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
+
+            # Include any newly-created series (present in override masks but not in original catalog)
+            original_indices = {s.series_index for s in series_items}
+            for _idx, _mask_path in sorted(override_masks.items()):
+                if _idx not in original_indices:
+                    try:
+                        _mask_img = Image.open(_mask_path).convert("L")
+                        _mask_arr = np.array(_mask_img)
+                        _ys, _xs = np.where(_mask_arr > 0)
+                        _cx = float(np.mean(_xs)) if len(_xs) > 0 else 0.0
+                        _cy = float(np.mean(_ys)) if len(_ys) > 0 else 0.0
+                    except Exception:
+                        _cx, _cy = 0.0, 0.0
+                    from intervention import SeriesItem as _SeriesItem
+                    series_items.append(_SeriesItem(series_index=_idx, mask_path=_mask_path, centroid=(_cx, _cy)))
+
+            # --- Helper: get display name for a series index ---
+            _SERIES_COLORS = [
+                (255, 0, 0), (0, 128, 255), (0, 200, 0), (255, 165, 0),
+                (148, 0, 211), (0, 206, 209), (255, 20, 147), (128, 128, 0),
+                (0, 255, 127), (100, 149, 237),
+            ]
+
+            # Try to load actual series labels from plextract final_dataset.csv
+            _plextract_series_labels: dict[int, str] = {}
+            _final_csv_path = selected_figure_dir / "final" / "final_dataset.csv"
+            if _final_csv_path.exists():
+                try:
+                    _fdf = pd.read_csv(_final_csv_path)
+                    if "series_label" in _fdf.columns:
+                        for _sl in _fdf["series_label"].dropna().unique():
+                            _sl_str = str(_sl).strip()
+                            try:
+                                _si = int(_sl_str)
+                                _plextract_series_labels[_si] = _sl_str
+                            except ValueError:
+                                _idx = len(_plextract_series_labels)
+                                _plextract_series_labels[_idx] = _sl_str
+                except Exception:
+                    pass
+
+            def _display_name(idx: int) -> str:
+                # Priority: user mapping > plextract series label > fallback
+                if str(idx) in names and names[str(idx)] != f"Series {idx}":
+                    return names[str(idx)]
+                if idx in _plextract_series_labels:
+                    return _plextract_series_labels[idx]
+                return f"Series {idx}"
+
+            # ---- Generate colored series masks composite ----
+            base_img_rgb = Image.open(selected_source_image).convert("RGBA")
+            w, h = base_img_rgb.size
+
+            # Add image width control for series management
+            default_series_width = min(w, 600)
+            series_width = st.slider(
+                "Series overlay image width (px)",
+                min_value=200,
+                max_value=min(w, 1500),
+                value=default_series_width,
+                step=50,
+                key=f"series_width_{item.safe_doi}_{selected_figure_id}"
+            )
+            disp_w = series_width
+            disp_h = int(h * (disp_w / w))
+
+            # Build colored overlay for all existing series
+            overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            _legend_lines = []
+            for s in sorted(series_items, key=lambda x: x.series_index):
+                i = s.series_index
+                if i in deleted:
+                    continue
+                color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
+                mask_path = override_masks.get(i, s.mask_path)
+                try:
+                    mask = Image.open(mask_path).convert("L")
+                    mask_arr = np.array(mask)
+                    color_layer = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
+                    color_layer[mask_arr > 0] = (*color, 140)  # semi-transparent
+                    overlay = Image.alpha_composite(overlay, Image.fromarray(color_layer))
+                except Exception:
+                    pass
+                _hex_c = "#{:02x}{:02x}{:02x}".format(*color)
+                _legend_lines.append(f'<span style="color:{_hex_c}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
+
+            composite_full = Image.alpha_composite(base_img_rgb, overlay).convert("RGB")
+            composite_disp = composite_full.resize((disp_w, disp_h))
+
+            # ---- Edit or Create Series Mask ----
+            st.write("**Edit or Create Series Mask**")
+
+            # Choose mode: edit existing or create new
+            active_series = [s for s in series_items if s.series_index not in deleted]
+            existing_indices = [s.series_index for s in series_items]
+            next_idx = max(existing_indices) + 1 if existing_indices else 0
+
+            mode_options = ["Edit existing series", "Create new series"]
+            mode = st.radio(
+                "Mode",
+                mode_options,
+                key=f"series_mode_{item.safe_doi}_{selected_figure_id}",
+                horizontal=True,
+            )
+
+            is_creating = (mode == "Create new series")
+
+            if is_creating:
+                selected_idx = next_idx
+                series_name = st.text_input(
+                    "Name for new series",
+                    value=f"Series {next_idx}",
+                    key=f"new_series_name_{item.safe_doi}_{selected_figure_id}",
+                )
+                cur_mask_img = None
+            else:
+                if not active_series:
+                    st.info("No active series to edit.")
+                    selected_idx = None
+                else:
+                    sel_series_name_options = [f"{_display_name(s.series_index)}" for s in active_series]
+                    sel_series_ui = st.selectbox(
+                        "Select series to edit",
+                        range(len(active_series)),
+                        format_func=lambda i: sel_series_name_options[i],
+                        key=f"mask_edit_sel_{item.safe_doi}_{selected_figure_id}",
+                    )
+                    sel_s = active_series[sel_series_ui]
+                    selected_idx = sel_s.series_index
+                    series_name = _display_name(selected_idx)
+
+                    # Load current mask for preview
+                    orig_mask_path = next(s.mask_path for s in series_items if s.series_index == selected_idx)
+                    cur_mask_path = override_masks.get(selected_idx, orig_mask_path)
+                    cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
+
+            if selected_idx is not None:
+                # Show selected series color
+                sel_color = _SERIES_COLORS[selected_idx % len(_SERIES_COLORS)]
+                hex_color = "#{:02x}{:02x}{:02x}".format(*sel_color)
+                st.markdown(
+                    f'**Drawing with color:** <span style="color:{hex_color}; font-size:1.8em; font-weight:bold;">&#9632;</span> {series_name}',
+                    unsafe_allow_html=True,
+                )
+
+                # Canvas stroke color - use selected series color with full opacity
+                stroke_color_rgba = f"rgba({sel_color[0]},{sel_color[1]},{sel_color[2]},1.0)"
+
+                c1, c2 = st.columns([3, 1])
+
+                with c1:
+                    st.write("Draw on the colored series image below")
+                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{selected_figure_id}_{selected_idx}")
+                    mask_canvas = st_canvas(
+                        background_image=composite_disp,
+                        drawing_mode="freedraw",
+                        stroke_width=brush,
+                        stroke_color=stroke_color_rgba,
+                        fill_color=stroke_color_rgba,
+                        update_streamlit=True,
+                        height=disp_h,
+                        width=disp_w,
+                        key=f"mask_canvas_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
+                    )
+
+                with c2:
+                    if cur_mask_img is not None:
+                        st.write("Current mask")
+                        st_image_auto(cur_mask_img, full_width=True, use_container_width=True)
+                    else:
+                        st.info("Drawing new series")
+
+                # Show legend below canvas
+                if _legend_lines:
+                    st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
+
+                # Build new mask from canvas strokes
+                if mask_canvas.image_data is not None:
+                    rgba = mask_canvas.image_data.astype(np.uint8)
+                    r, g, b = sel_color
+                    color_match = (
+                        (np.abs(rgba[..., 0].astype(int) - r) < 30) &
+                        (np.abs(rgba[..., 1].astype(int) - g) < 30) &
+                        (np.abs(rgba[..., 2].astype(int) - b) < 30) &
+                        (rgba[..., 3] > 0)
+                    )
+                    new_mask_small = color_match.astype(np.uint8) * 255
+
+                    if np.any(new_mask_small > 0):
+                        new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+                        new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+
+                        colA, colB = st.columns(2)
+                        with colA:
+                            save_label = "Create new series" if is_creating else f"Save edited mask"
+                            if st.button(save_label, type="primary", key=f"save_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                                outp = save_mask_override(rr.run_dir, item.safe_doi, selected_figure_id, selected_idx, new_mask_pil)
+
+                                if is_creating:
+                                    mapping_updated = load_mapping(rr.run_dir, item.safe_doi, selected_figure_id)
+                                    if "series_names" not in mapping_updated:
+                                        mapping_updated["series_names"] = {}
+                                    mapping_updated["series_names"][str(selected_idx)] = series_name
+                                    save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping_updated)
+
+                                    mask_arr = np.array(new_mask_pil)
+                                    y_coords, x_coords = np.where(mask_arr > 0)
+                                    if len(x_coords) > 0:
+                                        centroid_x = float(np.mean(x_coords))
+                                        centroid_y = float(np.mean(y_coords))
+                                    else:
+                                        centroid_x, centroid_y = 0.0, 0.0
+
+                                    from intervention import SeriesItem
+                                    new_series = SeriesItem(
+                                        series_index=selected_idx,
+                                        mask_path=outp,
+                                        centroid=(centroid_x, centroid_y)
+                                    )
+                                    series_items.append(new_series)
+                                    st.success(f"Created new series '{series_name}' with index {selected_idx}")
+                                else:
+                                    st.success(f"Saved override mask for {series_name}")
+
+                                override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
+                                write_series_catalog_override(rr.run_dir, item.safe_doi, selected_figure_id, series_items, override_masks_updated)
+                                st.rerun()
+                        with colB:
+                            if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                                st.rerun()
+
+            # ---- Rename / delete section ----
+            st.write("**Rename or delete** each series below.")
+
+            new_names = {}
+            new_deleted = set(deleted)
+
+            for s in sorted(series_items, key=lambda x: x.series_index):
+                i = s.series_index
+                # Skip already-deleted series — they are gone from the UI
+                if i in deleted:
+                    continue
+                color = _SERIES_COLORS[i % len(_SERIES_COLORS)]
+                hex_color = "#{:02x}{:02x}{:02x}".format(*color)
+                cols = st.columns([0.5, 3, 1])
+                with cols[0]:
+                    st.markdown(
+                        f'<span style="color:{hex_color}; font-size:1.4em; font-weight:bold;">&#9632;</span>',
+                        unsafe_allow_html=True,
+                    )
+                with cols[1]:
+                    default_name = _display_name(i)
+                    new_names[str(i)] = st.text_input(
+                        f"Name for series {i}",
+                        value=default_name,
+                        key=f"series_name_{item.safe_doi}_{selected_figure_id}_{i}",
+                        label_visibility="collapsed",
+                    )
+                with cols[2]:
+                    del_flag = st.checkbox(
+                        "Delete",
+                        value=False,
+                        key=f"series_del_{item.safe_doi}_{selected_figure_id}_{i}",
+                    )
+                    if del_flag:
+                        new_deleted.add(i)
+
+            if st.button("Save series mapping", type="primary"):
+                mapping2 = {
+                    "series_names": new_names,
+                    "deleted": sorted(list(new_deleted)),
+                }
+                p = save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping2)
+                st.success(f"Saved mapping: {p}")
+                st.rerun()
+
+      with st.expander("Rerun Figure Data Extraction", expanded=False):
+        st.write("This will apply your mask overrides and re-extract data from the figure.")
+        st.info(
+            "New masks will replace the old respective masks where you have made changes. "
+            "The extraction will use the updated masks along with the original masks for "
+            "unchanged series. If crops exist, the cropped images will be used. "
+            "LineFormer will not regenerate masks — existing masks (including any "
+            "edits from Series Management) are reused."
+        )
+
+        # Determine the figure to use: prefer cropped images if they exist
+        _rerun_crops_dir = rr.run_dir / "interventions" / item.safe_doi / Path(item.figure_id).name
+        _rerun_existing_crops = sorted(_rerun_crops_dir.glob(f"{Path(item.figure_id).stem}_subfig_*.png")) if _rerun_crops_dir.exists() else []
+        if _rerun_existing_crops:
+            st.caption(f"Will run on **{len(_rerun_existing_crops)} cropped image(s)** instead of the original figure.")
+        else:
+            st.caption("Will run on the original figure (no crops found).")
+
+        if st.button("Rerun figure data extraction", type="primary"):
+            try:
+                # First, apply all overrides to the plextract output
+                with st.spinner("Applying mask overrides and series changes..."):
+                    apply_overrides_to_plextract(selected_figure_dir, rr.run_dir, item.safe_doi, selected_figure_id)
+                st.success("Applied overrides to plextract output")
+
+                # Determine which lineformer dir has the current masks
+                _lf_dir_for_rerun = get_lineformer_dir(selected_figure_dir)
+
+                if _rerun_existing_crops:
+                    # Run extraction on each cropped image, reusing existing masks
+                    for crop_path in _rerun_existing_crops:
+                        with st.spinner(f"Re-running extraction on {crop_path.name}..."):
+                            run_plextract_single_figure(
+                                scripts_root=scripts_root,
+                                run_dir=rr.run_dir,
+                                safe_doi=item.safe_doi,
+                                figure_path=crop_path,
+                                skip_lineformer=True,
+                                pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
+                            )
+                else:
+                    # Run on the original figure, skipping LineFormer
+                    with st.spinner("Re-running data extraction on this figure..."):
+                        run_plextract_single_figure(
+                            scripts_root=scripts_root,
+                            run_dir=rr.run_dir,
+                            safe_doi=item.safe_doi,
+                            figure_path=item.source_image,
+                            skip_lineformer=True,
+                            pre_populate_lineformer_dir=_lf_dir_for_rerun if _lf_dir_for_rerun.exists() else None,
+                        )
+                st.success("Data extraction complete! Check plextract/ for updated results.")
+                st.rerun()  # Reload to show updated series
+            except Exception as e:
+                st.error(f"Failed: {e}")
 
 
 
