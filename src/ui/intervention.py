@@ -292,6 +292,10 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
     Copy override masks into <figure_dir>/lineformer/ and replace series_catalog.json
     with the override one (after filtering deleted series if requested).
     Also handles newly created series from interventions.
+
+    Writes intervention_overrides.json into the lineformer directory so that
+    downstream steps (finalize_labels) can apply series-name overrides and
+    honour deleted-series decisions.
     """
     lf_dir = get_lineformer_dir(item_figure_dir)
     if not lf_dir.exists():
@@ -303,6 +307,7 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
     # load mapping (delete list and series names)
     mapping = load_mapping(run_dir, safe_doi, figure_id)
     deleted = set(int(x) for x in mapping.get("deleted", []))
+    series_names = mapping.get("series_names", {})
 
     # load overrides
     override_masks = list_override_masks(run_dir, safe_doi, figure_id)
@@ -311,6 +316,13 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
     for idx, p in override_masks.items():
         dest = lf_dir / p.name
         shutil.copy2(p, dest)
+
+    # Remove mask files for deleted series so correct_coordinates and
+    # match_legend won't pick them up.
+    for del_idx in deleted:
+        mask_file = lf_dir / f"mask_series_{del_idx}.png"
+        if mask_file.exists():
+            mask_file.unlink()
 
     # Track which series indices we've seen from the original catalog
     original_indices = {s.series_index for s in series_items}
@@ -369,3 +381,16 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
                     pass
 
     (lf_dir / "series_catalog.json").write_text(json.dumps(rows, indent=2))
+
+    # Write intervention overrides into lineformer dir so they travel with
+    # the masks when run_plextract_on_crops copies the directory and are
+    # available to finalize_labels.py during dataset generation.
+    overrides = {}
+    if series_names:
+        overrides["series_names"] = series_names
+    if deleted:
+        overrides["deleted"] = sorted(deleted)
+    if overrides:
+        (lf_dir / "intervention_overrides.json").write_text(
+            json.dumps(overrides, indent=2)
+        )

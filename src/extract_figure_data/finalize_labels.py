@@ -286,6 +286,18 @@ def export_labeled_dataset_and_plot(run_id: str, img: str):
             y_unit_raw = yu
             y_unit_norm, y_dim = _validate_or_flag_unit(y_unit_raw, y_name, "y", unknown_units)
 
+    # Load intervention overrides (series-name corrections & deleted series)
+    # written by apply_overrides_to_plextract into the lineformer directory.
+    intervention_overrides_json = img_dir / "lineformer" / "intervention_overrides.json"
+    intervention_series_names: Dict[int, str] = {}
+    intervention_deleted: set = set()
+    if intervention_overrides_json.exists():
+        with open(intervention_overrides_json, "r") as f:
+            _ov = json.load(f)
+        for k, v in _ov.get("series_names", {}).items():
+            intervention_series_names[int(k)] = str(v)
+        intervention_deleted = set(int(x) for x in _ov.get("deleted", []))
+
     # Build index->label map (legend to series)
     idx_to_label = {}
     for m in mapping:
@@ -297,6 +309,11 @@ def export_labeled_dataset_and_plot(run_id: str, img: str):
             if mm: idx = int(mm.group(1))
         if idx is not None:
             idx_to_label[idx] = lbl
+
+    # Apply user-corrected series names from interventions (override OCR labels)
+    for idx, name in intervention_series_names.items():
+        if name.strip():
+            idx_to_label[idx] = name
 
     # Determine unit "dimensions" from raw units
     x_dim = _dimension_of(x_unit_raw) if x_unit_raw else None
@@ -313,6 +330,9 @@ def export_labeled_dataset_and_plot(run_id: str, img: str):
         if not mm:
             continue
         idx = int(mm.group(1))
+        # Skip series the user explicitly deleted via interventions
+        if idx in intervention_deleted:
+            continue
         label = idx_to_label.get(idx, f"series_{idx}")
         for k, p in enumerate(pts):
             x_raw = float(p["x"])
