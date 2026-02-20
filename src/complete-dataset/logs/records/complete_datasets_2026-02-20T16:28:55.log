@@ -1,0 +1,9 @@
+2026-02-20 16:28:55,654 Loaded CSV file: /tmp/tmp7bumvl__.csv
+2026-02-20 16:28:55,655 Original DataFrame size: 1 rows
+2026-02-20 16:28:55,656 After removing empty DOI strings: 1 rows
+2026-02-20 16:28:55,690 Wrote combined record for DOI 10.1016/j.colsurfa.2019.124348 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.colsurfa.2019.124348_complete.json
+2026-02-20 16:29:33,568 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 16:30:16,877 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 16:30:30,507 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 16:30:43,491 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-20 16:30:43,513 Wrote completed dataset CSV for DOI 10.1016/j.colsurfa.2019.124348 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.colsurfa.2019.124348_dataset.csv (405 rows)

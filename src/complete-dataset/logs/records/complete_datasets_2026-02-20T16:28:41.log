@@ -1,0 +1,29 @@
+2026-02-20 16:28:42,080 Loaded CSV file: /tmp/tmp_xwxvyn0.csv
+2026-02-20 16:28:42,080 Original DataFrame size: 1 rows
+2026-02-20 16:28:42,081 After removing empty DOI strings: 1 rows
+2026-02-20 16:28:42,115 Wrote combined record for DOI 10.1016/j.colsurfa.2019.124348 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.colsurfa.2019.124348_complete.json
+2026-02-20 16:28:42,159 HTTP Request: POST http://127.0.0.1:11434/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-20 16:28:42,160 Dataset completion failed for DOI 10.1016/j.colsurfa.2019.124348: Error code: 400 - {'error': {'message': 'model is required', 'type': 'api_error', 'param': None, 'code': None}}
+Traceback (most recent call last):
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/complete_dataset.py", line 894, in main
+    dataset_df = complete_dataset_llm(complete_record, client)
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/complete_dataset.py", line 791, in complete_dataset_llm
+    df_tables = complete_dataset_from_tables_llm(complete_record, client)
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/complete_dataset.py", line 630, in complete_dataset_from_tables_llm
+    df_rows, meta = infer_rows_for_table(
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/row_emitter.py", line 438, in infer_rows_for_table
+    text, meta = client.chat(
+  File "/home/wschertzer3/AEM_OCR/src/llm_client.py", line 126, in chat
+    resp = self._client.chat.completions.create(**kwargs)
+  File "/data/william/minicionda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_utils/_utils.py", line 274, in wrapper
+    return func(*args, **kwargs)
+  File "/data/william/minicionda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/resources/chat/completions.py", line 815, in create
+    return self._post(
+  File "/data/william/minicionda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_base_client.py", line 1277, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+  File "/data/william/minicionda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_base_client.py", line 954, in request
+    return self._request(
+  File "/data/william/minicionda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_base_client.py", line 1058, in _request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': 'model is required', 'type': 'api_error', 'param': None, 'code': None}}
+2026-02-20 16:28:42,163 types: tables=<class 'list'>, figures=<class 'list'>, extracted_figure_data=<class 'dict'>

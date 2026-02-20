@@ -2143,23 +2143,6 @@ with tab_intervene:
                         st.image(str(p), width=200)
                         st.caption(p.name)
 
-        with col2:
-            if st.button("Save & run extraction", type="primary", disabled=len(rects) == 0):
-                saved = save_crops(item.source_image, rects, crops_out_dir, prefix=prefix)
-                if saved:
-                    try:
-                        with st.spinner("Running plextract on crops..."):
-                            run_plextract_on_manual_crops(
-                                scripts_root=scripts_root,
-                                run_dir=rr.run_dir,
-                                safe_doi=item.safe_doi,
-                                figure_id=img_name,
-                            )
-                        st.success("Done. Crop extraction completed. Series management will use newly processed images.")
-                    except Exception as e:
-                        st.error(f"Crop extraction failed: {e}")
-                    st.rerun()
-
         # --- Show existing crops (if any) ---
         existing_crops = sorted(crops_out_dir.glob(f"{prefix}_subfig_*.png")) if crops_out_dir.exists() else []
         if existing_crops:
@@ -2197,7 +2180,7 @@ with tab_intervene:
 
         # --- Show intervention extraction outputs ---
         st.divider()
-        st.subheader("Intervention extraction outputs")
+        st.subheader("Data extracted from crop(s):")
         _int_plextract_workdir = rr.run_dir / "interventions" / "interventions_plextract"
         if _int_plextract_workdir.exists():
             latest_int_run = latest_plextract_run_dir(_int_plextract_workdir)
@@ -2473,13 +2456,6 @@ with tab_intervene:
 
                 c1, c2 = st.columns([3, 1])
 
-                with c2:
-                    if cur_mask_img is not None:
-                        st.write("Current mask")
-                        st_image_auto(cur_mask_img, full_width=True, use_container_width=True)
-                    else:
-                        st.info("Drawing new series")
-
                 if input_mode == "Freehand drawing":
                     with c1:
                         st.write("Draw on the colored series image below")
@@ -2654,6 +2630,12 @@ with tab_intervene:
                             if st.button("Reset", key=f"reset_pts_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
                                 st.rerun()
 
+                with c2:
+                    if cur_mask_img is not None:
+                        st.write("Current mask")
+                        st_image_auto(cur_mask_img, full_width=True, use_container_width=True)
+                    else:
+                        st.info("Drawing new series")
             # ---- Rename / delete section ----
             st.write("**Rename or delete** each series below.")
 
@@ -2698,15 +2680,6 @@ with tab_intervene:
                 p = save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping2)
                 st.success(f"Saved mapping: {p}")
                 st.rerun()
-
-            # ---- Rerun data extraction with updated masks ----
-            st.write("**Rerun Data Extraction**")
-            st.write("Apply your mask edits and re-extract data from this figure.")
-            st.info(
-                "Updated masks will replace the old masks where you made changes. "
-                "LineFormer will not regenerate masks — existing masks (including your edits) "
-                "will be reused. Results will be saved to the interventions directory."
-            )
 
             # Determine what we're re-running based on the currently selected figure/subfigure.
             _is_subfigure_selected = selected_figure_id != item.figure_id
