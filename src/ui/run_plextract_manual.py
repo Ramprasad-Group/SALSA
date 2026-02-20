@@ -90,6 +90,10 @@ def run_plextract_on_crops(
         ]
         if skip_lineformer:
             cmd.append("--skip-lineformer")
+            # Pass the same run ID that was used to pre-populate lineformer
+            # masks, so plextract writes output into the same results directory
+            # instead of creating a new one.
+            cmd.extend(["--run-id", next_id])
         subprocess.run(cmd, check=True)
 
 

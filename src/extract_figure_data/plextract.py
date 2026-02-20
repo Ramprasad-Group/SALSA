@@ -475,6 +475,13 @@ def parse_args():
         default=False,
         help='Skip LineFormer mask generation and use existing masks')
 
+    ap.add_argument(
+        '--run-id',
+        type=str,
+        default=None,
+        help='Force a specific run ID instead of auto-incrementing. '
+             'Used when lineformer masks have been pre-populated into a results directory.')
+
     return ap.parse_args()
 
 if __name__ == "__main__":
@@ -490,7 +497,7 @@ if __name__ == "__main__":
     entries = os.listdir(args.input)
     subdirs = [os.path.join(args.input, e) for e in entries if os.path.isdir(os.path.join(args.input, e))]
     workdir = os.path.abspath(args.workdir)
-    run_id = find_next_number(os.path.join(workdir, 'results'))
+    run_id = args.run_id if args.run_id is not None else find_next_number(os.path.join(workdir, 'results'))
 
     # Setup logging (stable name, workspace-scoped)
     os.makedirs(args.log_file, exist_ok=True)
