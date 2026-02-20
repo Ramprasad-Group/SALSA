@@ -788,7 +788,12 @@ def _filter_missing_sample_names(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
-    df_tables = complete_dataset_from_tables_llm(complete_record, client)
+    # When targeting a specific figure, skip table processing entirely
+    # so we only re-generate rows for that figure.
+    if args.target_figure:
+        df_tables = pd.DataFrame(columns=DATASET_COLUMNS)
+    else:
+        df_tables = complete_dataset_from_tables_llm(complete_record, client)
     df_figs = complete_dataset_from_figures_llm(complete_record, client)
 
     df_all = pd.concat([df_tables, df_figs], ignore_index=True)

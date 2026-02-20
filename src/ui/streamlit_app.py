@@ -1501,12 +1501,13 @@ with tab_figs:
                                     st.error(f"Error running data completion: {e}")
 
                     with st.expander(f"### {subfig_dir.name}"):
-                        # Show original cropped image instead of recreated image
-                        # Try multiple locations for the source image
+                        # Show original cropped image instead of recreated image.
+                        # subfig_dir.name already includes the extension (e.g.
+                        # "Figure_5_subfig_0.png"), so do NOT append ".png" again.
                         _subfig_img_found = False
                         if latest_manual:
                             input_dir = latest_manual / "input" / safe_doi
-                            original_img = input_dir / f"{subfig_dir.name}.png"
+                            original_img = input_dir / subfig_dir.name
                             if original_img.exists():
                                 st.image(str(original_img), width=fig_img_width, caption="Original cropped image")
                                 _subfig_img_found = True
@@ -1514,7 +1515,7 @@ with tab_figs:
                             # Fallback: check interventions crop directory
                             _crops_dir = rr.run_dir / "interventions" / safe_doi
                             for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
-                                _candidate = _fig_d / f"{subfig_dir.name}.png"
+                                _candidate = _fig_d / subfig_dir.name
                                 if _candidate.exists():
                                     st.image(str(_candidate), width=fig_img_width, caption="Original cropped image")
                                     _subfig_img_found = True
@@ -2262,24 +2263,31 @@ with tab_intervene:
 
                     if subfig_dirs:
                         st.info(f"Found {len(subfig_dirs)} cropped subfigure(s). Select one to manage its series:")
-                        subfig_options = ["Original figure"] + [d.name for d in subfig_dirs]
+                        subfig_options = [d.name for d in subfig_dirs]
                         selected_subfig = st.selectbox(
-                            "Select figure/subfigure for series management",
+                            "Select subfigure for series management",
                             subfig_options,
                             key=f"series_subfig_sel_{item.safe_doi}_{item.figure_id}"
                         )
 
-                        if selected_subfig != "Original figure":
-                            # Use the selected subfigure's directory
-                            subfig_idx = subfig_options.index(selected_subfig) - 1
-                            selected_figure_dir = subfig_dirs[subfig_idx]
-                            selected_figure_id = subfig_dirs[subfig_idx].name
+                        # Use the selected subfigure's directory
+                        subfig_idx = subfig_options.index(selected_subfig)
+                        selected_figure_dir = subfig_dirs[subfig_idx]
+                        selected_figure_id = subfig_dirs[subfig_idx].name
 
-                            # Try to find the source image for this subfigure
-                            crops_dir = rr.run_dir / "interventions" / safe_doi / Path(item.figure_id).name
-                            subfig_source = crops_dir / f"{fig_stem}_subfig_{subfig_idx}.png"
-                            if subfig_source.exists():
-                                selected_source_image = subfig_source
+                        # Try to find the source image for this subfigure.
+                        # 1) Manual crop in interventions directory
+                        crops_dir = rr.run_dir / "interventions" / safe_doi / Path(item.figure_id).name
+                        subfig_source = crops_dir / f"{fig_stem}_subfig_{subfig_idx}.png"
+                        if subfig_source.exists():
+                            selected_source_image = subfig_source
+                        else:
+                            # 2) Auto-split subfigure in the plextract input dir
+                            #    (created by ChartDete during a previous extraction)
+                            _run_root = selected_figure_dir.parent.parent.parent  # .../results/N
+                            _input_candidate = _run_root / "input" / safe_doi / selected_figure_id
+                            if _input_candidate.exists():
+                                selected_source_image = _input_candidate
 
         lf_dir = get_lineformer_dir(selected_figure_dir)
         if not lf_dir.exists():
@@ -2560,7 +2568,7 @@ with tab_intervene:
 
                     with c1:
                         dot_size = st.slider(
-                            "Point display size", 3, 20, 6,
+                            "Point display size", 1, 15, 3,
                             key=f"dot_size_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
                         )
                         if _existing_pts:
