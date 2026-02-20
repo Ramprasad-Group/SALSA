@@ -216,6 +216,22 @@ def regenerate_coordinates_from_masks(lineformer_dir: Path) -> None:
 
     all_series: List[List[Dict[str, float]]] = []
     for mask_path in mask_files:
+        mask_p = Path(mask_path)
+
+        # If the user picked exact points via the UI, a clicked_points_<i>.json
+        # file sits alongside the mask.  Use those coordinates directly instead
+        # of deriving them from the rasterised mask.
+        clicked_pts_file = mask_p.parent / mask_p.name.replace("mask_series_", "clicked_points_").replace(".png", ".json")
+        if clicked_pts_file.exists():
+            try:
+                pts = json.loads(clicked_pts_file.read_text())
+                pts = [{"x": float(p["x"]), "y": float(p["y"])} for p in pts]
+                pts.sort(key=lambda p: p["x"])
+                all_series.append(pts)
+                continue
+            except Exception:
+                pass  # fall through to mask-extraction on error
+
         m = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         if m is None:
             all_series.append([])

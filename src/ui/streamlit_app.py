@@ -2450,22 +2450,19 @@ with tab_intervene:
                 # Canvas stroke color - use selected series color with full opacity
                 stroke_color_rgba = f"rgba({sel_color[0]},{sel_color[1]},{sel_color[2]},1.0)"
 
-                c1, c2 = st.columns([3, 1])
+                # Scale factors from display coords to full image coords
+                _scale_x = w / disp_w
+                _scale_y = h / disp_h
 
-                with c1:
-                    st.write("Draw on the colored series image below")
-                    brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{selected_figure_id}_{selected_idx}")
-                    mask_canvas = st_canvas(
-                        background_image=composite_disp,
-                        drawing_mode="freedraw",
-                        stroke_width=brush,
-                        stroke_color=stroke_color_rgba,
-                        fill_color=stroke_color_rgba,
-                        update_streamlit=True,
-                        height=disp_h,
-                        width=disp_w,
-                        key=f"mask_canvas_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
-                    )
+                # Input mode: freehand drawing or exact point picking
+                input_mode = st.radio(
+                    "Input mode",
+                    ["Freehand drawing", "Pick exact points"],
+                    horizontal=True,
+                    key=f"input_mode_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
+                )
+
+                c1, c2 = st.columns([3, 1])
 
                 with c2:
                     if cur_mask_img is not None:
@@ -2474,31 +2471,153 @@ with tab_intervene:
                     else:
                         st.info("Drawing new series")
 
-                # Show legend below canvas
-                if _legend_lines:
-                    st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
+                if input_mode == "Freehand drawing":
+                    with c1:
+                        st.write("Draw on the colored series image below")
+                        brush = st.slider("Brush width", 1, 40, 10, key=f"brush_{item.safe_doi}_{selected_figure_id}_{selected_idx}")
+                        mask_canvas = st_canvas(
+                            background_image=composite_disp,
+                            drawing_mode="freedraw",
+                            stroke_width=brush,
+                            stroke_color=stroke_color_rgba,
+                            fill_color=stroke_color_rgba,
+                            update_streamlit=True,
+                            height=disp_h,
+                            width=disp_w,
+                            key=f"mask_canvas_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
+                        )
 
-                # Build new mask from canvas strokes
-                if mask_canvas.image_data is not None:
-                    rgba = mask_canvas.image_data.astype(np.uint8)
-                    r, g, b = sel_color
-                    color_match = (
-                        (np.abs(rgba[..., 0].astype(int) - r) < 30) &
-                        (np.abs(rgba[..., 1].astype(int) - g) < 30) &
-                        (np.abs(rgba[..., 2].astype(int) - b) < 30) &
-                        (rgba[..., 3] > 0)
-                    )
-                    new_mask_small = color_match.astype(np.uint8) * 255
+                    # Show legend below canvas
+                    if _legend_lines:
+                        st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
 
-                    if np.any(new_mask_small > 0):
-                        new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
-                        new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+                    # Build new mask from canvas strokes
+                    if mask_canvas.image_data is not None:
+                        rgba = mask_canvas.image_data.astype(np.uint8)
+                        r, g, b = sel_color
+                        color_match = (
+                            (np.abs(rgba[..., 0].astype(int) - r) < 30) &
+                            (np.abs(rgba[..., 1].astype(int) - g) < 30) &
+                            (np.abs(rgba[..., 2].astype(int) - b) < 30) &
+                            (rgba[..., 3] > 0)
+                        )
+                        new_mask_small = color_match.astype(np.uint8) * 255
+
+                        if np.any(new_mask_small > 0):
+                            new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+                            new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+
+                            colA, colB = st.columns(2)
+                            with colA:
+                                save_label = "Create new series" if is_creating else "Save edited mask"
+                                if st.button(save_label, type="primary", key=f"save_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                                    outp = save_mask_override(rr.run_dir, item.safe_doi, selected_figure_id, selected_idx, new_mask_pil)
+
+                                    if is_creating:
+                                        mapping_updated = load_mapping(rr.run_dir, item.safe_doi, selected_figure_id)
+                                        if "series_names" not in mapping_updated:
+                                            mapping_updated["series_names"] = {}
+                                        mapping_updated["series_names"][str(selected_idx)] = series_name
+                                        save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping_updated)
+
+                                        mask_arr = np.array(new_mask_pil)
+                                        y_coords, x_coords = np.where(mask_arr > 0)
+                                        if len(x_coords) > 0:
+                                            centroid_x = float(np.mean(x_coords))
+                                            centroid_y = float(np.mean(y_coords))
+                                        else:
+                                            centroid_x, centroid_y = 0.0, 0.0
+
+                                        from intervention import SeriesItem
+                                        new_series = SeriesItem(
+                                            series_index=selected_idx,
+                                            mask_path=outp,
+                                            centroid=(centroid_x, centroid_y)
+                                        )
+                                        series_items.append(new_series)
+                                        st.success(f"Created new series '{series_name}' with index {selected_idx}")
+                                    else:
+                                        st.success(f"Saved override mask for {series_name}")
+
+                                    override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
+                                    write_series_catalog_override(rr.run_dir, item.safe_doi, selected_figure_id, series_items, override_masks_updated)
+                                    st.rerun()
+                            with colB:
+                                if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                                    st.rerun()
+
+                else:  # Pick exact points
+                    # Load any previously saved clicked points for this series
+                    _lf_override_dir = override_lineformer_dir(rr.run_dir, item.safe_doi, selected_figure_id)
+                    _pts_file = _lf_override_dir / f"clicked_points_{selected_idx}.json"
+                    _existing_pts: list = []
+                    if _pts_file.exists():
+                        try:
+                            _existing_pts = json.loads(_pts_file.read_text())
+                        except Exception:
+                            pass
+
+                    with c1:
+                        dot_size = st.slider(
+                            "Point display size", 3, 20, 6,
+                            key=f"dot_size_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
+                        )
+                        if _existing_pts:
+                            st.caption(f"Currently saved: **{len(_existing_pts)} point(s)**. Placing new points below replaces them.")
+                        else:
+                            st.caption("Click on the figure to place data points. Points are sorted by x-value when saved.")
+
+                        point_canvas = st_canvas(
+                            background_image=composite_disp,
+                            drawing_mode="point",
+                            point_display_radius=dot_size,
+                            stroke_color=stroke_color_rgba,
+                            fill_color=stroke_color_rgba,
+                            update_streamlit=True,
+                            height=disp_h,
+                            width=disp_w,
+                            key=f"point_canvas_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}",
+                        )
+
+                    # Show legend below canvas
+                    if _legend_lines:
+                        st.markdown(" &nbsp; ".join(_legend_lines), unsafe_allow_html=True)
+
+                    # Extract clicked point coordinates from canvas JSON data.
+                    # Fabric.js circles: left/top = top-left corner of bounding box,
+                    # so center = (left + radius, top + radius).
+                    _new_clicked_pts: list = []
+                    if point_canvas.json_data and "objects" in point_canvas.json_data:
+                        for _obj in point_canvas.json_data["objects"]:
+                            if _obj.get("type") == "circle":
+                                _r = float(_obj.get("radius", dot_size))
+                                _cx_disp = float(_obj.get("left", 0)) + _r
+                                _cy_disp = float(_obj.get("top", 0)) + _r
+                                _new_clicked_pts.append({
+                                    "x": _cx_disp * _scale_x,
+                                    "y": _cy_disp * _scale_y,
+                                })
+                    _new_clicked_pts.sort(key=lambda p: p["x"])
+
+                    if _new_clicked_pts:
+                        st.caption(f"Placed **{len(_new_clicked_pts)} new point(s)** — click Save to apply.")
 
                         colA, colB = st.columns(2)
                         with colA:
-                            save_label = "Create new series" if is_creating else f"Save edited mask"
-                            if st.button(save_label, type="primary", key=f"save_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
-                                outp = save_mask_override(rr.run_dir, item.safe_doi, selected_figure_id, selected_idx, new_mask_pil)
+                            save_label = "Create new series" if is_creating else "Save points"
+                            if st.button(save_label, type="primary", key=f"save_pts_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                                # Persist clicked points so regenerate_coordinates_from_masks
+                                # uses exact positions rather than mask-derived centres.
+                                _lf_override_dir.mkdir(parents=True, exist_ok=True)
+                                _pts_file.write_text(json.dumps(_new_clicked_pts, indent=2))
+
+                                # Build a dot mask for visualization / mask-based compatibility.
+                                _dot_r = max(3, int(5 * _scale_x))
+                                _mask_arr = np.zeros((h, w), dtype=np.uint8)
+                                for _pt in _new_clicked_pts:
+                                    cv2.circle(_mask_arr, (int(round(_pt["x"])), int(round(_pt["y"]))), _dot_r, 255, -1)
+                                _mask_pil = Image.fromarray(_mask_arr).convert("L")
+                                outp = save_mask_override(rr.run_dir, item.safe_doi, selected_figure_id, selected_idx, _mask_pil)
 
                                 if is_creating:
                                     mapping_updated = load_mapping(rr.run_dir, item.safe_doi, selected_figure_id)
@@ -2507,30 +2626,23 @@ with tab_intervene:
                                     mapping_updated["series_names"][str(selected_idx)] = series_name
                                     save_mapping(rr.run_dir, item.safe_doi, selected_figure_id, mapping_updated)
 
-                                    mask_arr = np.array(new_mask_pil)
-                                    y_coords, x_coords = np.where(mask_arr > 0)
-                                    if len(x_coords) > 0:
-                                        centroid_x = float(np.mean(x_coords))
-                                        centroid_y = float(np.mean(y_coords))
-                                    else:
-                                        centroid_x, centroid_y = 0.0, 0.0
-
                                     from intervention import SeriesItem
-                                    new_series = SeriesItem(
+                                    _cx_mean = float(np.mean([p["x"] for p in _new_clicked_pts]))
+                                    _cy_mean = float(np.mean([p["y"] for p in _new_clicked_pts]))
+                                    series_items.append(SeriesItem(
                                         series_index=selected_idx,
                                         mask_path=outp,
-                                        centroid=(centroid_x, centroid_y)
-                                    )
-                                    series_items.append(new_series)
-                                    st.success(f"Created new series '{series_name}' with index {selected_idx}")
+                                        centroid=(_cx_mean, _cy_mean),
+                                    ))
+                                    st.success(f"Created new series '{series_name}' with {len(_new_clicked_pts)} points")
                                 else:
-                                    st.success(f"Saved override mask for {series_name}")
+                                    st.success(f"Saved {len(_new_clicked_pts)} points for {series_name}")
 
                                 override_masks_updated = list_override_masks(rr.run_dir, item.safe_doi, selected_figure_id)
                                 write_series_catalog_override(rr.run_dir, item.safe_doi, selected_figure_id, series_items, override_masks_updated)
                                 st.rerun()
                         with colB:
-                            if st.button("Reset canvas", key=f"reset_mask_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
+                            if st.button("Reset", key=f"reset_pts_{item.safe_doi}_{selected_figure_id}_{selected_idx}_{mode}"):
                                 st.rerun()
 
             # ---- Rename / delete section ----

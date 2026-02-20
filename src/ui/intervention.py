@@ -317,12 +317,21 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
         dest = lf_dir / p.name
         shutil.copy2(p, dest)
 
-    # Remove mask files for deleted series so correct_coordinates and
-    # match_legend won't pick them up.
+    # copy exact-point files alongside their masks so regenerate_coordinates
+    # can use them instead of deriving coordinates from the rasterised mask.
+    _override_lf = override_lineformer_dir(run_dir, safe_doi, figure_id)
+    for _pts_src in _override_lf.glob("clicked_points_*.json"):
+        shutil.copy2(_pts_src, lf_dir / _pts_src.name)
+
+    # Remove mask and clicked-points files for deleted series so
+    # correct_coordinates and match_legend won't pick them up.
     for del_idx in deleted:
         mask_file = lf_dir / f"mask_series_{del_idx}.png"
         if mask_file.exists():
             mask_file.unlink()
+        pts_file = lf_dir / f"clicked_points_{del_idx}.json"
+        if pts_file.exists():
+            pts_file.unlink()
 
     # Track which series indices we've seen from the original catalog
     original_indices = {s.series_index for s in series_items}
