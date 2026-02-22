@@ -1357,7 +1357,6 @@ with tab_figs:
                     key=f"er_crop_w_{_safe_doi_er}_{_fig_id_er}"
                 )
                 _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
-                _pil_disp_er = _pil_img_er.resize((_crop_w_er, _display_h_er))
 
                 _draw_mode_er = st.radio(
                     "Canvas mode", ["rect", "transform"],
@@ -1365,24 +1364,15 @@ with tab_figs:
                     key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
                 )
 
-                st.write("**Draw crop regions** on the figure below.")
-                try:
-                    _canvas_er = st_canvas(
-                        background_image=_pil_disp_er,
-                        fill_color="rgba(0, 0, 0, 0.0)", stroke_width=2,
-                        update_streamlit=True, height=_display_h_er, width=_crop_w_er,
-                        drawing_mode=_draw_mode_er,
-                        key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
-                    )
-                except Exception as _ce_er:
-                    st.warning(f"Canvas error: {_ce_er}")
-                    _canvas_er = st_canvas(
-                        background_color="rgba(255,255,255,0.0)",
-                        fill_color="rgba(0,0,0,0.0)", stroke_width=2,
-                        update_streamlit=True, height=_display_h_er, width=_crop_w_er,
-                        drawing_mode=_draw_mode_er,
-                        key=f"er_canvas_fb_{_safe_doi_er}_{_fig_id_er}",
-                    )
+                st.image(str(_source_img_er), width=_crop_w_er)
+                st.write("**Draw crop regions on the canvas below** — coordinates match the image above.")
+                _canvas_er = st_canvas(
+                    background_color="#f0f2f6",
+                    fill_color="rgba(255, 165, 0, 0.3)", stroke_color="#e63946", stroke_width=2,
+                    update_streamlit=True, height=_display_h_er, width=_crop_w_er,
+                    drawing_mode=_draw_mode_er,
+                    key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
+                )
 
                 _scale_x_er = _orig_w_er / _crop_w_er
                 _scale_y_er = _orig_h_er / _display_h_er
