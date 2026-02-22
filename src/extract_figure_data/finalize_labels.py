@@ -270,7 +270,24 @@ def export_labeled_dataset_and_plot(run_id: str, img: str):
 
     # --- Axis titles & units (optional but recommended)
     x_name, x_unit_raw, y_name, y_unit_raw = None, None, None, None
-    if axis_titles_json.exists():
+    axis_title_override_json = img_dir / "chartdete" / "axis_title_override.json"
+    if axis_title_override_json.exists():
+        # User-supplied axis title overrides take priority over OCR results
+        with open(axis_title_override_json, "r") as f:
+            _ov_titles = json.load(f)
+        x_text_ov = _ov_titles.get("x_title", "").strip()
+        y_text_ov = _ov_titles.get("y_title", "").strip()
+        if x_text_ov:
+            xn, xu = _parse_label_and_unit(x_text_ov)
+            x_name = _clean_label(xn)
+            x_unit_raw = xu
+            x_unit_norm, x_dim = _validate_or_flag_unit(x_unit_raw, x_name, "x", unknown_units)
+        if y_text_ov:
+            yn, yu = _parse_label_and_unit(y_text_ov)
+            y_name = _clean_label(yn)
+            y_unit_raw = yu
+            y_unit_norm, y_dim = _validate_or_flag_unit(y_unit_raw, y_name, "y", unknown_units)
+    elif axis_titles_json.exists():
         with open(axis_titles_json, "r") as f:
             titles_dict = json.load(f)  # {path: text}
         x_text, y_text = _infer_axis_roles_from_titles_dict(titles_dict)

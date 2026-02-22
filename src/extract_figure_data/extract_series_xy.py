@@ -140,7 +140,9 @@ def extract_for_image(base_out_dir: Path, img_name: str) -> Optional[Path]:
     # required inputs
     bb_json  = chartdete / "bounding_boxes.json"
     map_json = chartdete / "legend_series_mapping.json"
-    pix2val  = chartdete / "pix2val.json"
+    # Prefer user-supplied pix2val override over the OCR-derived calibration
+    pix2val_override = chartdete / "pix2val_override.json"
+    pix2val = pix2val_override if pix2val_override.exists() else chartdete / "pix2val.json"
 
     if not bb_json.exists() or not map_json.exists() or not pix2val.exists():
         print(f"[extract] Missing inputs for {img_name} (need bounding_boxes.json, legend_series_mapping.json, pix2val.json)")
