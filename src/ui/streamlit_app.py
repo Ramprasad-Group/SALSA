@@ -1328,20 +1328,42 @@ with tab_figs:
                 with st.expander("LLM-Generated Dataset Rows", expanded=False):
                     st.info(f"No row_cache data found for {f.id}. Cache may not have been generated yet.")
 
-        # --- Display cropped subfigures from plextract and interventions_plextract ---
-        # Collect subfigure dirs from both workdirs, deduplicating by name.
-        # Intervention results take priority over original plextract results.
+        # --- Display cropped subfigures from plextract and interventions ---
+        # Collect subfigure dirs from all relevant workdirs, deduplicating by name.
+        # Per-figure plextract_interventions takes highest priority (most up-to-date),
+        # then the legacy shared interventions_plextract, then original plextract.
         safe_doi = selected_doi.replace("/", "@").strip()
         fig_stem = Path(f.id).stem
-        _subfig_map: dict[str, Path] = {}  # name -> dir (intervention wins)
+        _subfig_map: dict[str, Path] = {}  # name -> dir (first match wins)
 
-        for _wd in [
-            rr.run_dir / "interventions" / "interventions_plextract",
-            rr.run_dir / "plextract",
-        ]:
+        from intervention import latest_plextract_run_dir
+
+        # Build priority-ordered list of workdirs to search for subfigures.
+        _workdirs_priority: list[Path] = []
+
+        # 1. Per-figure plextract_interventions: each figure dir under
+        #    interventions/<safe_doi>/ may have its own plextract_interventions/
+        #    subdir when the user ran "Re-run extraction" for that specific figure.
+        _int_doi_dir = rr.run_dir / "interventions" / safe_doi
+        _per_fig_plextract: Path | None = None
+        if _int_doi_dir.exists():
+            for _int_fig_d in _int_doi_dir.iterdir():
+                if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
+                    _candidate = _int_fig_d / "plextract_interventions"
+                    if _candidate.exists():
+                        _per_fig_plextract = _candidate
+                        _workdirs_priority.append(_candidate)
+                    break
+
+        # 2. Legacy shared interventions_plextract (backward compatibility).
+        _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
+
+        # 3. Original plextract output.
+        _workdirs_priority.append(rr.run_dir / "plextract")
+
+        for _wd in _workdirs_priority:
             if not _wd.exists():
                 continue
-            from intervention import latest_plextract_run_dir
             _latest = latest_plextract_run_dir(_wd)
             if not _latest:
                 continue
@@ -1350,25 +1372,31 @@ with tab_figs:
                 continue
             for _d in _out_base.iterdir():
                 if _d.is_dir() and _d.name.startswith(fig_stem + "_subfig_"):
-                    # First match wins (interventions checked first)
+                    # First match wins (per-figure intervention has priority)
                     if _d.name not in _subfig_map:
                         _subfig_map[_d.name] = _d
 
         subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
-        # Also set out_base / latest_manual for later use by the data completion button
-        _int_wd = rr.run_dir / "interventions" / "interventions_plextract"
-        _main_wd = rr.run_dir / "plextract"
+
+        # Set latest_manual / out_base for use by the data completion button and
+        # the original-image lookup below.  Prefer the per-figure workdir, then
+        # fall back to the shared interventions_plextract, then plain plextract.
         latest_manual = None
         out_base = None
-        for _wd in [_int_wd, _main_wd]:
-            if _wd.exists():
-                _lat = latest_plextract_run_dir(_wd)
-                if _lat:
-                    _ob = _lat / "output" / safe_doi
-                    if _ob.exists():
-                        latest_manual = _lat
-                        out_base = _ob
-                        break
+        for _wd in [
+            _per_fig_plextract,
+            rr.run_dir / "interventions" / "interventions_plextract",
+            rr.run_dir / "plextract",
+        ]:
+            if _wd is None or not _wd.exists():
+                continue
+            _lat = latest_plextract_run_dir(_wd)
+            if _lat:
+                _ob = _lat / "output" / safe_doi
+                if _ob.exists():
+                    latest_manual = _lat
+                    out_base = _ob
+                    break
 
         if subfig_dirs:
                 # Header for subfigures section
@@ -2181,7 +2209,14 @@ with tab_intervene:
         # --- Show intervention extraction outputs ---
         st.divider()
         st.subheader("Data extracted from crop(s):")
-        _int_plextract_workdir = rr.run_dir / "interventions" / "interventions_plextract"
+        # Prefer the per-figure plextract_interventions dir; fall back to the
+        # legacy shared interventions_plextract for older runs.
+        _per_fig_int_workdir = rr.run_dir / "interventions" / item.safe_doi / item.figure_id / "plextract_interventions"
+        _int_plextract_workdir = (
+            _per_fig_int_workdir
+            if _per_fig_int_workdir.exists()
+            else rr.run_dir / "interventions" / "interventions_plextract"
+        )
         if _int_plextract_workdir.exists():
             latest_int_run = latest_plextract_run_dir(_int_plextract_workdir)
             if latest_int_run:
@@ -2224,8 +2259,14 @@ with tab_intervene:
       with st.expander("Series Management", expanded=False):
         st.subheader("Series management")
 
-        # Check if there are cropped subfigures in interventions_plextract
-        _int_plextract_workdir_sm = rr.run_dir / "interventions" / "interventions_plextract"
+        # Check if there are cropped subfigures in the per-figure
+        # plextract_interventions dir (preferred) or the legacy shared one.
+        _per_fig_int_workdir_sm = rr.run_dir / "interventions" / item.safe_doi / item.figure_id / "plextract_interventions"
+        _int_plextract_workdir_sm = (
+            _per_fig_int_workdir_sm
+            if _per_fig_int_workdir_sm.exists()
+            else rr.run_dir / "interventions" / "interventions_plextract"
+        )
         selected_figure_dir = item.figure_dir
         selected_figure_id = item.figure_id
         selected_source_image = item.source_image
@@ -2738,6 +2779,7 @@ with tab_intervene:
                             safe_doi=item.safe_doi,
                             image_paths=_rerun_images,
                             override_lineformer_dirs=_rerun_lf_overrides if _rerun_lf_overrides else None,
+                            figure_id=item.figure_id,
                         )
                     st.success("Data extraction complete! Results saved to interventions directory.")
                     st.rerun()

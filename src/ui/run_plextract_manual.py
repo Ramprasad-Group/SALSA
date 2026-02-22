@@ -18,11 +18,15 @@ def run_plextract_on_crops(
     safe_doi: str,
     image_paths: list[Path],
     override_lineformer_dirs: Optional[Dict[str, Path]] = None,
+    figure_id: Optional[str] = None,
 ) -> None:
     """
     Run plextract on a list of image files (crops or full figures).
 
-    Output goes to:
+    When *figure_id* is provided output goes to a per-figure directory:
+      <run_dir>/interventions/<safe_doi>/<figure_id>/plextract_interventions/results/<n>/output/<safe_doi>/...
+
+    When *figure_id* is ``None`` the legacy shared directory is used instead:
       <run_dir>/interventions/interventions_plextract/results/<n>/output/<safe_doi>/...
 
     This function stages the images into a temporary input directory with the
@@ -39,6 +43,11 @@ def run_plextract_on_crops(
             to a Path containing lineformer masks to pre-populate.  When provided,
             ``--skip-lineformer`` is passed so the pipeline reuses these masks
             instead of regenerating them.
+        figure_id:
+            When set, results are written to a per-figure subdirectory
+            (``<run_dir>/interventions/<safe_doi>/<figure_id>/plextract_interventions/``)
+            so that multiple figures can each track their own intervention
+            extraction history without interfering with one another.
     """
     if not image_paths:
         raise FileNotFoundError("No image files provided for extraction")
@@ -47,7 +56,10 @@ def run_plextract_on_crops(
 
     plextract_py = scripts_root / "extract_figure_data" / "plextract.py"
 
-    workdir = run_dir / "interventions" / "interventions_plextract"
+    if figure_id:
+        workdir = run_dir / "interventions" / safe_doi / figure_id / "plextract_interventions"
+    else:
+        workdir = run_dir / "interventions" / "interventions_plextract"
     logs_dir = workdir / "logs"
     workdir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -156,4 +168,4 @@ def run_plextract_on_manual_crops(
             + f": searched {interventions_dir}"
         )
 
-    run_plextract_on_crops(scripts_root, run_dir, safe_doi, crop_files)
+    run_plextract_on_crops(scripts_root, run_dir, safe_doi, crop_files, figure_id=figure_id)
