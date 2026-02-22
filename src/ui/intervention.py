@@ -298,8 +298,7 @@ def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi:
     honour deleted-series decisions.
     """
     lf_dir = get_lineformer_dir(item_figure_dir)
-    if not lf_dir.exists():
-        raise FileNotFoundError(f"Missing lineformer dir: {lf_dir}")
+    lf_dir.mkdir(parents=True, exist_ok=True)
 
     # load original catalog (for centroids etc.)
     series_items = load_series_catalog(lf_dir)

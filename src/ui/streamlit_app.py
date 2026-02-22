@@ -1281,12 +1281,383 @@ with tab_figs:
 
         # Figure header and basic info (not in expander)
         st.markdown(f"### {f.id}")
+
+        # ---- Per-figure variable setup ----
+        _safe_doi_er = doi_to_safe(selected_doi)
+        _fig_id_er = f.id
+        _fig_stem_er = Path(f.id).stem
+        _img_name_er = Path(f.id).name
+
+        # Find source image
+        _source_img_er = f.figure_path
+        if _source_img_er is None or not _source_img_er.exists():
+            _filtered_fig_root_er = rr.run_dir / "figures_tables" / "figures"
+            from intervention import _try_find_source_image as _tfs_er
+            _source_img_er = _tfs_er(_filtered_fig_root_er, _safe_doi_er, _fig_id_er)
+
+        # Find plextract figure_dir
+        _plextract_fig_dir_er = None
+        _latest_plextract_er = latest_plextract_run_dir(rr.run_dir / "plextract")
+        if _latest_plextract_er:
+            _cand_er = _latest_plextract_er / "output" / _safe_doi_er / _fig_id_er
+            if _cand_er.exists():
+                _plextract_fig_dir_er = _cand_er
+
+        # Per-figure intervention plextract workdir
+        _per_fig_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
+        _int_fig_dir_er = None
+        if _per_fig_int_wd_er.exists():
+            _lat_int_er = latest_plextract_run_dir(_per_fig_int_wd_er)
+            if _lat_int_er:
+                _cand2_er = _lat_int_er / "output" / _safe_doi_er / _fig_id_er
+                if _cand2_er.exists():
+                    _int_fig_dir_er = _cand2_er
+
+        # crops output directory
+        _crops_out_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
+
+        # ---- Collect axis config subfig dirs for use in first expander ----
+        _ax_subfig_options_er: list = []
+        _ax_subfig_dirs_er: list = []
+        for _ax_wd_er in [
+            rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
+            rr.run_dir / "interventions" / "interventions_plextract",
+            rr.run_dir / "plextract",
+        ]:
+            if not _ax_wd_er.exists():
+                continue
+            _ax_lat_er = latest_plextract_run_dir(_ax_wd_er)
+            if not _ax_lat_er:
+                continue
+            _ax_out_base_er = _ax_lat_er / "output" / _safe_doi_er
+            if not _ax_out_base_er.exists():
+                continue
+            for _ax_d_er in sorted(_ax_out_base_er.iterdir()):
+                if _ax_d_er.is_dir() and (
+                    _ax_d_er.name == _fig_id_er or
+                    _ax_d_er.name.startswith(_fig_stem_er + "_subfig_")
+                ):
+                    if _ax_d_er.name not in _ax_subfig_options_er:
+                        _ax_subfig_options_er.append(_ax_d_er.name)
+                        _ax_subfig_dirs_er.append(_ax_d_er)
+
         with st.expander(f"### {f.id}"):
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
-            if f.figure_path and f.figure_path.exists():
-                st.image(str(f.figure_path), width=fig_img_width)
-                st.caption(str(f.figure_path))
+
+            _fig_tabs_er = st.tabs(["Crop Figure", "Axis Configuration"])
+
+            with _fig_tabs_er[0]:
+                # ---- Crop Figure tab ----
+                if _source_img_er and _source_img_er.exists():
+                    _pil_img_er = Image.open(_source_img_er).convert("RGB")
+                    _orig_w_er, _orig_h_er = _pil_img_er.size
+
+                    _default_crop_w_er = min(_orig_w_er, 600)
+                    _crop_w_er = st.slider(
+                        "Display width (px)", 200, min(_orig_w_er, 1500), _default_crop_w_er, 50,
+                        key=f"er_crop_w_{_safe_doi_er}_{_fig_id_er}"
+                    )
+                    _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
+                    _pil_disp_er = _pil_img_er.resize((_crop_w_er, _display_h_er))
+
+                    _draw_mode_er = st.radio(
+                        "Canvas mode", ["rect", "transform"],
+                        format_func=lambda x: "Draw new rectangles" if x == "rect" else "Edit/reshape rectangles",
+                        key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
+                    )
+
+                    st.write("**Draw crop regions** on the figure below.")
+                    try:
+                        _canvas_er = st_canvas(
+                            background_image=_pil_disp_er,
+                            fill_color="rgba(0, 0, 0, 0.0)", stroke_width=2,
+                            update_streamlit=True, height=_display_h_er, width=_crop_w_er,
+                            drawing_mode=_draw_mode_er,
+                            key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
+                        )
+                    except Exception as _ce_er:
+                        st.warning(f"Canvas error: {_ce_er}")
+                        _canvas_er = st_canvas(
+                            background_color="rgba(255,255,255,0.0)",
+                            fill_color="rgba(0,0,0,0.0)", stroke_width=2,
+                            update_streamlit=True, height=_display_h_er, width=_crop_w_er,
+                            drawing_mode=_draw_mode_er,
+                            key=f"er_canvas_fb_{_safe_doi_er}_{_fig_id_er}",
+                        )
+
+                    _scale_x_er = _orig_w_er / _crop_w_er
+                    _scale_y_er = _orig_h_er / _display_h_er
+                    _rects_er = []
+                    if _canvas_er.json_data and "objects" in _canvas_er.json_data:
+                        for _obj_er in _canvas_er.json_data["objects"]:
+                            if _obj_er.get("type") != "rect":
+                                continue
+                            _l_er = float(_obj_er.get("left", 0))
+                            _t_er = float(_obj_er.get("top", 0))
+                            _w_obj_er = float(_obj_er.get("width", 0)) * float(_obj_er.get("scaleX", 1))
+                            _h_obj_er = float(_obj_er.get("height", 0)) * float(_obj_er.get("scaleY", 1))
+                            _rects_er.append((
+                                int(_l_er * _scale_x_er), int(_t_er * _scale_y_er),
+                                int((_l_er + _w_obj_er) * _scale_x_er), int((_t_er + _h_obj_er) * _scale_y_er)
+                            ))
+
+                    st.write(f"Rectangles drawn: **{len(_rects_er)}**")
+
+                    _cc1_er, _cc2_er = st.columns(2)
+                    with _cc1_er:
+                        if st.button("Save crops", disabled=len(_rects_er) == 0, key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}"):
+                            _saved_er = save_crops(_source_img_er, _rects_er, _crops_out_dir_er, prefix=_fig_stem_er)
+                            st.success(f"Saved {len(_saved_er)} crops to `{_crops_out_dir_er}`")
+                            _sc = st.columns(min(len(_saved_er), 4)) if _saved_er else []
+                            for _si, _p in enumerate(_saved_er):
+                                with _sc[_si % len(_sc)]:
+                                    st.image(str(_p), width=200)
+                                    st.caption(_p.name)
+
+                    _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+                    if _existing_crops_er:
+                        st.write(f"**Existing crops:** {len(_existing_crops_er)}")
+                        _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
+                        for _ci, _cp in enumerate(_existing_crops_er):
+                            with _crop_cols_er[_ci % len(_crop_cols_er)]:
+                                st.image(str(_cp), width=150)
+                                st.caption(_cp.name)
+
+                        _cl1_er, _cl2_er = st.columns(2)
+                        with _cl1_er:
+                            if st.button("Clear all crops", key=f"er_clear_crops_{_safe_doi_er}_{_fig_id_er}"):
+                                import shutil as _shutil_er
+                                for _cp in _existing_crops_er:
+                                    _cp.unlink(missing_ok=True)
+                                st.success("Cleared existing crops.")
+                                st.rerun()
+                        with _cl2_er:
+                            if st.button("Re-run extraction on existing crops", type="primary", key=f"er_rerun_crops_{_safe_doi_er}_{_fig_id_er}"):
+                                try:
+                                    with st.spinner("Running plextract on crops..."):
+                                        run_plextract_on_manual_crops(
+                                            scripts_root=scripts_root,
+                                            run_dir=rr.run_dir,
+                                            safe_doi=_safe_doi_er,
+                                            figure_id=_img_name_er,
+                                        )
+                                    st.success("Done. Subfigures updated.")
+                                    st.rerun()
+                                except Exception as _e_er:
+                                    st.error(f"Extraction failed: {_e_er}")
+                    else:
+                        st.info("No crops saved yet. Draw rectangles above to create crops.")
+                else:
+                    if f.figure_path and f.figure_path.exists():
+                        st.image(str(f.figure_path), width=fig_img_width)
+                        st.caption(str(f.figure_path))
+                    else:
+                        st.warning("No source image found for this figure.")
+
+            with _fig_tabs_er[1]:
+                # ---- Axis Configuration tab ----
+                if not _ax_subfig_dirs_er:
+                    st.info("No plextract output found for this figure. Run plextract extraction first.")
+                else:
+                    if len(_ax_subfig_dirs_er) > 1:
+                        _ax_sel_name_er = st.selectbox(
+                            "Select figure/subfigure to configure",
+                            _ax_subfig_options_er,
+                            key=f"er_ax_sel_{_safe_doi_er}_{_fig_id_er}"
+                        )
+                        _ax_sel_dir_er = _ax_subfig_dirs_er[_ax_subfig_options_er.index(_ax_sel_name_er)]
+                    else:
+                        _ax_sel_dir_er = _ax_subfig_dirs_er[0]
+                        _ax_sel_name_er = _ax_subfig_options_er[0]
+
+                    _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
+
+                    # --- Axis Titles ---
+                    st.markdown("**Axis Titles**")
+                    _ax_title_override_er = _ax_chartdete_er / "axis_title_override.json"
+                    _ax_title_ocr_er = _ax_chartdete_er / "axis_title_texts.json"
+                    _ax_x_title_er = ""
+                    _ax_y_title_er = ""
+                    if _ax_title_override_er.exists():
+                        try:
+                            _ax_ov_er = json.loads(_ax_title_override_er.read_text())
+                            _ax_x_title_er = _ax_ov_er.get("x_title", "")
+                            _ax_y_title_er = _ax_ov_er.get("y_title", "")
+                        except Exception:
+                            pass
+                    elif _ax_title_ocr_er.exists():
+                        try:
+                            _ax_titles_dict_er = json.loads(_ax_title_ocr_er.read_text())
+                            for _ap_er, _at_er in _ax_titles_dict_er.items():
+                                _ab_er = Path(_ap_er).name.lower()
+                                if any(x in _ab_er for x in ("x_", "x-", "_x.", "xtitle", "xlabel")):
+                                    _ax_x_title_er = _at_er
+                                elif any(x in _ab_er for x in ("y_", "y-", "_y.", "ytitle", "ylabel")):
+                                    _ax_y_title_er = _at_er
+                            if not _ax_x_title_er and not _ax_y_title_er and len(_ax_titles_dict_er) == 2:
+                                _ax_vals_er = list(_ax_titles_dict_er.values())
+                                _ax_x_title_er = _ax_vals_er[0]
+                                _ax_y_title_er = _ax_vals_er[1]
+                        except Exception:
+                            pass
+
+                    _col_xt_er, _col_yt_er = st.columns(2)
+                    with _col_xt_er:
+                        _new_x_title_er = st.text_input("X axis title", value=_ax_x_title_er, key=f"er_x_title_{_safe_doi_er}_{_ax_sel_name_er}")
+                    with _col_yt_er:
+                        _new_y_title_er = st.text_input("Y axis title", value=_ax_y_title_er, key=f"er_y_title_{_safe_doi_er}_{_ax_sel_name_er}")
+
+                    if st.button("Save axis titles", key=f"er_save_titles_{_safe_doi_er}_{_ax_sel_name_er}"):
+                        _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
+                        _ax_title_override_er.write_text(json.dumps({"x_title": _new_x_title_er, "y_title": _new_y_title_er}, indent=2))
+                        st.success("Axis title overrides saved. These will be used by finalize_labels when you rerun dataset generation.")
+
+                    # --- Axis Calibration ---
+                    st.markdown("**Axis Calibration**")
+                    st.caption("Set the min/max values for each axis. Changes are preserved as overrides and survive plextract reruns.")
+                    _pix2val_override_er = _ax_chartdete_er / "pix2val_override.json"
+                    _pix2val_orig_er = _ax_chartdete_er / "pix2val.json"
+                    _bb_json_er = _ax_chartdete_er / "bounding_boxes.json"
+
+                    _pix2val_data_er = None
+                    _pix2val_source_er = ""
+                    if _pix2val_override_er.exists():
+                        try:
+                            _pix2val_data_er = json.loads(_pix2val_override_er.read_text())
+                            _pix2val_source_er = "(using override)"
+                        except Exception:
+                            pass
+                    if _pix2val_data_er is None and _pix2val_orig_er.exists():
+                        try:
+                            _pix2val_data_er = json.loads(_pix2val_orig_er.read_text())
+                            _pix2val_source_er = "(from OCR)"
+                        except Exception:
+                            pass
+
+                    if _pix2val_data_er:
+                        st.caption(f"Calibration data {_pix2val_source_er}")
+
+                        # Try to derive human-readable min/max from pix2val + bounding box
+                        _plot_area_er = None
+                        if _bb_json_er.exists():
+                            try:
+                                _bbs_er = json.loads(_bb_json_er.read_text())
+                                _areas_er = sorted(_bbs_er.get("plot_area", []), key=lambda el: el[4] if len(el) > 4 else -1, reverse=True)
+                                if _areas_er:
+                                    _plot_area_er = _areas_er[0]
+                            except Exception:
+                                pass
+
+                        _xmap_er = _pix2val_data_er.get("x", {})
+                        _ymap_er = _pix2val_data_er.get("y", {})
+                        _xtype_er = _xmap_er.get("type", "linear")
+                        _ytype_er = _ymap_er.get("type", "linear")
+                        _xa_er = float(_xmap_er.get("a", 1.0))
+                        _xb_er = float(_xmap_er.get("b", 0.0))
+                        _ya_er = float(_ymap_er.get("a", 1.0))
+                        _yb_er = float(_ymap_er.get("b", 0.0))
+                        _domain_er = _pix2val_data_er.get("domain", {})
+
+                        # Compute current min/max from plot area + coefficients
+                        _x_val_min_er = _x_val_max_er = _y_val_min_er = _y_val_max_er = None
+                        if _plot_area_er and len(_plot_area_er) >= 4:
+                            _px1_er = float(_plot_area_er[0])
+                            _py1_er = float(_plot_area_er[1])
+                            _px2_er = float(_plot_area_er[2])
+                            _py2_er = float(_plot_area_er[3])
+                            if _xtype_er == "linear":
+                                _x_val_min_er = _xa_er * _px1_er + _xb_er
+                                _x_val_max_er = _xa_er * _px2_er + _xb_er
+                            elif _xtype_er == "log10":
+                                _x_val_min_er = 10 ** (_xa_er * _px1_er + _xb_er)
+                                _x_val_max_er = 10 ** (_xa_er * _px2_er + _xb_er)
+                            if _ytype_er == "linear":
+                                _y_val_min_er = _ya_er * _py2_er + _yb_er
+                                _y_val_max_er = _ya_er * _py1_er + _yb_er
+                            elif _ytype_er == "log10":
+                                _y_val_min_er = 10 ** (_ya_er * _py2_er + _yb_er)
+                                _y_val_max_er = 10 ** (_ya_er * _py1_er + _yb_er)
+
+                        # Fall back to domain field if no plot area
+                        if _x_val_min_er is None and "x" in _domain_er and len(_domain_er["x"]) >= 2:
+                            _x_val_min_er, _x_val_max_er = _domain_er["x"][0], _domain_er["x"][1]
+                        if _y_val_min_er is None and "y" in _domain_er and len(_domain_er["y"]) >= 2:
+                            _y_val_min_er, _y_val_max_er = _domain_er["y"][0], _domain_er["y"][1]
+
+                        _col_ax_type_er, _col_ay_type_er = st.columns(2)
+                        with _col_ax_type_er:
+                            _new_xtype_er = st.selectbox("X axis type", ["linear", "log10"], index=0 if _xtype_er == "linear" else 1, key=f"er_xtype_{_safe_doi_er}_{_ax_sel_name_er}")
+                        with _col_ay_type_er:
+                            _new_ytype_er = st.selectbox("Y axis type", ["linear", "log10"], index=0 if _ytype_er == "linear" else 1, key=f"er_ytype_{_safe_doi_er}_{_ax_sel_name_er}")
+
+                        _col_xmin_er, _col_xmax_er, _col_ymin_er, _col_ymax_er = st.columns(4)
+                        with _col_xmin_er:
+                            _new_x_min_er = st.text_input("X min", value=f"{_x_val_min_er:.6g}" if _x_val_min_er is not None else "", key=f"er_x_min_{_safe_doi_er}_{_ax_sel_name_er}")
+                        with _col_xmax_er:
+                            _new_x_max_er = st.text_input("X max", value=f"{_x_val_max_er:.6g}" if _x_val_max_er is not None else "", key=f"er_x_max_{_safe_doi_er}_{_ax_sel_name_er}")
+                        with _col_ymin_er:
+                            _new_y_min_er = st.text_input("Y min", value=f"{_y_val_min_er:.6g}" if _y_val_min_er is not None else "", key=f"er_y_min_{_safe_doi_er}_{_ax_sel_name_er}")
+                        with _col_ymax_er:
+                            _new_y_max_er = st.text_input("Y max", value=f"{_y_val_max_er:.6g}" if _y_val_max_er is not None else "", key=f"er_y_max_{_safe_doi_er}_{_ax_sel_name_er}")
+
+                        if st.button("Save calibration overrides", key=f"er_save_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
+                            try:
+                                _nxmin_er = float(_new_x_min_er) if _new_x_min_er.strip() else None
+                                _nxmax_er = float(_new_x_max_er) if _new_x_max_er.strip() else None
+                                _nymin_er = float(_new_y_min_er) if _new_y_min_er.strip() else None
+                                _nymax_er = float(_new_y_max_er) if _new_y_max_er.strip() else None
+
+                                _new_pix2val_er = dict(_pix2val_data_er)
+                                _new_pix2val_er["x"] = dict(_xmap_er)
+                                _new_pix2val_er["y"] = dict(_ymap_er)
+                                _new_pix2val_er["x"]["type"] = _new_xtype_er
+                                _new_pix2val_er["y"]["type"] = _new_ytype_er
+
+                                # Recompute a, b from new min/max if plot area is available
+                                if _plot_area_er and len(_plot_area_er) >= 4 and None not in (_nxmin_er, _nxmax_er, _nymin_er, _nymax_er):
+                                    _px1n_er = float(_plot_area_er[0])
+                                    _py1n_er = float(_plot_area_er[1])
+                                    _px2n_er = float(_plot_area_er[2])
+                                    _py2n_er = float(_plot_area_er[3])
+                                    if _new_xtype_er == "linear" and _px2n_er != _px1n_er:
+                                        _nxa_er = (_nxmax_er - _nxmin_er) / (_px2n_er - _px1n_er)
+                                        _nxb_er = _nxmin_er - _nxa_er * _px1n_er
+                                        _new_pix2val_er["x"]["a"] = _nxa_er
+                                        _new_pix2val_er["x"]["b"] = _nxb_er
+                                    elif _new_xtype_er == "log10" and _px2n_er != _px1n_er and _nxmin_er > 0 and _nxmax_er > 0:
+                                        _nxa_er = (math.log10(_nxmax_er) - math.log10(_nxmin_er)) / (_px2n_er - _px1n_er)
+                                        _nxb_er = math.log10(_nxmin_er) - _nxa_er * _px1n_er
+                                        _new_pix2val_er["x"]["a"] = _nxa_er
+                                        _new_pix2val_er["x"]["b"] = _nxb_er
+                                    if _new_ytype_er == "linear" and _py2n_er != _py1n_er:
+                                        _nya_er = (_nymax_er - _nymin_er) / (_py1n_er - _py2n_er)
+                                        _nyb_er = _nymin_er - _nya_er * _py2n_er
+                                        _new_pix2val_er["y"]["a"] = _nya_er
+                                        _new_pix2val_er["y"]["b"] = _nyb_er
+                                    elif _new_ytype_er == "log10" and _py2n_er != _py1n_er and _nymin_er > 0 and _nymax_er > 0:
+                                        _nya_er = (math.log10(_nymax_er) - math.log10(_nymin_er)) / (_py1n_er - _py2n_er)
+                                        _nyb_er = math.log10(_nymin_er) - _nya_er * _py2n_er
+                                        _new_pix2val_er["y"]["a"] = _nya_er
+                                        _new_pix2val_er["y"]["b"] = _nyb_er
+
+                                _new_pix2val_er["domain"] = {
+                                    "x": [_nxmin_er, _nxmax_er] if None not in (_nxmin_er, _nxmax_er) else _domain_er.get("x", [None, None]),
+                                    "y": [_nymin_er, _nymax_er] if None not in (_nymin_er, _nymax_er) else _domain_er.get("y", [None, None]),
+                                }
+                                _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
+                                _pix2val_override_er.write_text(json.dumps(_new_pix2val_er, indent=2))
+                                st.success("Calibration override saved.")
+                            except Exception as _e_ax_er:
+                                st.error(f"Failed to save calibration: {_e_ax_er}")
+
+                        if _pix2val_override_er.exists():
+                            if st.button("Clear calibration override (revert to OCR)", key=f"er_clear_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
+                                _pix2val_override_er.unlink()
+                                st.success("Cleared calibration override.")
+                                st.rerun()
+                    else:
+                        st.info("No pix2val calibration data found. Run plextract extraction first.")
 
         # --- Extracted dataset table (plextract final_dataset.csv) ---
         final_csv = None
@@ -1583,202 +1954,84 @@ with tab_figs:
                     if subfig_dir != subfig_dirs[-1]:
                         st.markdown("---")
 
-        # ---- Edit / Reprocess ----
-        with st.expander("Edit / Reprocess", expanded=False):
-            _safe_doi_er = doi_to_safe(selected_doi)
-            _fig_id_er = f.id
-            _fig_stem_er = Path(f.id).stem
-            _img_name_er = Path(f.id).name
-
-            # Find source image
-            _source_img_er = f.figure_path
-            if _source_img_er is None or not _source_img_er.exists():
-                _filtered_fig_root_er = rr.run_dir / "figures_tables" / "figures"
-                from intervention import _try_find_source_image as _tfs_er
-                _source_img_er = _tfs_er(_filtered_fig_root_er, _safe_doi_er, _fig_id_er)
-
-            # Find plextract figure_dir
-            _plextract_fig_dir_er = None
-            _latest_plextract_er = latest_plextract_run_dir(rr.run_dir / "plextract")
-            if _latest_plextract_er:
-                _cand_er = _latest_plextract_er / "output" / _safe_doi_er / _fig_id_er
-                if _cand_er.exists():
-                    _plextract_fig_dir_er = _cand_er
-
-            # Per-figure intervention plextract workdir
-            _per_fig_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
-            _int_fig_dir_er = None
-            if _per_fig_int_wd_er.exists():
-                _lat_int_er = latest_plextract_run_dir(_per_fig_int_wd_er)
-                if _lat_int_er:
-                    _cand2_er = _lat_int_er / "output" / _safe_doi_er / _fig_id_er
-                    if _cand2_er.exists():
-                        _int_fig_dir_er = _cand2_er
-
-            # crops output directory
-            _crops_out_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
-
-            # ========================
-            # SECTION: Cropping
-            # ========================
-        with st.expander("Crop Figure", expanded=False):
-            if _source_img_er and _source_img_er.exists():
-                _pil_img_er = Image.open(_source_img_er).convert("RGB")
-                _orig_w_er, _orig_h_er = _pil_img_er.size
-
-                _default_crop_w_er = min(_orig_w_er, 600)
-                _crop_w_er = st.slider(
-                    "Display width (px)", 200, min(_orig_w_er, 1500), _default_crop_w_er, 50,
-                    key=f"er_crop_w_{_safe_doi_er}_{_fig_id_er}"
-                )
-                _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
-                _pil_disp_er = _pil_img_er.resize((_crop_w_er, _display_h_er))
-
-                _draw_mode_er = st.radio(
-                    "Canvas mode", ["rect", "transform"],
-                    format_func=lambda x: "Draw new rectangles" if x == "rect" else "Edit/reshape rectangles",
-                    key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
-                )
-
-                st.write("**Draw crop regions** on the figure below.")
-                try:
-                    _canvas_er = st_canvas(
-                        background_image=_pil_disp_er,
-                        fill_color="rgba(0, 0, 0, 0.0)", stroke_width=2,
-                        update_streamlit=True, height=_display_h_er, width=_crop_w_er,
-                        drawing_mode=_draw_mode_er,
-                        key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
-                    )
-                except Exception as _ce_er:
-                    st.warning(f"Canvas error: {_ce_er}")
-                    _canvas_er = st_canvas(
-                        background_color="rgba(255,255,255,0.0)",
-                        fill_color="rgba(0,0,0,0.0)", stroke_width=2,
-                        update_streamlit=True, height=_display_h_er, width=_crop_w_er,
-                        drawing_mode=_draw_mode_er,
-                        key=f"er_canvas_fb_{_safe_doi_er}_{_fig_id_er}",
-                    )
-
-                _scale_x_er = _orig_w_er / _crop_w_er
-                _scale_y_er = _orig_h_er / _display_h_er
-                _rects_er = []
-                if _canvas_er.json_data and "objects" in _canvas_er.json_data:
-                    for _obj_er in _canvas_er.json_data["objects"]:
-                        if _obj_er.get("type") != "rect":
-                            continue
-                        _l_er = float(_obj_er.get("left", 0))
-                        _t_er = float(_obj_er.get("top", 0))
-                        _w_obj_er = float(_obj_er.get("width", 0)) * float(_obj_er.get("scaleX", 1))
-                        _h_obj_er = float(_obj_er.get("height", 0)) * float(_obj_er.get("scaleY", 1))
-                        _rects_er.append((
-                            int(_l_er * _scale_x_er), int(_t_er * _scale_y_er),
-                            int((_l_er + _w_obj_er) * _scale_x_er), int((_t_er + _h_obj_er) * _scale_y_er)
-                        ))
-
-                st.write(f"Rectangles drawn: **{len(_rects_er)}**")
-
-                _cc1_er, _cc2_er = st.columns(2)
-                with _cc1_er:
-                    if st.button("Save crops", disabled=len(_rects_er) == 0, key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}"):
-                        _saved_er = save_crops(_source_img_er, _rects_er, _crops_out_dir_er, prefix=_fig_stem_er)
-                        st.success(f"Saved {len(_saved_er)} crops to `{_crops_out_dir_er}`")
-                        _sc = st.columns(min(len(_saved_er), 4)) if _saved_er else []
-                        for _si, _p in enumerate(_saved_er):
-                            with _sc[_si % len(_sc)]:
-                                st.image(str(_p), width=200)
-                                st.caption(_p.name)
-
-                _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
-                if _existing_crops_er:
-                    st.write(f"**Existing crops:** {len(_existing_crops_er)}")
-                    _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
-                    for _ci, _cp in enumerate(_existing_crops_er):
-                        with _crop_cols_er[_ci % len(_crop_cols_er)]:
-                            st.image(str(_cp), width=150)
-                            st.caption(_cp.name)
-
-                    _cl1_er, _cl2_er = st.columns(2)
-                    with _cl1_er:
-                        if st.button("Clear all crops", key=f"er_clear_crops_{_safe_doi_er}_{_fig_id_er}"):
-                            import shutil as _shutil_er
-                            for _cp in _existing_crops_er:
-                                _cp.unlink(missing_ok=True)
-                            st.success("Cleared existing crops.")
-                            st.rerun()
-                    with _cl2_er:
-                        if st.button("Re-run extraction on existing crops", type="primary", key=f"er_rerun_crops_{_safe_doi_er}_{_fig_id_er}"):
-                            try:
-                                with st.spinner("Running plextract on crops..."):
-                                    run_plextract_on_manual_crops(
-                                        scripts_root=scripts_root,
-                                        run_dir=rr.run_dir,
-                                        safe_doi=_safe_doi_er,
-                                        figure_id=_img_name_er,
-                                    )
-                                st.success("Done. Subfigures updated.")
-                                st.rerun()
-                            except Exception as _e_er:
-                                st.error(f"Extraction failed: {_e_er}")
-                else:
-                    st.info("No crops saved yet. Draw rectangles above to create crops.")
-            else:
-                st.warning("No source image found for this figure.")
-
         # ========================
         # SECTION: Series Management
         # ========================
         with st.expander("Series Management", expanded=False):
-            # Determine which plextract workdir to use for series management
+            # Determine which plextract workdir to use for series management.
+            # Search across all relevant workdirs in priority order:
+            #   1. Per-figure interventions plextract
+            #   2. Shared interventions plextract
+            #   3. Main plextract output
             _sm_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
-            _sm_plextract_wd_er = (
-                _sm_int_wd_er
-                if _sm_int_wd_er.exists()
-                else rr.run_dir / "interventions" / "interventions_plextract"
-            )
 
             _sm_fig_dir_er = _plextract_fig_dir_er
             _sm_fig_id_er = _fig_id_er
             _sm_source_img_er = _source_img_er
 
-            if _sm_plextract_wd_er.exists():
-                _sm_latest_er = latest_plextract_run_dir(_sm_plextract_wd_er)
-                if _sm_latest_er:
-                    _sm_out_base_er = _sm_latest_er / "output" / _safe_doi_er
-                    if _sm_out_base_er.exists():
-                        _sm_subfig_dirs_er = sorted([
-                            d for d in _sm_out_base_er.iterdir()
-                            if d.is_dir() and d.name.startswith(_fig_stem_er + "_subfig_")
-                        ])
-                        if _sm_subfig_dirs_er:
-                            st.info(f"Found {len(_sm_subfig_dirs_er)} cropped subfigure(s). Select one to manage its series:")
-                            _sm_subfig_opts_er = [d.name for d in _sm_subfig_dirs_er]
-                            _sm_sel_subfig_er = st.selectbox(
-                                "Select subfigure for series management",
-                                _sm_subfig_opts_er,
-                                key=f"er_series_subfig_{_safe_doi_er}_{_fig_id_er}"
-                            )
-                            _sm_subfig_idx_er = _sm_subfig_opts_er.index(_sm_sel_subfig_er)
-                            _sm_fig_dir_er = _sm_subfig_dirs_er[_sm_subfig_idx_er]
-                            _sm_fig_id_er = _sm_subfig_dirs_er[_sm_subfig_idx_er].name
+            _sm_workdirs_to_search_er = [
+                _sm_int_wd_er,
+                rr.run_dir / "interventions" / "interventions_plextract",
+                rr.run_dir / "plextract",
+            ]
+            _sm_subfig_dirs_er = []
+            for _sm_wd_check_er in _sm_workdirs_to_search_er:
+                if not _sm_wd_check_er.exists():
+                    continue
+                _sm_lat_check_er = latest_plextract_run_dir(_sm_wd_check_er)
+                if not _sm_lat_check_er:
+                    continue
+                _sm_out_base_check_er = _sm_lat_check_er / "output" / _safe_doi_er
+                if not _sm_out_base_check_er.exists():
+                    continue
+                _found_er = sorted([
+                    d for d in _sm_out_base_check_er.iterdir()
+                    if d.is_dir() and d.name.startswith(_fig_stem_er + "_subfig_")
+                ])
+                if _found_er:
+                    _sm_subfig_dirs_er = _found_er
+                    break  # use the first workdir that has subfigures
 
-                            # Try to find source image for this subfigure
-                            _crops_dir_sm = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
-                            _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_sm_subfig_idx_er}.png"
-                            if _subfig_src_er.exists():
-                                _sm_source_img_er = _subfig_src_er
-                            else:
-                                _run_root_sm = _sm_fig_dir_er.parent.parent.parent
-                                _input_cand_sm = _run_root_sm / "input" / _safe_doi_er / _sm_fig_id_er
-                                if _input_cand_sm.exists():
-                                    _sm_source_img_er = _input_cand_sm
+            if _sm_subfig_dirs_er:
+                st.info(f"Found {len(_sm_subfig_dirs_er)} cropped subfigure(s). Select one to manage its series:")
+                _sm_subfig_opts_er = [d.name for d in _sm_subfig_dirs_er]
+                _sm_sel_subfig_er = st.selectbox(
+                    "Select subfigure for series management",
+                    _sm_subfig_opts_er,
+                    key=f"er_series_subfig_{_safe_doi_er}_{_fig_id_er}"
+                )
+                _sm_subfig_idx_er = _sm_subfig_opts_er.index(_sm_sel_subfig_er)
+                _sm_fig_dir_er = _sm_subfig_dirs_er[_sm_subfig_idx_er]
+                _sm_fig_id_er = _sm_subfig_dirs_er[_sm_subfig_idx_er].name
+
+                # Try to find source image for this subfigure
+                _crops_dir_sm = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
+                _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_sm_subfig_idx_er}.png"
+                if _subfig_src_er.exists():
+                    _sm_source_img_er = _subfig_src_er
+                else:
+                    _run_root_sm = _sm_fig_dir_er.parent.parent.parent
+                    _input_cand_sm = _run_root_sm / "input" / _safe_doi_er / _sm_fig_id_er
+                    if _input_cand_sm.exists():
+                        _sm_source_img_er = _input_cand_sm
 
             _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
+
+            # If the lineformer dir doesn't exist, create the override dir so that
+            # users can create new series from scratch without running extraction first.
+            _sm_lf_override_dir_er = override_lineformer_dir(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
             if _sm_lf_dir_er is None or not _sm_lf_dir_er.exists():
-                st.warning("No lineformer directory found. Run plextract extraction first.")
-            else:
+                _sm_lf_override_dir_er.mkdir(parents=True, exist_ok=True)
+                _sm_lf_cat_path_er = _sm_lf_override_dir_er / "series_catalog.json"
+                if not _sm_lf_cat_path_er.exists():
+                    _sm_lf_cat_path_er.write_text("[]")
+                _sm_lf_dir_er = _sm_lf_override_dir_er
+                st.info("No plextract lineformer output found for this figure. You can still create new series below.")
+
+            if True:
                 _sm_series_items_er = load_series_catalog(_sm_lf_dir_er)
                 if not _sm_series_items_er:
-                    st.info("No line series masks found. LineFormer may not have detected any series.")
+                    st.info("No line series masks found. LineFormer may not have detected any series yet — use 'Create new series' below.")
 
                 _sm_mapping_er = load_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
                 _sm_names_er = _sm_mapping_er.get("series_names", {})
@@ -2111,32 +2364,42 @@ with tab_figs:
 
                 if st.button("Rerun data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
                     try:
-                        with st.spinner("Applying mask overrides..."):
-                            apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                        _lf_dir_rerun_er = get_lineformer_dir(_sm_fig_dir_er)
                         _rerun_images_er: list = []
                         _rerun_lf_er: dict = {}
+
+                        if _sm_fig_dir_er is not None:
+                            with st.spinner("Applying mask overrides..."):
+                                apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
+                            _lf_dir_rerun_er = get_lineformer_dir(_sm_fig_dir_er)
+                        else:
+                            # No plextract output exists yet — use the override lineformer dir directly
+                            _lf_dir_rerun_er = _sm_lf_override_dir_er
+
                         if _is_subfig_sel_er:
                             _rerun_images_er = [_sm_source_img_er]
-                            if _lf_dir_rerun_er.exists():
+                            if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
                                 _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
                         elif _int_crops_er:
                             _rerun_images_er = list(_int_crops_er)
                             for _crop_er in _int_crops_er:
                                 _crop_lf_er = None
-                                if _sm_plextract_wd_er.exists():
-                                    _lat2_er = latest_plextract_run_dir(_sm_plextract_wd_er)
+                                # Search all workdirs for this crop's lineformer dir
+                                for _sm_wd_r_er in _sm_workdirs_to_search_er:
+                                    if not _sm_wd_r_er.exists():
+                                        continue
+                                    _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
                                     if _lat2_er:
                                         _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
                                         if _cand_lf_er.exists():
                                             _crop_lf_er = _cand_lf_er
-                                _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er.exists() else None)
+                                            break
+                                _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er and _lf_dir_rerun_er.exists() else None)
                                 if _lf_to_use_er:
                                     _rerun_lf_er[_crop_er.name] = _lf_to_use_er
                         else:
                             if _source_img_er and _source_img_er.exists():
                                 _rerun_images_er = [_source_img_er]
-                                if _lf_dir_rerun_er.exists():
+                                if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
                                     _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
                         with st.spinner("Re-running data extraction..."):
                             run_plextract_on_crops(
@@ -2149,238 +2412,6 @@ with tab_figs:
                         st.rerun()
                     except Exception as _e2_er:
                         st.error(f"Failed: {_e2_er}")
-
-        # ========================
-        # SECTION: Axes Configuration
-        # ========================
-        with st.expander("Axes Configuration", expanded=False):
-            # Collect available figure/subfigure dirs with plextract output
-            _ax_subfig_options_er: list = []
-            _ax_subfig_dirs_er: list = []
-            for _ax_wd_er in [
-                rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
-                rr.run_dir / "interventions" / "interventions_plextract",
-                rr.run_dir / "plextract",
-            ]:
-                if not _ax_wd_er.exists():
-                    continue
-                _ax_lat_er = latest_plextract_run_dir(_ax_wd_er)
-                if not _ax_lat_er:
-                    continue
-                _ax_out_base_er = _ax_lat_er / "output" / _safe_doi_er
-                if not _ax_out_base_er.exists():
-                    continue
-                for _ax_d_er in sorted(_ax_out_base_er.iterdir()):
-                    if _ax_d_er.is_dir() and (
-                        _ax_d_er.name == _fig_id_er or
-                        _ax_d_er.name.startswith(_fig_stem_er + "_subfig_")
-                    ):
-                        if _ax_d_er.name not in _ax_subfig_options_er:
-                            _ax_subfig_options_er.append(_ax_d_er.name)
-                            _ax_subfig_dirs_er.append(_ax_d_er)
-
-            if not _ax_subfig_dirs_er:
-                st.info("No plextract output found for this figure. Run plextract extraction first.")
-            else:
-                if len(_ax_subfig_dirs_er) > 1:
-                    _ax_sel_name_er = st.selectbox(
-                        "Select figure/subfigure to configure",
-                        _ax_subfig_options_er,
-                        key=f"er_ax_sel_{_safe_doi_er}_{_fig_id_er}"
-                    )
-                    _ax_sel_dir_er = _ax_subfig_dirs_er[_ax_subfig_options_er.index(_ax_sel_name_er)]
-                else:
-                    _ax_sel_dir_er = _ax_subfig_dirs_er[0]
-                    _ax_sel_name_er = _ax_subfig_options_er[0]
-
-                _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
-
-                # --- Axis Titles ---
-                st.markdown("**Axis Titles**")
-                _ax_title_override_er = _ax_chartdete_er / "axis_title_override.json"
-                _ax_title_ocr_er = _ax_chartdete_er / "axis_title_texts.json"
-                _ax_x_title_er = ""
-                _ax_y_title_er = ""
-                if _ax_title_override_er.exists():
-                    try:
-                        _ax_ov_er = json.loads(_ax_title_override_er.read_text())
-                        _ax_x_title_er = _ax_ov_er.get("x_title", "")
-                        _ax_y_title_er = _ax_ov_er.get("y_title", "")
-                    except Exception:
-                        pass
-                elif _ax_title_ocr_er.exists():
-                    try:
-                        _ax_titles_dict_er = json.loads(_ax_title_ocr_er.read_text())
-                        for _ap_er, _at_er in _ax_titles_dict_er.items():
-                            _ab_er = Path(_ap_er).name.lower()
-                            if any(x in _ab_er for x in ("x_", "x-", "_x.", "xtitle", "xlabel")):
-                                _ax_x_title_er = _at_er
-                            elif any(x in _ab_er for x in ("y_", "y-", "_y.", "ytitle", "ylabel")):
-                                _ax_y_title_er = _at_er
-                        if not _ax_x_title_er and not _ax_y_title_er and len(_ax_titles_dict_er) == 2:
-                            _ax_vals_er = list(_ax_titles_dict_er.values())
-                            _ax_x_title_er = _ax_vals_er[0]
-                            _ax_y_title_er = _ax_vals_er[1]
-                    except Exception:
-                        pass
-
-                _col_xt_er, _col_yt_er = st.columns(2)
-                with _col_xt_er:
-                    _new_x_title_er = st.text_input("X axis title", value=_ax_x_title_er, key=f"er_x_title_{_safe_doi_er}_{_ax_sel_name_er}")
-                with _col_yt_er:
-                    _new_y_title_er = st.text_input("Y axis title", value=_ax_y_title_er, key=f"er_y_title_{_safe_doi_er}_{_ax_sel_name_er}")
-
-                if st.button("Save axis titles", key=f"er_save_titles_{_safe_doi_er}_{_ax_sel_name_er}"):
-                    _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
-                    _ax_title_override_er.write_text(json.dumps({"x_title": _new_x_title_er, "y_title": _new_y_title_er}, indent=2))
-                    st.success("Axis title overrides saved. These will be used by finalize_labels when you rerun dataset generation.")
-
-                # --- Axis Calibration ---
-                st.markdown("**Axis Calibration**")
-                st.caption("Set the min/max values for each axis. Changes are preserved as overrides and survive plextract reruns.")
-                _pix2val_override_er = _ax_chartdete_er / "pix2val_override.json"
-                _pix2val_orig_er = _ax_chartdete_er / "pix2val.json"
-                _bb_json_er = _ax_chartdete_er / "bounding_boxes.json"
-
-                _pix2val_data_er = None
-                _pix2val_source_er = ""
-                if _pix2val_override_er.exists():
-                    try:
-                        _pix2val_data_er = json.loads(_pix2val_override_er.read_text())
-                        _pix2val_source_er = "(using override)"
-                    except Exception:
-                        pass
-                if _pix2val_data_er is None and _pix2val_orig_er.exists():
-                    try:
-                        _pix2val_data_er = json.loads(_pix2val_orig_er.read_text())
-                        _pix2val_source_er = "(from OCR)"
-                    except Exception:
-                        pass
-
-                if _pix2val_data_er:
-                    st.caption(f"Calibration data {_pix2val_source_er}")
-
-                    # Try to derive human-readable min/max from pix2val + bounding box
-                    _plot_area_er = None
-                    if _bb_json_er.exists():
-                        try:
-                            _bbs_er = json.loads(_bb_json_er.read_text())
-                            _areas_er = sorted(_bbs_er.get("plot_area", []), key=lambda el: el[4] if len(el) > 4 else -1, reverse=True)
-                            if _areas_er:
-                                _plot_area_er = _areas_er[0]
-                        except Exception:
-                            pass
-
-                    _xmap_er = _pix2val_data_er.get("x", {})
-                    _ymap_er = _pix2val_data_er.get("y", {})
-                    _xtype_er = _xmap_er.get("type", "linear")
-                    _ytype_er = _ymap_er.get("type", "linear")
-                    _xa_er = float(_xmap_er.get("a", 1.0))
-                    _xb_er = float(_xmap_er.get("b", 0.0))
-                    _ya_er = float(_ymap_er.get("a", 1.0))
-                    _yb_er = float(_ymap_er.get("b", 0.0))
-                    _domain_er = _pix2val_data_er.get("domain", {})
-
-                    # Compute current min/max from plot area + coefficients
-                    _x_val_min_er = _x_val_max_er = _y_val_min_er = _y_val_max_er = None
-                    if _plot_area_er and len(_plot_area_er) >= 4:
-                        _px1_er = float(_plot_area_er[0])
-                        _py1_er = float(_plot_area_er[1])
-                        _px2_er = float(_plot_area_er[2])
-                        _py2_er = float(_plot_area_er[3])
-                        if _xtype_er == "linear":
-                            _x_val_min_er = _xa_er * _px1_er + _xb_er
-                            _x_val_max_er = _xa_er * _px2_er + _xb_er
-                        elif _xtype_er == "log10":
-                            _x_val_min_er = 10 ** (_xa_er * _px1_er + _xb_er)
-                            _x_val_max_er = 10 ** (_xa_er * _px2_er + _xb_er)
-                        if _ytype_er == "linear":
-                            _y_val_min_er = _ya_er * _py2_er + _yb_er
-                            _y_val_max_er = _ya_er * _py1_er + _yb_er
-                        elif _ytype_er == "log10":
-                            _y_val_min_er = 10 ** (_ya_er * _py2_er + _yb_er)
-                            _y_val_max_er = 10 ** (_ya_er * _py1_er + _yb_er)
-
-                    # Fall back to domain field if no plot area
-                    if _x_val_min_er is None and "x" in _domain_er and len(_domain_er["x"]) >= 2:
-                        _x_val_min_er, _x_val_max_er = _domain_er["x"][0], _domain_er["x"][1]
-                    if _y_val_min_er is None and "y" in _domain_er and len(_domain_er["y"]) >= 2:
-                        _y_val_min_er, _y_val_max_er = _domain_er["y"][0], _domain_er["y"][1]
-
-                    _col_ax_type_er, _col_ay_type_er = st.columns(2)
-                    with _col_ax_type_er:
-                        _new_xtype_er = st.selectbox("X axis type", ["linear", "log10"], index=0 if _xtype_er == "linear" else 1, key=f"er_xtype_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_ay_type_er:
-                        _new_ytype_er = st.selectbox("Y axis type", ["linear", "log10"], index=0 if _ytype_er == "linear" else 1, key=f"er_ytype_{_safe_doi_er}_{_ax_sel_name_er}")
-
-                    _col_xmin_er, _col_xmax_er, _col_ymin_er, _col_ymax_er = st.columns(4)
-                    with _col_xmin_er:
-                        _new_x_min_er = st.text_input("X min", value=f"{_x_val_min_er:.6g}" if _x_val_min_er is not None else "", key=f"er_x_min_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_xmax_er:
-                        _new_x_max_er = st.text_input("X max", value=f"{_x_val_max_er:.6g}" if _x_val_max_er is not None else "", key=f"er_x_max_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_ymin_er:
-                        _new_y_min_er = st.text_input("Y min", value=f"{_y_val_min_er:.6g}" if _y_val_min_er is not None else "", key=f"er_y_min_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_ymax_er:
-                        _new_y_max_er = st.text_input("Y max", value=f"{_y_val_max_er:.6g}" if _y_val_max_er is not None else "", key=f"er_y_max_{_safe_doi_er}_{_ax_sel_name_er}")
-
-                    if st.button("Save calibration overrides", key=f"er_save_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
-                        try:
-                            _nxmin_er = float(_new_x_min_er) if _new_x_min_er.strip() else None
-                            _nxmax_er = float(_new_x_max_er) if _new_x_max_er.strip() else None
-                            _nymin_er = float(_new_y_min_er) if _new_y_min_er.strip() else None
-                            _nymax_er = float(_new_y_max_er) if _new_y_max_er.strip() else None
-
-                            _new_pix2val_er = dict(_pix2val_data_er)
-                            _new_pix2val_er["x"] = dict(_xmap_er)
-                            _new_pix2val_er["y"] = dict(_ymap_er)
-                            _new_pix2val_er["x"]["type"] = _new_xtype_er
-                            _new_pix2val_er["y"]["type"] = _new_ytype_er
-
-                            # Recompute a, b from new min/max if plot area is available
-                            if _plot_area_er and len(_plot_area_er) >= 4 and None not in (_nxmin_er, _nxmax_er, _nymin_er, _nymax_er):
-                                _px1n_er = float(_plot_area_er[0])
-                                _py1n_er = float(_plot_area_er[1])
-                                _px2n_er = float(_plot_area_er[2])
-                                _py2n_er = float(_plot_area_er[3])
-                                if _new_xtype_er == "linear" and _px2n_er != _px1n_er:
-                                    _nxa_er = (_nxmax_er - _nxmin_er) / (_px2n_er - _px1n_er)
-                                    _nxb_er = _nxmin_er - _nxa_er * _px1n_er
-                                    _new_pix2val_er["x"]["a"] = _nxa_er
-                                    _new_pix2val_er["x"]["b"] = _nxb_er
-                                elif _new_xtype_er == "log10" and _px2n_er != _px1n_er and _nxmin_er > 0 and _nxmax_er > 0:
-                                    _nxa_er = (math.log10(_nxmax_er) - math.log10(_nxmin_er)) / (_px2n_er - _px1n_er)
-                                    _nxb_er = math.log10(_nxmin_er) - _nxa_er * _px1n_er
-                                    _new_pix2val_er["x"]["a"] = _nxa_er
-                                    _new_pix2val_er["x"]["b"] = _nxb_er
-                                if _new_ytype_er == "linear" and _py2n_er != _py1n_er:
-                                    _nya_er = (_nymax_er - _nymin_er) / (_py1n_er - _py2n_er)
-                                    _nyb_er = _nymin_er - _nya_er * _py2n_er
-                                    _new_pix2val_er["y"]["a"] = _nya_er
-                                    _new_pix2val_er["y"]["b"] = _nyb_er
-                                elif _new_ytype_er == "log10" and _py2n_er != _py1n_er and _nymin_er > 0 and _nymax_er > 0:
-                                    _nya_er = (math.log10(_nymax_er) - math.log10(_nymin_er)) / (_py1n_er - _py2n_er)
-                                    _nyb_er = math.log10(_nymin_er) - _nya_er * _py2n_er
-                                    _new_pix2val_er["y"]["a"] = _nya_er
-                                    _new_pix2val_er["y"]["b"] = _nyb_er
-
-                            _new_pix2val_er["domain"] = {
-                                "x": [_nxmin_er, _nxmax_er] if None not in (_nxmin_er, _nxmax_er) else _domain_er.get("x", [None, None]),
-                                "y": [_nymin_er, _nymax_er] if None not in (_nymin_er, _nymax_er) else _domain_er.get("y", [None, None]),
-                            }
-                            _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
-                            _pix2val_override_er.write_text(json.dumps(_new_pix2val_er, indent=2))
-                            st.success("Calibration override saved.")
-                        except Exception as _e_ax_er:
-                            st.error(f"Failed to save calibration: {_e_ax_er}")
-
-                    if _pix2val_override_er.exists():
-                        if st.button("Clear calibration override (revert to OCR)", key=f"er_clear_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
-                            _pix2val_override_er.unlink()
-                            st.success("Cleared calibration override.")
-                            st.rerun()
-                else:
-                    st.info("No pix2val calibration data found. Run plextract extraction first.")
-
 
         # ========================
         # SECTION: Display metadata
