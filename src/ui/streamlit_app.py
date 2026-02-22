@@ -1295,13 +1295,17 @@ with tab_figs:
             from intervention import _try_find_source_image as _tfs_er
             _source_img_er = _tfs_er(_filtered_fig_root_er, _safe_doi_er, _fig_id_er)
 
-        # Find plextract figure_dir
+        # Find plextract figure_dir; plextract output dirs include the file extension
+        # (e.g. "Figure_9.jpg/") so we match by stem, not exact name.
         _plextract_fig_dir_er = None
         _latest_plextract_er = latest_plextract_run_dir(rr.run_dir / "plextract")
         if _latest_plextract_er:
-            _cand_er = _latest_plextract_er / "output" / _safe_doi_er / _fig_id_er
-            if _cand_er.exists():
-                _plextract_fig_dir_er = _cand_er
+            _plex_out_base_er = _latest_plextract_er / "output" / _safe_doi_er
+            if _plex_out_base_er.exists():
+                for _cand_er in _plex_out_base_er.iterdir():
+                    if _cand_er.is_dir() and Path(_cand_er.name).stem == _fig_id_er:
+                        _plextract_fig_dir_er = _cand_er
+                        break
 
         # Per-figure intervention plextract workdir
         _per_fig_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
@@ -1309,14 +1313,19 @@ with tab_figs:
         if _per_fig_int_wd_er.exists():
             _lat_int_er = latest_plextract_run_dir(_per_fig_int_wd_er)
             if _lat_int_er:
-                _cand2_er = _lat_int_er / "output" / _safe_doi_er / _fig_id_er
-                if _cand2_er.exists():
-                    _int_fig_dir_er = _cand2_er
+                _int_out_base_er = _lat_int_er / "output" / _safe_doi_er
+                if _int_out_base_er.exists():
+                    for _cand2_er in _int_out_base_er.iterdir():
+                        if _cand2_er.is_dir() and Path(_cand2_er.name).stem == _fig_id_er:
+                            _int_fig_dir_er = _cand2_er
+                            break
 
         # crops output directory
         _crops_out_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
 
-        # ---- Collect axis config subfig dirs for use in first expander ----
+        # ---- Collect axis config subfig dirs ----
+        # Match by exact name, by stem (handles extension-bearing plextract dirs),
+        # or by subfigure prefix.
         _ax_subfig_options_er: list = []
         _ax_subfig_dirs_er: list = []
         for _ax_wd_er in [
@@ -1335,18 +1344,27 @@ with tab_figs:
             for _ax_d_er in sorted(_ax_out_base_er.iterdir()):
                 if _ax_d_er.is_dir() and (
                     _ax_d_er.name == _fig_id_er or
+                    Path(_ax_d_er.name).stem == _fig_id_er or
                     _ax_d_er.name.startswith(_fig_stem_er + "_subfig_")
                 ):
                     if _ax_d_er.name not in _ax_subfig_options_er:
                         _ax_subfig_options_er.append(_ax_d_er.name)
                         _ax_subfig_dirs_er.append(_ax_d_er)
 
-        with st.expander(f"### {f.id}"):
+        # ---- 1. Figure image expander ----
+        with st.expander(f"Figure: {f.id}", expanded=False):
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
+            if _source_img_er and _source_img_er.exists():
+                st.image(str(_source_img_er), use_container_width=True)
+            elif f.figure_path and f.figure_path.exists():
+                st.image(str(f.figure_path), width=fig_img_width)
+                st.caption(str(f.figure_path))
+            else:
+                st.warning("No source image found for this figure.")
 
-            # ---- Crop Figure section ----
-            st.markdown("**Crop Figure**")
+        # ---- 2. Crop Figure expander ----
+        with st.expander("Crop Figure", expanded=False):
             if _source_img_er and _source_img_er.exists():
                 _pil_img_er = Image.open(_source_img_er).convert("RGB")
                 _orig_w_er, _orig_h_er = _pil_img_er.size
@@ -1437,15 +1455,10 @@ with tab_figs:
                 else:
                     st.info("No crops saved yet. Draw rectangles above to create crops.")
             else:
-                if f.figure_path and f.figure_path.exists():
-                    st.image(str(f.figure_path), width=fig_img_width)
-                    st.caption(str(f.figure_path))
-                else:
-                    st.warning("No source image found for this figure.")
+                st.warning("No source image found for this figure.")
 
-            # ---- Axis Configuration section ----
-            st.divider()
-            st.markdown("**Axis Configuration**")
+        # ---- 3. Axis Configuration expander ----
+        with st.expander("Axis Configuration", expanded=False):
             if not _ax_subfig_dirs_er:
                 st.info("No plextract output found for this figure. Run plextract extraction first.")
             else:
