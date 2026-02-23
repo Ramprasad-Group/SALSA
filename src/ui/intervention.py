@@ -177,8 +177,10 @@ class SeriesItem:
 def load_series_catalog(lineformer_dir: Path) -> List[SeriesItem]:
     cat = lineformer_dir / "series_catalog.json"
     if not cat.exists():
-        # Return empty list instead of raising error - lineformer may have failed
-        print(f"Warning: No series_catalog.json found at {cat}")
+        # Create the directory and an empty catalog so subsequent calls
+        # (and downstream code) don't have to handle a missing file.
+        lineformer_dir.mkdir(parents=True, exist_ok=True)
+        cat.write_text("[]")
         return []
     raw = json.loads(cat.read_text())
     out: List[SeriesItem] = []
@@ -287,113 +289,117 @@ def list_override_masks(run_dir: Path, safe_doi: str, figure_id: str) -> Dict[in
     return out
 
 
-def apply_overrides_to_plextract(item_figure_dir: Path, run_dir: Path, safe_doi: str, figure_id: str) -> None:
+def apply_overrides_to_plextract(item_figure_dir: Optional[Path], run_dir: Path, safe_doi: str, figure_id: str) -> None:
     """
-    Copy override masks into <figure_dir>/lineformer/ and replace series_catalog.json
-    with the override one (after filtering deleted series if requested).
-    Also handles newly created series from interventions.
+    Prepare the intervention lineformer directory for re-extraction.
 
-    Writes intervention_overrides.json into the lineformer directory so that
-    downstream steps (finalize_labels) can apply series-name overrides and
-    honour deleted-series decisions.
+    The original plextract output directory is treated as **read-only** — only
+    the series catalog is read from it to learn the original series indices and
+    mask paths.  All prepared files (merged series_catalog.json,
+    intervention_overrides.json, and copies of original masks for
+    non-overridden series) are written to the intervention override lineformer
+    directory::
+
+        <run_dir>/interventions/<safe_doi>/<figure_id>/lineformer/
+
+    User-drawn override masks are already present in that directory (placed by
+    :func:`save_mask_override`).  Non-overridden original masks are copied into
+    the intervention dir so the directory is self-contained and can be passed
+    directly to ``run_plextract_on_crops`` / ``run_plextract_intervention_on_crops``.
+
+    ``item_figure_dir`` may be ``None`` when no plextract output exists yet
+    (the user is creating series from scratch before running extraction).
     """
-    lf_dir = get_lineformer_dir(item_figure_dir)
+    # Destination: intervention override lineformer dir — NOT the original plextract dir.
+    lf_dir = override_lineformer_dir(run_dir, safe_doi, figure_id)
     lf_dir.mkdir(parents=True, exist_ok=True)
 
-    # load original catalog (for centroids etc.)
-    series_items = load_series_catalog(lf_dir)
+    # Read original series catalog (read-only; may be absent).
+    original_lf_dir = get_lineformer_dir(item_figure_dir) if item_figure_dir else None
+    series_items = (
+        load_series_catalog(original_lf_dir)
+        if (original_lf_dir and original_lf_dir.exists())
+        else []
+    )
 
-    # load mapping (delete list and series names)
+    # Load mapping (deleted indices and renamed series).
     mapping = load_mapping(run_dir, safe_doi, figure_id)
     deleted = set(int(x) for x in mapping.get("deleted", []))
     series_names = mapping.get("series_names", {})
 
-    # load overrides
+    # User-drawn override masks are already in lf_dir (placed by save_mask_override).
     override_masks = list_override_masks(run_dir, safe_doi, figure_id)
 
-    # copy masks into plextract lineformer dir
-    for idx, p in override_masks.items():
-        dest = lf_dir / p.name
-        shutil.copy2(p, dest)
+    # For series with no user-drawn override, copy the original mask into the
+    # intervention dir so the dir is self-contained.  Normalise the filename to
+    # mask_series_<i>.png for consistency with override mask naming.
+    if original_lf_dir and original_lf_dir.exists():
+        for s in series_items:
+            if s.series_index in override_masks or s.series_index in deleted:
+                continue  # user override already present, or series is deleted
+            dest_mask = lf_dir / f"mask_series_{s.series_index}.png"
+            if not dest_mask.exists():
+                src_mask = Path(str(s.mask_path))
+                if src_mask.exists():
+                    shutil.copy2(src_mask, dest_mask)
+            # Carry over any exact-points file from the original run.
+            orig_pts = original_lf_dir / f"clicked_points_{s.series_index}.json"
+            dest_pts = lf_dir / orig_pts.name
+            if orig_pts.exists() and not dest_pts.exists():
+                shutil.copy2(orig_pts, dest_pts)
 
-    # copy exact-point files alongside their masks so regenerate_coordinates
-    # can use them instead of deriving coordinates from the rasterised mask.
-    _override_lf = override_lineformer_dir(run_dir, safe_doi, figure_id)
-    for _pts_src in _override_lf.glob("clicked_points_*.json"):
-        shutil.copy2(_pts_src, lf_dir / _pts_src.name)
-
-    # Remove mask and clicked-points files for deleted series so
-    # correct_coordinates and match_legend won't pick them up.
+    # Remove mask and clicked-points files for deleted series from the
+    # intervention dir so correct_coordinates and match_legend skip them.
     for del_idx in deleted:
-        mask_file = lf_dir / f"mask_series_{del_idx}.png"
-        if mask_file.exists():
-            mask_file.unlink()
-        pts_file = lf_dir / f"clicked_points_{del_idx}.json"
-        if pts_file.exists():
-            pts_file.unlink()
+        for fname in (f"mask_series_{del_idx}.png", f"clicked_points_{del_idx}.json"):
+            p = lf_dir / fname
+            if p.exists():
+                p.unlink()
 
-    # Track which series indices we've seen from the original catalog
+    # --- Build series_catalog.json in the intervention dir ---
     original_indices = {s.series_index for s in series_items}
-
-    # write new series_catalog.json (mask_path must point to files in lf_dir)
     rows = []
 
-    # First, process existing series from the original catalog
+    # Existing (non-deleted) series from the original run.
     for s in series_items:
         if s.series_index in deleted:
             continue
-        # if overridden, point to lf_dir/mask_series_{i}.png else keep existing
         mp = lf_dir / f"mask_series_{s.series_index}.png"
-        if mp.exists():
-            rows.append(
-                {
-                    "series_index": s.series_index,
-                    "mask_path": str(mp),
-                    "centroid": [s.centroid[0], s.centroid[1]],
-                }
-            )
-        else:
-            rows.append(
-                {
-                    "series_index": s.series_index,
-                    "mask_path": str(s.mask_path),
-                    "centroid": [s.centroid[0], s.centroid[1]],
-                }
-            )
+        rows.append(
+            {
+                "series_index": s.series_index,
+                "mask_path": str(mp) if mp.exists() else str(s.mask_path),
+                "centroid": [s.centroid[0], s.centroid[1]],
+            }
+        )
 
-    # Now, add newly created series (those with override masks but not in original catalog)
+    # Newly created series (override masks not present in the original catalog).
     for idx in override_masks:
         if idx not in original_indices and idx not in deleted:
-            # This is a newly created series - calculate centroid from the mask
             mask_path = lf_dir / f"mask_series_{idx}.png"
             if mask_path.exists():
                 try:
                     mask_img = Image.open(mask_path).convert("L")
                     mask_arr = np.array(mask_img)
                     y_coords, x_coords = np.where(mask_arr > 0)
-                    if len(x_coords) > 0:
-                        centroid_x = float(np.mean(x_coords))
-                        centroid_y = float(np.mean(y_coords))
-                    else:
-                        centroid_x, centroid_y = 0.0, 0.0
-
-                    rows.append(
-                        {
-                            "series_index": idx,
-                            "mask_path": str(mask_path),
-                            "centroid": [centroid_x, centroid_y],
-                        }
-                    )
+                    centroid_x = float(np.mean(x_coords)) if len(x_coords) > 0 else 0.0
+                    centroid_y = float(np.mean(y_coords)) if len(y_coords) > 0 else 0.0
                 except Exception:
-                    # If we can't process the mask, skip it
-                    pass
+                    centroid_x, centroid_y = 0.0, 0.0
+                rows.append(
+                    {
+                        "series_index": idx,
+                        "mask_path": str(mask_path),
+                        "centroid": [centroid_x, centroid_y],
+                    }
+                )
 
     (lf_dir / "series_catalog.json").write_text(json.dumps(rows, indent=2))
 
-    # Write intervention overrides into lineformer dir so they travel with
-    # the masks when run_plextract_on_crops copies the directory and are
-    # available to finalize_labels.py during dataset generation.
-    overrides = {}
+    # Write intervention_overrides.json so it travels with the masks when
+    # run_plextract_on_crops copies the directory, and so finalize_labels.py
+    # can apply series-name overrides and honour deletion decisions.
+    overrides: dict = {}
     if series_names:
         overrides["series_names"] = series_names
     if deleted:

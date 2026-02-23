@@ -1957,6 +1957,95 @@ with tab_figs:
                         st.markdown("---")
 
         # ========================
+        # SECTION: Intervention Results
+        # Show new OCR and LLM data once a per-figure plextract_interventions
+        # run exists (i.e. the user has clicked "Rerun data extraction").
+        # ========================
+        if _per_fig_plextract and _per_fig_plextract.exists():
+            _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
+            _int_out_base = (
+                (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
+            )
+
+            # --- New OCR-Extracted Data ---
+            _int_csv_paths: list[Path] = []
+            if _int_out_base and _int_out_base.exists():
+                for _idir in sorted(_int_out_base.iterdir()):
+                    if _idir.is_dir():
+                        _icsvp = _idir / "final" / "final_dataset.csv"
+                        if _icsvp.exists():
+                            _int_csv_paths.append(_icsvp)
+
+            if _int_csv_paths:
+                with st.expander("New OCR-Extracted Data", expanded=False):
+                    st.markdown(
+                        "*Extracted after intervention — re-run with edited masks / series / axis changes*"
+                    )
+                    for _icsvp in _int_csv_paths:
+                        try:
+                            _idf = pd.read_csv(_icsvp)
+                            st.caption(
+                                f"**{_icsvp.parent.parent.name}** — "
+                                f"`{_icsvp.relative_to(rr.run_dir)}`"
+                            )
+                            st.data_editor(
+                                _idf,
+                                use_container_width=True,
+                                hide_index=True,
+                                key=f"int_ocr_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
+                            )
+                            st.download_button(
+                                label="Download CSV",
+                                data=_idf.to_csv(index=False),
+                                file_name=f"{_icsvp.parent.parent.name}_intervention.csv",
+                                mime="text/csv",
+                                key=f"int_ocr_dl_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
+                            )
+                        except Exception as _ie:
+                            st.warning(f"Failed to load {_icsvp.name}: {_ie}")
+
+            # --- New LLM-Generated Dataset Rows ---
+            # Collect figure names from the intervention output dir plus the
+            # top-level figure id, then look up the most-recently cached rows.
+            _int_names_to_check: set[str] = {f.id}
+            if _int_out_base and _int_out_base.exists():
+                for _idir in sorted(_int_out_base.iterdir()):
+                    if _idir.is_dir():
+                        _int_names_to_check.add(_idir.name)
+
+            _int_emit_items: list[tuple[str, Path]] = []
+            for _iname in sorted(_int_names_to_check):
+                _iep = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _iname)
+                if _iep:
+                    _int_emit_items.append((_iname, _iep))
+
+            if _int_emit_items:
+                with st.expander("New LLM-Generated Dataset Rows", expanded=False):
+                    st.markdown(
+                        "*LLM-generated rows for this figure — re-run LLM generation "
+                        "after intervention to refresh these results*"
+                    )
+                    for _iname, _iep in _int_emit_items:
+                        _idf_emit = load_emit_rows(_iep)
+                        if _idf_emit is not None and not _idf_emit.empty:
+                            st.caption(
+                                f"**{_iname}** — `{_iep.relative_to(rr.run_dir)}`"
+                            )
+                            st.data_editor(
+                                _idf_emit,
+                                use_container_width=True,
+                                hide_index=True,
+                                key=f"int_llm_{safe_doi}_{f.id}_{_iname}",
+                            )
+                            st.download_button(
+                                label="Download emit_rows CSV",
+                                data=_idf_emit.to_csv(index=False),
+                                file_name=f"{_iname}_intervention_emit_rows.csv",
+                                mime="text/csv",
+                                key=f"int_llm_dl_{safe_doi}_{f.id}_{_iname}",
+                            )
+
+        # ========================
         # SECTION: Series Management
         # ========================
         with st.expander("Series Management", expanded=False):
@@ -2369,13 +2458,14 @@ with tab_figs:
                         _rerun_images_er: list = []
                         _rerun_lf_er: dict = {}
 
-                        if _sm_fig_dir_er is not None:
-                            with st.spinner("Applying mask overrides..."):
-                                apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                            _lf_dir_rerun_er = get_lineformer_dir(_sm_fig_dir_er)
-                        else:
-                            # No plextract output exists yet — use the override lineformer dir directly
-                            _lf_dir_rerun_er = _sm_lf_override_dir_er
+                        with st.spinner("Applying mask overrides..."):
+                            # Writes prepared masks + catalog + overrides into the
+                            # intervention dir only; the original plextract output
+                            # is never modified (item_figure_dir is read-only).
+                            apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
+                        # Always source lineformer from the intervention override dir
+                        # so the original plextract results remain untouched.
+                        _lf_dir_rerun_er = _sm_lf_override_dir_er
 
                         if _is_subfig_sel_er:
                             _rerun_images_er = [_sm_source_img_er]
