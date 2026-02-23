@@ -23,7 +23,7 @@ from intervention import (
     apply_overrides_to_plextract,
     override_lineformer_dir,
 )
-from run_plextract_manual import run_plextract_on_crops
+from run_plextract_manual import run_plextract_intervention_on_crops
 from custom_instructions import (
     default_instructions,
     list_presets,
@@ -2171,18 +2171,26 @@ with tab_figs:
                 )
                 _sm_subfig_idx_er = _sm_subfig_opts_er.index(_sm_sel_subfig_er)
                 _sm_fig_dir_er = _sm_subfig_dirs_er[_sm_subfig_idx_er]
-                _sm_fig_id_er = _sm_subfig_dirs_er[_sm_subfig_idx_er].name
+                _sm_fig_id_er = _sm_fig_dir_er.name
 
                 # Try to find source image for this subfigure
                 _crops_dir_sm = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
-                _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_sm_subfig_idx_er}.png"
+                _subfig_match_er = re.search(r"_subfig_(\d+)$", Path(_sm_fig_id_er).stem)
+                _subfig_num_er = _subfig_match_er.group(1) if _subfig_match_er else str(_sm_subfig_idx_er)
+                _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_subfig_num_er}.png"
                 if _subfig_src_er.exists():
                     _sm_source_img_er = _subfig_src_er
                 else:
                     _run_root_sm = _sm_fig_dir_er.parent.parent.parent
-                    _input_cand_sm = _run_root_sm / "input" / _safe_doi_er / _sm_fig_id_er
+                    _input_dir_sm = _run_root_sm / "input" / _safe_doi_er
+                    _input_cand_sm = _input_dir_sm / _sm_fig_id_er
                     if _input_cand_sm.exists():
                         _sm_source_img_er = _input_cand_sm
+                    else:
+                        _stem_sm = Path(_sm_fig_id_er).stem
+                        _fallback_hits_sm = sorted(_input_dir_sm.glob(f"{_stem_sm}.*")) if _input_dir_sm.exists() else []
+                        if _fallback_hits_sm:
+                            _sm_source_img_er = _fallback_hits_sm[0]
 
             _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
 
@@ -2574,10 +2582,10 @@ with tab_figs:
                         if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
                             _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
                 with st.spinner("Re-running data extraction..."):
-                    run_plextract_on_crops(
+                    run_plextract_intervention_on_crops(
                         scripts_root=scripts_root, run_dir=rr.run_dir,
                         safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
-                        override_lineformer_dirs=_rerun_lf_er if _rerun_lf_er else None,
+                        override_lineformer_dirs=_rerun_lf_er,
                         figure_id=_fig_id_er,
                     )
                 st.success("Data extraction complete!")
