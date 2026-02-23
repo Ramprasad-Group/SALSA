@@ -1382,10 +1382,10 @@ with tab_figs:
                     key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
                 )
 
-                st.image(str(_source_img_er), width=_crop_w_er)
-                st.write("**Draw crop regions on the canvas below** — coordinates match the image above.")
+                _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.LANCZOS)
+                st.write("**Draw crop regions directly on the image below.**")
                 _canvas_er = st_canvas(
-                    background_color="#f0f2f6",
+                    background_image=_bg_img_er,
                     fill_color="rgba(255, 165, 0, 0.3)", stroke_color="#e63946", stroke_width=2,
                     update_streamlit=True, height=_display_h_er, width=_crop_w_er,
                     drawing_mode=_draw_mode_er,
@@ -2565,6 +2565,20 @@ with tab_figs:
                     st.error(_err_msg_er)
                 else:
                     try:
+                        # Delete any existing cache files for this figure so the
+                        # LLM is always re-called (avoids stale cache on re-run).
+                        _row_cache_dir_er = rr.run_dir / "complete_dataset" / "row_cache"
+                        if _row_cache_dir_er.exists():
+                            import re as _re_er
+                            _safe_fn_er = lambda s: _re_er.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                            _cache_pfx_er = _safe_fn_er(f"emit_rows::figure::{selected_doi}::{_llm_sel_er}::")
+                            for _cf_er in list(_row_cache_dir_er.iterdir()):
+                                if _cf_er.suffix == ".json" and (
+                                    _cf_er.stem.startswith(_cache_pfx_er) or
+                                    _cf_er.name.startswith(_cache_pfx_er)
+                                ):
+                                    _cf_er.unlink(missing_ok=True)
+
                         import tempfile as _tmpmod_er
                         with _tmpmod_er.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_er:
                             _tmp_er.write(f"DOI\n{selected_doi}\n")

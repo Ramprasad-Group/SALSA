@@ -82,6 +82,11 @@ def run_plextract_on_crops(
             ]
             next_id = str(max(existing) + 1 if existing else 0)
 
+            # Override files that plextract will never overwrite but must
+            # survive into the new run (ChartDete writes axis_title_texts.json
+            # and pix2val.json; it never touches the *_override variants).
+            _CHARTDETE_OVERRIDES = ["axis_title_override.json", "pix2val_override.json"]
+
             for img_name, lf_src_dir in override_lineformer_dirs.items():
                 if not lf_src_dir.exists():
                     continue
@@ -93,6 +98,17 @@ def run_plextract_on_crops(
                 for src_file in lf_src_dir.iterdir():
                     if src_file.is_file():
                         shutil.copy2(src_file, out_lf_dir / src_file.name)
+
+                # Pre-populate user override files from the sibling chartdete dir
+                # so finalize_labels picks them up even after ChartDete re-runs.
+                src_cd = lf_src_dir.parent / "chartdete"
+                if src_cd.exists():
+                    out_cd = results_root / next_id / "output" / safe_doi / img_name / "chartdete"
+                    for fname in _CHARTDETE_OVERRIDES:
+                        src_f = src_cd / fname
+                        if src_f.exists():
+                            out_cd.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(str(src_f), str(out_cd / fname))
 
         cmd = [
             "python", str(plextract_py),
