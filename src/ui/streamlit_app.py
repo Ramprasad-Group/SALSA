@@ -1424,7 +1424,7 @@ with tab_figs:
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
             if _source_img_er and _source_img_er.exists():
-                st_resizable_image(_source_img_er, caption="Drag the bottom-right corner to resize", key=f"fig_src_{_safe_doi_er}_{_fig_id_er}")
+                st_resizable_image(_source_img_er, key=f"fig_src_{_safe_doi_er}_{_fig_id_er}")
             elif f.figure_path and f.figure_path.exists():
                 st_resizable_image(f.figure_path, caption=str(f.figure_path), key=f"fig_fallback_{_safe_doi_er}_{_fig_id_er}")
             else:
@@ -2126,7 +2126,7 @@ with tab_figs:
         # ========================
         # SECTION: Series Management
         # ========================
-        with st.expander("Series Management", expanded=True):
+        with st.expander("Series Management", expanded=False):
             # Determine which plextract workdir to use for series management.
             # Search across all relevant workdirs in priority order:
             #   1. Per-figure interventions plextract
@@ -2199,9 +2199,6 @@ with tab_figs:
 
             if True:
                 _sm_series_items_er = load_series_catalog(_sm_lf_dir_er)
-                if not _sm_series_items_er:
-                    st.info("No line series masks found. LineFormer may not have detected any series yet — use 'Create new series' below.")
-
                 _sm_mapping_er = load_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
                 _sm_names_er = _sm_mapping_er.get("series_names", {})
                 _sm_deleted_er = set(int(x) for x in _sm_mapping_er.get("deleted", []))
@@ -2256,7 +2253,7 @@ with tab_figs:
                     return f"Series {idx}"
 
                 if _sm_source_img_er and _sm_source_img_er.exists():
-                    st_resizable_image(_sm_source_img_er, caption="Series management source image (drag to resize)", key=f"series_src_{_safe_doi_er}_{_sm_fig_id_er}")
+                    st_resizable_image(_sm_source_img_er, key=f"series_src_{_safe_doi_er}_{_sm_fig_id_er}")
                     _base_img_er = Image.open(_sm_source_img_er).convert("RGBA")
                     _w_er, _h_er = _base_img_er.size
                 else:
