@@ -12,6 +12,50 @@ from typing import Dict, Optional
 _SUBFIG_RE = re.compile(r"^.+_subfig_\d+\.\w+$", re.IGNORECASE)
 
 
+def _latest_result_run_dir(plextract_workdir: Path) -> Optional[Path]:
+    """Return latest numeric results run dir for a plextract workdir."""
+    results_root = plextract_workdir / "results"
+    if not results_root.exists():
+        return None
+    run_dirs = [d for d in results_root.iterdir() if d.is_dir() and d.name.isdigit()]
+    if not run_dirs:
+        return None
+    run_dirs.sort(key=lambda d: int(d.name), reverse=True)
+    return run_dirs[0]
+
+
+def _find_chartdete_dir_for_image(
+    run_dir: Path,
+    safe_doi: str,
+    img_name: str,
+    figure_id: Optional[str],
+) -> Optional[Path]:
+    """
+    Find an existing chartdete directory for ``img_name`` across known workdirs.
+
+    Search priority mirrors the UI selection strategy so reruns prefer the most
+    recent per-figure intervention outputs, then shared intervention outputs,
+    then the original plextract output.
+    """
+    workdirs = []
+    if figure_id:
+        workdirs.append(run_dir / "interventions" / safe_doi / figure_id / "plextract_interventions")
+    workdirs.extend([
+        run_dir / "interventions" / "interventions_plextract",
+        run_dir / "plextract",
+    ])
+
+    for wd in workdirs:
+        latest = _latest_result_run_dir(wd)
+        if not latest:
+            continue
+        cand = latest / "output" / safe_doi / img_name / "chartdete"
+        if cand.exists():
+            return cand
+
+    return None
+
+
 def run_plextract_on_crops(
     scripts_root: Path,
     run_dir: Path,
@@ -234,6 +278,16 @@ def run_plextract_intervention_on_crops(
         for img_name, lf_src_dir in override_lineformer_dirs.items():
             cd_src_dir = lf_src_dir.parent / "chartdete"
             if not cd_src_dir.exists():
+                # The intervention override lineformer dir may not have a sibling
+                # chartdete directory. In that case, reuse the original
+                # chartdete outputs from the latest available plextract run.
+                cd_src_dir = _find_chartdete_dir_for_image(
+                    run_dir=run_dir,
+                    safe_doi=safe_doi,
+                    img_name=img_name,
+                    figure_id=figure_id,
+                )
+            if not cd_src_dir or not cd_src_dir.exists():
                 continue
             out_cd_dir = (
                 results_root / next_id / "output" / safe_doi
