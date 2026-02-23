@@ -1265,15 +1265,6 @@ with tab_text:
 with tab_figs:
     if not doi_item.figures:
         st.warning("No figures found.")
-    # Add width control for figure images
-    fig_img_width = st.slider(
-        "Figure image width (px)",
-        min_value=200,
-        max_value=1200,
-        value=600,
-        step=50,
-        key=f"fig_img_width_{selected_doi}"
-    )
     for idx, f in enumerate(doi_item.figures):
         # Add divider between figures
         if idx > 0:
@@ -1352,7 +1343,16 @@ with tab_figs:
                         _ax_subfig_dirs_er.append(_ax_d_er)
 
         # ---- 1. Figure image expander ----
-        with st.expander(f"Figure: {f.id}", expanded=False):
+        with st.expander(f"Figure: {f.id}", expanded=True):
+            # Add width control for figure images
+            fig_img_width = st.slider(
+                "Figure image width (px)",
+                min_value=200,
+                max_value=1200,
+                value=600,
+                step=50,
+                key=f"og_fig_img_width_{selected_doi}"
+            )
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
             if _source_img_er and _source_img_er.exists():
@@ -1371,7 +1371,7 @@ with tab_figs:
 
                 _default_crop_w_er = min(_orig_w_er, 600)
                 _crop_w_er = st.slider(
-                    "Display width (px)", 200, min(_orig_w_er, 1500), _default_crop_w_er, 50,
+                    "Display width (px)", 200, 1200, 450,
                     key=f"er_crop_w_{_safe_doi_er}_{_fig_id_er}"
                 )
                 _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
@@ -1667,7 +1667,7 @@ with tab_figs:
             final_csv = f.extra.get("final_dataset_csv")
 
         # --- Display extracted data in expander ---
-        with st.expander("Extracted Data", expanded=False):
+        with st.expander("OCR-Extracted Data", expanded=False):
             if final_csv and Path(final_csv).exists():
                 try:
                     df = _load_csv(final_csv)
@@ -1699,7 +1699,7 @@ with tab_figs:
             # Check if row_cache exists but no data found for this figure
             row_cache_dir = rr.run_dir / "complete_dataset" / "row_cache"
             if row_cache_dir.exists():
-                with st.expander("LLM-Generated Dataset Rows", expanded=False):
+                with st.expander("LLM-Generated Dataset", expanded=False):
                     st.info(f"No row_cache data found for {f.id}. Cache may not have been generated yet.")
 
         # --- Display cropped subfigures from plextract and interventions ---
@@ -1948,7 +1948,7 @@ with tab_figs:
                         if emit_rows_path_subfig:
                             df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
                             if df_emit_subfig is not None and not df_emit_subfig.empty:
-                                with st.expander("LLM-Generated Dataset Rows", expanded=False):
+                                with st.expander("LLM-Generated Dataset", expanded=False):
                                     st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
                                     st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
 
@@ -2020,11 +2020,7 @@ with tab_figs:
                     _int_emit_items.append((_iname, _iep))
 
             if _int_emit_items:
-                with st.expander("New LLM-Generated Dataset Rows", expanded=False):
-                    st.markdown(
-                        "*LLM-generated rows for this figure — re-run LLM generation "
-                        "after intervention to refresh these results*"
-                    )
+                with st.expander("New LLM-Generated Dataset", expanded=False):
                     for _iname, _iep in _int_emit_items:
                         _idf_emit = load_emit_rows(_iep)
                         if _idf_emit is not None and not _idf_emit.empty:
@@ -2452,12 +2448,6 @@ with tab_figs:
         # SECTION: Rerun Data Extraction
         # ========================
         st.markdown("---")
-        st.markdown("**Rerun Data Extraction**")
-        st.caption(
-            "Applies any series mask overrides and re-runs coordinate correction, "
-            "legend matching, and final dataset export. "
-            "Existing ChartDete and OCR results are reused."
-        )
         _is_subfig_sel_er = _sm_fig_id_er != _fig_id_er
         _int_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
         if _is_subfig_sel_er:
@@ -2467,7 +2457,7 @@ with tab_figs:
         elif _source_img_er and _source_img_er.exists():
             st.caption("Will run on the original figure image.")
 
-        if st.button("Rerun data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
+        if st.button("Rerun OCR data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
             try:
                 _rerun_images_er: list = []
                 _rerun_lf_er: dict = {}
@@ -2522,16 +2512,14 @@ with tab_figs:
         # ========================
         # SECTION: Rerun LLM Dataset Generation
         # ========================
-        st.markdown("**Rerun LLM Dataset Generation**")
-        st.caption("Runs complete_dataset.py to generate normalized dataset rows from the extracted figure data.")
 
         # Find available figures/subfigures for LLM rerun
         _llm_fig_options_er: list = []
         _llm_fig_dirs_er: list = []
         for _llm_wd_er in [
             rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
-            rr.run_dir / "interventions" / "interventions_plextract",
-            rr.run_dir / "plextract",
+            # rr.run_dir / "interventions" / "interventions_plextract",
+            # rr.run_dir / "plextract",
         ]:
             if not _llm_wd_er.exists():
                 continue
@@ -2543,8 +2531,8 @@ with tab_figs:
                 continue
             for _llm_d_er in sorted(_llm_out_base_er.iterdir()):
                 if _llm_d_er.is_dir() and (
-                    _llm_d_er.name == _fig_id_er or
-                    _llm_d_er.name.startswith(_fig_stem_er + "_subfig_")
+                    _fig_stem_er == _fig_id_er or
+                    _llm_d_er.name.startswith(_fig_stem_er + "_subfig_") #SUBFIG TEST HERE
                 ):
                     if _llm_d_er.name not in _llm_fig_options_er:
                         _llm_fig_options_er.append(_llm_d_er.name)
