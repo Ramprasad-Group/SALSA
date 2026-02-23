@@ -628,13 +628,17 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
         if df_points.empty:
             continue
 
-        df_points = subsample_figure_points(
-            df_points,
-            sample_col="series_label",
-            step=100,
-        )
-
-        print('=====DF_POINTS====', df_points)
+        # Keep all points for small/medium datasets so LLM row generation
+        # reflects the latest OCR output (e.g., 5 OCR rows should not collapse
+        # to a single sampled point). For very large datasets, downsample to
+        # roughly <=200 points to control prompt size.
+        _sample_step = max(1, (len(df_points) + 199) // 200)
+        if _sample_step > 1:
+            df_points = subsample_figure_points(
+                df_points,
+                sample_col="series_label",
+                step=_sample_step,
+            )
 
         if args.skip_llm or client is None:
             continue
