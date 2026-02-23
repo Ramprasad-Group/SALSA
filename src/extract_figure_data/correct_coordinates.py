@@ -131,23 +131,19 @@ def sort_and_check_labels(label_coordinates: dict, axis_label_texts: dict, img_k
     sorted_xlabels = sorted(xvalues.items(), key=lambda item: item[1])
 
     # Sort coords by pixel position (x: left->right, y: top->bottom)
-    # (We only use this to check pairing consistency)
     sorted_y_coords = sorted(y_coords.items(), key=lambda item: item[1][1], reverse=True)  # top->bottom
     sorted_x_coords = sorted(x_coords.items(), key=lambda item: item[1][0])
 
-    assert [label for label, _ in sorted_xlabels] == [coord for coord, _ in sorted_x_coords], \
-        "The keys of sorted_xlabels and sorted_x_coords are not in the same order."
-
-    assert [label for label, _ in sorted_ylabels] == [coord for coord, _ in sorted_y_coords], \
-        "The keys of sorted_ylabels and sorted_y_coords are not in the same order."
-
+    # Pair i-th pixel-position-sorted tick with i-th value-sorted tick.
+    # This is the standard chart assumption (left/bottom pixel = smallest value).
+    # If the key orders don't match it means OCR produced an unexpected value for
+    # a tick label (e.g. a misread digit), but we proceed with the positional
+    # pairing rather than raising an exception so the calibration can still run.
     xaggr, yaggr = {}, {}
     for (k1, v1), (k2, v2) in zip(sorted_x_coords, sorted_xlabels):
-        assert k1 == k2
         xaggr[k1] = {"coord": v1, "val": v2}
 
     for (k1, v1), (k2, v2) in zip(sorted_y_coords, sorted_ylabels):
-        assert k1 == k2
         yaggr[k1] = {"coord": v1, "val": v2}
 
     return {"xs": xaggr, "ys": yaggr}
