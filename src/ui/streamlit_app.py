@@ -1382,7 +1382,7 @@ with tab_figs:
                     key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
                 )
 
-                _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.LANCZOS)
+                _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.Resampling.LANCZOS)
                 st.write("**Draw crop regions directly on the image below.**")
                 # Include _crop_w_er in the key so the canvas re-initialises with the
                 # correct background image whenever the display width changes.
