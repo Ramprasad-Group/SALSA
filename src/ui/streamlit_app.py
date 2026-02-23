@@ -47,6 +47,7 @@ import os
 import sys
 import subprocess
 import sys
+import base64
 from typing import List, Optional
 import re
 from datetime import datetime
@@ -313,6 +314,82 @@ def st_image_auto(img, *, full_width=True, **kwargs):
     if "use_container_width" in sig.parameters:
         return st.image(img, use_container_width=full_width, **kwargs)
     return st.image(img, use_column_width=full_width, **kwargs)
+
+def st_resizable_image(image_path: Path, *, caption: Optional[str] = None, key: str = ""):
+    """
+    Render an image inside a container that can be resized by dragging
+    the bottom-right corner. This removes the need for explicit width sliders.
+    """
+    if not image_path.exists():
+        st.warning(f"Image not found: {image_path}")
+        return
+    try:
+        mime = f"image/{image_path.suffix.lower().lstrip('.') or 'png'}"
+        b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
+        st.markdown(
+            f"""
+            <div id="resizable-img-{key}" style="
+                width:min(100%, 700px);
+                max-width:100%;
+                resize:horizontal;
+                overflow:auto;
+                border:1px solid rgba(128,128,128,0.35);
+                border-radius:6px;
+                padding:4px;
+                margin-bottom:0.4rem;
+            ">
+                <img src="data:{mime};base64,{b64}" style="width:100%;height:auto;display:block;" />
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if caption:
+            st.caption(caption)
+    except Exception as _img_ex:
+        st.warning(f"Failed to render resizable image: {_img_ex}")
+        st_image_auto(str(image_path), full_width=True)
+
+
+def _parse_axis_title_for_override(text: str):
+    if not text:
+        return None, None
+    text = text.strip()
+    m = re.match(r"^(.*?)[\s]*[\[\(]([\s\S]*?)[\]\)]\s*$", text)
+    if m:
+        _name = m.group(1).strip() or None
+        _unit = m.group(2).strip() or None
+        return _name, _unit
+    return text or None, None
+
+
+def _apply_axis_title_override_df(df: pd.DataFrame, figure_dir: Path) -> pd.DataFrame:
+    _override_path = figure_dir / "chartdete" / "axis_title_override.json"
+    if not _override_path.exists() or df is None or df.empty:
+        return df
+    try:
+        _ov = json.loads(_override_path.read_text())
+    except Exception:
+        return df
+
+    _x_title = (_ov.get("x_title") or "").strip()
+    _y_title = (_ov.get("y_title") or "").strip()
+    if not _x_title and not _y_title:
+        return df
+
+    _out = df.copy()
+    if _x_title:
+        _x_name, _x_unit = _parse_axis_title_for_override(_x_title)
+        if _x_name is not None and "x_name" in _out.columns:
+            _out["x_name"] = _x_name
+        if _x_unit is not None and "x_unit" in _out.columns:
+            _out["x_unit"] = _x_unit
+    if _y_title:
+        _y_name, _y_unit = _parse_axis_title_for_override(_y_title)
+        if _y_name is not None and "y_name" in _out.columns:
+            _out["y_name"] = _y_name
+        if _y_unit is not None and "y_unit" in _out.columns:
+            _out["y_unit"] = _y_unit
+    return _out
 
 def doi_to_safe(doi: str) -> str:
     return doi.replace("/", "@").strip()
@@ -1344,22 +1421,12 @@ with tab_figs:
 
         # ---- 1. Figure image expander ----
         with st.expander(f"Figure: {f.id}", expanded=True):
-            # Add width control for figure images
-            fig_img_width = st.slider(
-                "Figure image width (px)",
-                min_value=200,
-                max_value=1200,
-                value=600,
-                step=50,
-                key=f"og_fig_img_width_{selected_doi}"
-            )
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
             if _source_img_er and _source_img_er.exists():
-                st.image(str(_source_img_er), width=fig_img_width)
+                st_resizable_image(_source_img_er, caption="Drag the bottom-right corner to resize", key=f"fig_src_{_safe_doi_er}_{_fig_id_er}")
             elif f.figure_path and f.figure_path.exists():
-                st.image(str(f.figure_path), width=fig_img_width)
-                st.caption(str(f.figure_path))
+                st_resizable_image(f.figure_path, caption=str(f.figure_path), key=f"fig_fallback_{_safe_doi_er}_{_fig_id_er}")
             else:
                 st.warning("No source image found for this figure.")
 
@@ -1369,11 +1436,7 @@ with tab_figs:
                 _pil_img_er = Image.open(_source_img_er).convert("RGB")
                 _orig_w_er, _orig_h_er = _pil_img_er.size
 
-                _default_crop_w_er = min(_orig_w_er, 600)
-                _crop_w_er = st.slider(
-                    "Display width (px)", 200, 1200, _default_crop_w_er,
-                    key=f"er_crop_w_{_safe_doi_er}_{_fig_id_er}"
-                )
+                _crop_w_er = min(_orig_w_er, 1100)
                 _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
 
                 _draw_mode_er = st.radio(
@@ -1382,7 +1445,7 @@ with tab_figs:
                     key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
                 )
 
-                _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.Resampling.LANCZOS)
+                _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.Resampling.LANCZOS).convert("RGBA")
                 st.write("**Draw crop regions directly on the image below.**")
                 # Include _crop_w_er in the key so the canvas re-initialises with the
                 # correct background image whenever the display width changes.
@@ -1391,7 +1454,7 @@ with tab_figs:
                     fill_color="rgba(255, 165, 0, 0.3)", stroke_color="#e63946", stroke_width=2,
                     update_streamlit=True, height=_display_h_er, width=_crop_w_er,
                     drawing_mode=_draw_mode_er,
-                    key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}_{_crop_w_er}",
+                    key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
                 )
 
                 _scale_x_er = _orig_w_er / _crop_w_er
@@ -1673,6 +1736,8 @@ with tab_figs:
             if final_csv and Path(final_csv).exists():
                 try:
                     df = _load_csv(final_csv)
+                    _figure_dir_for_overrides = Path(final_csv).parent.parent
+                    df = _apply_axis_title_override_df(df, _figure_dir_for_overrides)
                     st.data_editor(df, use_container_width=True, hide_index=True, key=f"fig_extracted_{selected_doi}_{f.id}")
                     st.caption(final_csv)
                 except Exception as e:
@@ -1927,7 +1992,7 @@ with tab_figs:
                             input_dir = latest_manual / "input" / safe_doi
                             original_img = input_dir / subfig_dir.name
                             if original_img.exists():
-                                st.image(str(original_img), width=fig_img_width, caption="Original cropped image")
+                                st_resizable_image(original_img, caption="Original cropped image", key=f"subfig_orig_{safe_doi}_{subfig_dir.name}")
                                 _subfig_img_found = True
                         if not _subfig_img_found:
                             # Fallback: check interventions crop directory
@@ -1935,7 +2000,7 @@ with tab_figs:
                             for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
                                 _candidate = _fig_d / subfig_dir.name
                                 if _candidate.exists():
-                                    st.image(str(_candidate), width=fig_img_width, caption="Original cropped image")
+                                    st_resizable_image(_candidate, caption="Original cropped image", key=f"subfig_crop_{safe_doi}_{subfig_dir.name}")
                                     _subfig_img_found = True
                                     break
                         if not _subfig_img_found:
@@ -1944,7 +2009,7 @@ with tab_figs:
                             if final_dir.exists():
                                 final_img = final_dir / "final_image.png"
                                 if final_img.exists():
-                                    st.image(str(final_img), width=fig_img_width, caption="Recreated image (original not found)")
+                                    st_resizable_image(final_img, caption="Recreated image (original not found)", key=f"subfig_final_{safe_doi}_{subfig_dir.name}")
 
                     # Show extracted dataset in expander
                     final_dir = subfig_dir / "final"
@@ -1953,6 +2018,7 @@ with tab_figs:
                         with st.expander("Extracted Data", expanded=False):
                             try:
                                 df_subfig = pd.read_csv(final_csv)
+                                df_subfig = _apply_axis_title_override_df(df_subfig, subfig_dir)
                                 st.data_editor(df_subfig, use_container_width=True, hide_index=True, key=f"subfig_extracted_{selected_doi}_{subfig_dir.name}")
                             except Exception as e:
                                 st.warning(f"Failed to load: {e}")
@@ -2060,7 +2126,7 @@ with tab_figs:
         # ========================
         # SECTION: Series Management
         # ========================
-        with st.expander("Series Management", expanded=False):
+        with st.expander("Series Management", expanded=True):
             # Determine which plextract workdir to use for series management.
             # Search across all relevant workdirs in priority order:
             #   1. Per-figure interventions plextract
@@ -2190,6 +2256,7 @@ with tab_figs:
                     return f"Series {idx}"
 
                 if _sm_source_img_er and _sm_source_img_er.exists():
+                    st_resizable_image(_sm_source_img_er, caption="Series management source image (drag to resize)", key=f"series_src_{_safe_doi_er}_{_sm_fig_id_er}")
                     _base_img_er = Image.open(_sm_source_img_er).convert("RGBA")
                     _w_er, _h_er = _base_img_er.size
                 else:
@@ -2197,11 +2264,7 @@ with tab_figs:
                     _base_img_er = None
                     _w_er, _h_er = 600, 400
 
-                _series_w_er = st.slider(
-                    "Series overlay image width (px)", 200, min(_w_er, 1500), min(_w_er, 600), 50,
-                    key=f"er_series_w_{_safe_doi_er}_{_sm_fig_id_er}"
-                )
-                _disp_w_er = _series_w_er
+                _disp_w_er = min(_w_er, 900)
                 _disp_h_er = int(_h_er * (_disp_w_er / _w_er))
 
                 # Build overlay
@@ -3067,4 +3130,3 @@ with tab_chem:
 
             except Exception as e:
                 st.error(f"Chemical composition extraction failed: {e}")
-
