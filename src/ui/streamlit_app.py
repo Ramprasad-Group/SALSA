@@ -1356,7 +1356,7 @@ with tab_figs:
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
             if _source_img_er and _source_img_er.exists():
-                st.image(str(_source_img_er), use_container_width=True)
+                st.image(str(_source_img_er), width=fig_img_width)
             elif f.figure_path and f.figure_path.exists():
                 st.image(str(f.figure_path), width=fig_img_width)
                 st.caption(str(f.figure_path))
