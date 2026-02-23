@@ -1371,7 +1371,7 @@ with tab_figs:
 
                 _default_crop_w_er = min(_orig_w_er, 600)
                 _crop_w_er = st.slider(
-                    "Display width (px)", 200, 1200, 450,
+                    "Display width (px)", 200, 1200, _default_crop_w_er,
                     key=f"er_crop_w_{_safe_doi_er}_{_fig_id_er}"
                 )
                 _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
@@ -1384,12 +1384,14 @@ with tab_figs:
 
                 _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.LANCZOS)
                 st.write("**Draw crop regions directly on the image below.**")
+                # Include _crop_w_er in the key so the canvas re-initialises with the
+                # correct background image whenever the display width changes.
                 _canvas_er = st_canvas(
                     background_image=_bg_img_er,
                     fill_color="rgba(255, 165, 0, 0.3)", stroke_color="#e63946", stroke_width=2,
                     update_streamlit=True, height=_display_h_er, width=_crop_w_er,
                     drawing_mode=_draw_mode_er,
-                    key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
+                    key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}_{_crop_w_er}",
                 )
 
                 _scale_x_er = _orig_w_er / _crop_w_er
@@ -1808,6 +1810,20 @@ with tab_figs:
                                     # Create temporary CSV with this DOI
                                     import tempfile
                                     import subprocess
+                                    import re as _re_dc
+
+                                    # Clear any existing row_cache entries for this subfigure so the
+                                    # LLM is always re-called and the most recent result is stored.
+                                    _row_cache_dir_dc = rr.run_dir / "complete_dataset" / "row_cache"
+                                    if _row_cache_dir_dc.exists():
+                                        _safe_fn_dc = lambda s: _re_dc.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                                        _cache_pfx_dc = _safe_fn_dc(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
+                                        for _cf_dc in list(_row_cache_dir_dc.iterdir()):
+                                            if _cf_dc.suffix == ".json" and (
+                                                _cf_dc.stem.startswith(_cache_pfx_dc) or
+                                                _cf_dc.name.startswith(_cache_pfx_dc)
+                                            ):
+                                                _cf_dc.unlink(missing_ok=True)
 
                                     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
                                         tmp.write(f"DOI\n{selected_doi}\n")
@@ -1893,7 +1909,7 @@ with tab_figs:
                                     Path(tmp_path).unlink(missing_ok=True)
 
                                     if result.returncode == 0:
-                                        st.success(f"Data completion completed for {subfig_dir.name}! Refresh to see updated row_cache data.")
+                                        st.success(f"Data completion completed for {subfig_dir.name}!")
                                         st.rerun()
                                     else:
                                         st.error(f"Data completion failed:\n```\n{result.stderr}\n```")

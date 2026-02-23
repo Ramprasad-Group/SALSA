@@ -276,6 +276,66 @@ def _stable_name_from_path(fp: Path) -> str:
     return f"{fp.parent.parent.name}__{fp.parent.name}__{fp.stem}__{h}"
     # Example: <some_dir>__final__final_dataset__a1b2c3d4e5
 
+
+def _parse_axis_title(text: str):
+    """
+    Extract (name, unit) from an axis title like "Time (h)" or "Conductivity [mS/cm]".
+    Returns (name_str, unit_str_or_None).
+    """
+    import re as _re
+    if not text:
+        return None, None
+    text = text.strip()
+    m = _re.match(r"^(.*?)[\s]*[\[\(]([\s\S]*?)[\]\)]\s*$", text)
+    if m:
+        name = m.group(1).strip()
+        unit = m.group(2).strip()
+        return name or None, unit or None
+    return text or None, None
+
+
+def _apply_axis_title_overrides(df: pd.DataFrame, figure_dir: Path) -> pd.DataFrame:
+    """
+    If an axis_title_override.json file exists in <figure_dir>/chartdete/, parse
+    it and overwrite the x_name, x_unit, y_name, y_unit columns in the DataFrame.
+    This propagates user-edited axis titles to the LLM without requiring a full
+    re-extraction.
+    """
+    override_path = figure_dir / "chartdete" / "axis_title_override.json"
+    if not override_path.exists():
+        return df
+
+    try:
+        with open(override_path, "r") as f:
+            ov = json.load(f)
+    except Exception:
+        return df
+
+    x_title = (ov.get("x_title") or "").strip()
+    y_title = (ov.get("y_title") or "").strip()
+
+    if not x_title and not y_title:
+        return df
+
+    df = df.copy()
+
+    if x_title:
+        x_name, x_unit = _parse_axis_title(x_title)
+        if x_name is not None and "x_name" in df.columns:
+            df["x_name"] = x_name
+        if x_unit is not None and "x_unit" in df.columns:
+            df["x_unit"] = x_unit
+
+    if y_title:
+        y_name, y_unit = _parse_axis_title(y_title)
+        if y_name is not None and "y_name" in df.columns:
+            df["y_name"] = y_name
+        if y_unit is not None and "y_unit" in df.columns:
+            df["y_unit"] = y_unit
+
+    return df
+
+
 def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = None) -> List[FigurePointDataset]:
     """
     Load extracted figure datasets from both interventions_plextract and plextract directories.
@@ -314,6 +374,9 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
                     df = df[keep].copy()
                     if df.empty:
                         continue
+                    # Apply any user-edited axis title overrides so the LLM gets
+                    # the corrected x_name/x_unit/y_name/y_unit values.
+                    df = _apply_axis_title_overrides(df, fp.parent.parent)
                     out.append(FigurePointDataset(
                         name=_stable_name_from_path(fp),
                         path=str(fp),
@@ -347,6 +410,8 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
             df = df[keep].copy()
             if df.empty:
                 continue
+            # Apply any user-edited axis title overrides.
+            df = _apply_axis_title_overrides(df, fp.parent.parent)
 
             out.append(FigurePointDataset(
                 name=_stable_name_from_path(fp),
