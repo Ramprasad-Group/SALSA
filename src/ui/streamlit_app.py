@@ -2575,155 +2575,19 @@ with tab_figs:
                 st.markdown("**Cropped Subfigures**")
 
                 for subfig_dir in subfig_dirs:
-                    # Subfigure header with data completion button
-                    col_header, col_button = st.columns([3, 1])
-                    with col_header:
-                        st.markdown(f"### {subfig_dir.name}")
-                    with col_button:
-                        if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
-                            with st.spinner(f"Running data completion for {subfig_dir.name}..."):
-                                try:
-                                    # Verify index.csv exists
-                                    reparsed_dir = rr.run_dir / "reparsed"
-                                    index_csv_path = reparsed_dir / "index.csv"
-
-                                    if not index_csv_path.exists():
-                                        error_msg = f"**Required file not found:** `{index_csv_path.relative_to(rr.run_dir)}`\n\n"
-
-                                        if not reparsed_dir.exists():
-                                            error_msg += "The `reparsed/` directory doesn't exist. "
-                                        else:
-                                            error_msg += "The `reparsed/` directory exists but `index.csv` is missing. "
-
-                                        error_msg += ("This file is created during the 'Download DOIs' stage of the pipeline.\n\n"
-                                                     "**To fix this:**\n"
-                                                     "1. Run the full pipeline with 'Download DOIs' enabled, OR\n"
-                                                     "2. If you've already downloaded papers, check if `index.csv` exists in a different workspace")
-
-                                        st.error(error_msg)
-                                        continue
-
-                                    # Create temporary CSV with this DOI
-                                    import tempfile
-                                    import subprocess
-                                    import re as _re_dc
-
-                                    # Clear any existing row_cache entries for this subfigure so the
-                                    # LLM is always re-called and the most recent result is stored.
-                                    _row_cache_dir_dc = rr.run_dir / "complete_dataset" / "row_cache"
-                                    if _row_cache_dir_dc.exists():
-                                        _safe_fn_dc = lambda s: _re_dc.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
-                                        _cache_pfx_dc = _safe_fn_dc(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
-                                        for _cf_dc in list(_row_cache_dir_dc.iterdir()):
-                                            if _cf_dc.suffix == ".json" and (
-                                                _cf_dc.stem.startswith(_cache_pfx_dc) or
-                                                _cf_dc.name.startswith(_cache_pfx_dc)
-                                            ):
-                                                _cf_dc.unlink(missing_ok=True)
-
-                                    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
-                                        tmp.write(f"DOI\n{selected_doi}\n")
-                                        tmp_path = tmp.name
-
-                                    # Run complete_dataset.py
-                                    complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-
-                                    # Determine the best extracted_figures_root for this subfigure.
-                                    # The subfig_dir already points to the correct output directory.
-                                    _efr = subfig_dir.parent.parent  # .../output
-                                    cmd = [
-                                        "python", str(complete_dataset_script),
-                                        "--file_path", tmp_path,
-                                        "--output_dir", str(rr.run_dir / "complete_dataset"),
-                                        "--index_csv_path", str(index_csv_path),
-                                        "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
-                                        "--extracted_figures_root", str(_efr),
-                                        "--target_figure", subfig_dir.name,
-                                    ]
-
-                                    # Pass LLM configuration environment variables to subprocess
-                                    env = os.environ.copy()
-
-                                    # Apply LLM configuration from session state
-                                    provider = st.session_state.get("llm_provider", "Ollama")
-                                    model = st.session_state.get("llm_model", "")
-
-                                    if provider == "Ollama":
-                                        env["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                        env["AEM_OCR_LLM_MODEL"] = model
-                                        env["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                        ollama_models_dir = st.session_state.get("ollama_models_dir", "")
-                                        if ollama_models_dir:
-                                            env["OLLAMA_MODELS"] = ollama_models_dir
-                                    else:
-                                        env["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                        env["AEM_OCR_LLM_MODEL"] = model
-                                        env["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                        if st.session_state.get("openai_api_key"):
-                                            env["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-
-                                    # Apply data processing LLM configuration if separate
-                                    if st.session_state.get("use_separate_processing_llm"):
-                                        p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
-                                        p_model = st.session_state.get("processing_llm_model", "")
-                                        if p_provider == "Ollama":
-                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                                        else:
-                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                                            p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                            p_key = st.session_state.get("processing_openai_api_key", "")
-                                            if p_base:
-                                                env["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
-                                            if p_key:
-                                                env["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
-                                    else:
-                                        # Clear processing-specific env vars so processing uses the general LLM
-                                        for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                                   "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                                            env.pop(k, None)
-
-                                    # Validate that a model is configured
-                                    if not model and not st.session_state.get("processing_llm_model"):
-                                        st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
-                                        Path(tmp_path).unlink(missing_ok=True)
-                                        continue
-
-                                    # Set custom instructions path if it exists in the workspace
-                                    ci_path = rr.run_dir.parent / "custom_instructions" / "default.json"
-                                    if ci_path.exists():
-                                        env["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
-
-                                    # Set run ID and run directory for cost tracking
-                                    env["AEM_OCR_RUN_ID"] = rr.run_id
-                                    env["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
-
-                                    result = subprocess.run(cmd, stdout=None, stderr=None, text=True, timeout=300, env=env)
-
-                                    # Clean up temp file
-                                    Path(tmp_path).unlink(missing_ok=True)
-
-                                    if result.returncode == 0:
-                                        st.success(f"Data completion completed for {subfig_dir.name}!")
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
-                                except subprocess.TimeoutExpired:
-                                    st.error("Data completion timed out (>5 minutes)")
-                                except Exception as e:
-                                    st.error(f"Error running data completion: {e}")
-
+                    st.markdown(f"### {subfig_dir.name}")
                     with st.expander(f"### {subfig_dir.name}"):
                         # Show original cropped image instead of recreated image.
                         # subfig_dir.name already includes the extension (e.g.
                         # "Figure_5_subfig_0.png"), so do NOT append ".png" again.
                         _subfig_img_found = False
+                        _subfig_source_img = None
                         if latest_manual:
                             input_dir = latest_manual / "input" / safe_doi
                             original_img = input_dir / subfig_dir.name
                             if original_img.exists():
                                 st_resizable_image(original_img, caption="Original cropped image", key=f"subfig_orig_{safe_doi}_{subfig_dir.name}")
+                                _subfig_source_img = original_img
                                 _subfig_img_found = True
                         if not _subfig_img_found:
                             # Fallback: check interventions crop directory
@@ -2732,6 +2596,7 @@ with tab_figs:
                                 _candidate = _fig_d / subfig_dir.name
                                 if _candidate.exists():
                                     st_resizable_image(_candidate, caption="Original cropped image", key=f"subfig_crop_{safe_doi}_{subfig_dir.name}")
+                                    _subfig_source_img = _candidate
                                     _subfig_img_found = True
                                     break
                         if not _subfig_img_found:
@@ -2741,6 +2606,104 @@ with tab_figs:
                                 final_img = final_dir / "final_image.png"
                                 if final_img.exists():
                                     st_resizable_image(final_img, caption="Recreated image (original not found)", key=f"subfig_final_{safe_doi}_{subfig_dir.name}")
+
+                        st.selectbox(
+                            "Figure/subfigure target",
+                            [subfig_dir.name],
+                            key=f"subfig_target_{safe_doi}_{subfig_dir.name}",
+                        )
+
+                        _ocr_col, _llm_col = st.columns(2)
+                        with _ocr_col:
+                            if st.button("Rerun OCR data extraction", type="primary", key=f"subfig_rerun_ocr_{safe_doi}_{subfig_dir.name}"):
+                                try:
+                                    with st.spinner("Applying mask overrides..."):
+                                        apply_overrides_to_plextract(subfig_dir, rr.run_dir, safe_doi, subfig_dir.name)
+
+                                    if not (_subfig_source_img and _subfig_source_img.exists()):
+                                        st.error("Could not locate subfigure source image for rerun.")
+                                    else:
+                                        _subfig_lf_override = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                                        _lf_map = {}
+                                        if _subfig_lf_override.exists():
+                                            _lf_map[_subfig_source_img.name] = _subfig_lf_override
+
+                                        with st.spinner("Re-running data extraction..."):
+                                            run_plextract_intervention_on_crops(
+                                                scripts_root=scripts_root,
+                                                run_dir=rr.run_dir,
+                                                safe_doi=safe_doi,
+                                                image_paths=[_subfig_source_img],
+                                                override_lineformer_dirs=_lf_map,
+                                                figure_id=subfig_dir.name,
+                                            )
+                                        st.success(f"Data extraction complete for {subfig_dir.name}!")
+                                        st.rerun()
+                                except Exception as _subfig_ocr_e:
+                                    st.error(f"Failed: {_subfig_ocr_e}")
+
+                        with _llm_col:
+                            if st.button("Rerun LLM dataset generation", type="primary", key=f"subfig_rerun_llm_{safe_doi}_{subfig_dir.name}"):
+                                _reparsed_dir_sf = rr.run_dir / "reparsed"
+                                _index_csv_sf = _reparsed_dir_sf / "index.csv"
+                                if not _index_csv_sf.exists():
+                                    st.error(f"Required file not found: `{_index_csv_sf.relative_to(rr.run_dir)}`")
+                                else:
+                                    try:
+                                        _row_cache_dir_sf = rr.run_dir / "complete_dataset" / "row_cache"
+                                        if _row_cache_dir_sf.exists():
+                                            import re as _re_sf
+                                            _safe_fn_sf = lambda s: _re_sf.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                                            _cache_pfx_sf = _safe_fn_sf(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
+                                            for _cf_sf in list(_row_cache_dir_sf.iterdir()):
+                                                if _cf_sf.suffix == ".json" and (_cf_sf.stem.startswith(_cache_pfx_sf) or _cf_sf.name.startswith(_cache_pfx_sf)):
+                                                    _cf_sf.unlink(missing_ok=True)
+
+                                        import tempfile as _tmpmod_sf
+                                        with _tmpmod_sf.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_sf:
+                                            _tmp_sf.write(f"DOI\n{selected_doi}\n")
+                                            _tmp_path_sf = _tmp_sf.name
+
+                                        _complete_script_sf = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+                                        _cmd_sf = [
+                                            "python", str(_complete_script_sf),
+                                            "--file_path", _tmp_path_sf,
+                                            "--output_dir", str(rr.run_dir / "complete_dataset"),
+                                            "--index_csv_path", str(_index_csv_sf),
+                                            "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
+                                            "--extracted_figures_root", str(subfig_dir.parent.parent),
+                                            "--target_figure", subfig_dir.name,
+                                        ]
+
+                                        _env_sf = os.environ.copy()
+                                        _provider_sf = st.session_state.get("llm_provider", "Ollama")
+                                        _model_sf = st.session_state.get("llm_model", "")
+                                        if _provider_sf == "Ollama":
+                                            _env_sf["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                                            _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
+                                            _env_sf["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                        else:
+                                            _env_sf["AEM_OCR_LLM_PROVIDER"] = "openai"
+                                            _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
+                                            _env_sf["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                                            if st.session_state.get("openai_api_key"):
+                                                _env_sf["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+                                        _env_sf["AEM_OCR_RUN_ID"] = rr.run_id
+                                        _env_sf["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+
+                                        with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
+                                            _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)
+                                        Path(_tmp_path_sf).unlink(missing_ok=True)
+                                        if _result_sf.returncode == 0:
+                                            st.success(f"LLM dataset generation complete for {subfig_dir.name}!")
+                                            st.rerun()
+                                        else:
+                                            st.error(f"LLM dataset generation failed:\n```\n{_result_sf.stderr}\n```")
+                                    except subprocess.TimeoutExpired:
+                                        st.error("LLM dataset generation timed out (>5 minutes)")
+                                    except Exception as _subfig_llm_e:
+                                        st.error(f"Error: {_subfig_llm_e}")
 
                     # Show extracted dataset in expander
                     final_dir = subfig_dir / "final"
@@ -3145,7 +3108,7 @@ with tab_xy:
         st.info(
             "No dataset rows found in row_cache for this DOI.\n\n"
             "To generate dataset rows: enable **Complete dataset (LLM)** and run the pipeline, "
-            "or use the 'Run Data Completion' button on individual figures/tables."
+            "or use the per-figure/per-subfigure 'Rerun LLM dataset generation' controls."
         )
 
     # Show legacy dataset CSV if it exists (for reference)
