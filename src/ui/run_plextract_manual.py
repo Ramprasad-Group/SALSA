@@ -176,6 +176,7 @@ def run_plextract_intervention_on_crops(
     image_paths: list[Path],
     override_lineformer_dirs: Dict[str, Path],
     figure_id: Optional[str] = None,
+    override_chartdete_dirs: Optional[Dict[str, Path]] = None,
 ) -> None:
     """
     Run the lightweight intervention pipeline (plextract_intervention.py) on a
@@ -218,6 +219,9 @@ def run_plextract_intervention_on_crops(
             function to ensure the directory is up to date.
         figure_id:                When set, results are written to a per-figure
             subdirectory so multiple figures do not interfere with one another.
+        override_chartdete_dirs:  Optional mapping of image filename to a
+            chartdete directory. When provided for an image, this path is used
+            first and avoids relying on heuristic chartdete lookup.
     """
     if not image_paths:
         raise FileNotFoundError("No image files provided for extraction")
@@ -276,7 +280,11 @@ def run_plextract_intervention_on_crops(
         # The convention is: .../output/<doi>/<img>/lineformer
         #                     .../output/<doi>/<img>/chartdete
         for img_name, lf_src_dir in override_lineformer_dirs.items():
-            cd_src_dir = lf_src_dir.parent / "chartdete"
+            cd_src_dir = None
+            if override_chartdete_dirs and img_name in override_chartdete_dirs:
+                cd_src_dir = override_chartdete_dirs[img_name]
+            if not cd_src_dir or not cd_src_dir.exists():
+                cd_src_dir = lf_src_dir.parent / "chartdete"
             if not cd_src_dir.exists():
                 # The intervention override lineformer dir may not have a sibling
                 # chartdete directory. In that case, reuse the original

@@ -2887,6 +2887,10 @@ with tab_figs:
                                 _lf_map = {}
                                 if _subfig_lf_override.exists():
                                     _lf_map[_subfig_source_img.name] = _subfig_lf_override
+                                _cd_map = {}
+                                _subfig_cd_dir = subfig_dir / "chartdete"
+                                if _subfig_cd_dir.exists():
+                                    _cd_map[_subfig_source_img.name] = _subfig_cd_dir
 
                                 with st.spinner("Re-running data extraction..."):
                                     run_plextract_intervention_on_crops(
@@ -2895,7 +2899,8 @@ with tab_figs:
                                         safe_doi=safe_doi,
                                         image_paths=[_subfig_source_img],
                                         override_lineformer_dirs=_lf_map,
-                                        figure_id=subfig_dir.name,
+                                        figure_id=f.id,
+                                        override_chartdete_dirs=_cd_map,
                                     )
                                 st.success(f"Data extraction complete for {subfig_dir.name}!")
                                 st.rerun()
