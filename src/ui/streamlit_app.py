@@ -2705,11 +2705,108 @@ with tab_figs:
                                     except Exception as _subfig_llm_e:
                                         st.error(f"Error: {_subfig_llm_e}")
 
+                    with st.expander("Axis Configuration", expanded=False):
+                        _subfig_chartdete_dir = subfig_dir / "chartdete"
+                        _subfig_chartdete_dir.mkdir(parents=True, exist_ok=True)
+                        _subfig_titles_path = _subfig_chartdete_dir / "axis_title_override.json"
+                        _subfig_axis_type_path = _subfig_chartdete_dir / "axis_type_override.json"
+
+                        _subfig_x_title_default = ""
+                        _subfig_y_title_default = ""
+                        if _subfig_titles_path.exists():
+                            try:
+                                _subfig_titles_data = json.loads(_subfig_titles_path.read_text())
+                                _subfig_x_title_default = _subfig_titles_data.get("x_title", "") or ""
+                                _subfig_y_title_default = _subfig_titles_data.get("y_title", "") or ""
+                            except Exception:
+                                pass
+
+                        _subfig_axis_type_default = {"x_axis_type": "linear", "y_axis_type": "linear"}
+                        if _subfig_axis_type_path.exists():
+                            try:
+                                _subfig_axis_type_data = json.loads(_subfig_axis_type_path.read_text())
+                                _subfig_axis_type_default["x_axis_type"] = _subfig_axis_type_data.get("x_axis_type", "linear")
+                                _subfig_axis_type_default["y_axis_type"] = _subfig_axis_type_data.get("y_axis_type", "linear")
+                            except Exception:
+                                pass
+
+                        _subfig_x_title = st.text_input(
+                            "X axis title",
+                            value=_subfig_x_title_default,
+                            key=f"subfig_x_title_{safe_doi}_{subfig_dir.name}",
+                        )
+                        _subfig_y_title = st.text_input(
+                            "Y axis title",
+                            value=_subfig_y_title_default,
+                            key=f"subfig_y_title_{safe_doi}_{subfig_dir.name}",
+                        )
+                        _subfig_x_type = st.selectbox(
+                            "X axis type",
+                            ["linear", "log10"],
+                            index=0 if _subfig_axis_type_default["x_axis_type"] == "linear" else 1,
+                            key=f"subfig_x_type_{safe_doi}_{subfig_dir.name}",
+                        )
+                        _subfig_y_type = st.selectbox(
+                            "Y axis type",
+                            ["linear", "log10"],
+                            index=0 if _subfig_axis_type_default["y_axis_type"] == "linear" else 1,
+                            key=f"subfig_y_type_{safe_doi}_{subfig_dir.name}",
+                        )
+
+                        if st.button("Save axis configuration", key=f"subfig_save_axis_{safe_doi}_{subfig_dir.name}"):
+                            _subfig_titles_path.write_text(json.dumps({"x_title": _subfig_x_title, "y_title": _subfig_y_title}, indent=2))
+                            _subfig_axis_type_path.write_text(json.dumps({"x_axis_type": _subfig_x_type, "y_axis_type": _subfig_y_type}, indent=2))
+                            st.success("Saved axis configuration for subfigure.")
+
+                    with st.expander("Series Management", expanded=False):
+                        _subfig_lf_dir = get_lineformer_dir(subfig_dir)
+                        _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                        if _subfig_lf_dir is None or not _subfig_lf_dir.exists():
+                            _subfig_override_lf.mkdir(parents=True, exist_ok=True)
+                            _subfig_catalog = _subfig_override_lf / "series_catalog.json"
+                            if not _subfig_catalog.exists():
+                                _subfig_catalog.write_text("[]")
+                            _subfig_lf_dir = _subfig_override_lf
+
+                        _subfig_series_items = load_series_catalog(_subfig_lf_dir)
+                        _subfig_mapping = load_mapping(rr.run_dir, safe_doi, subfig_dir.name)
+                        _subfig_names = _subfig_mapping.get("series_names", {})
+                        _subfig_deleted = set(int(x) for x in _subfig_mapping.get("deleted", []))
+
+                        if not _subfig_series_items:
+                            st.info("No detected series found for this subfigure yet.")
+                        else:
+                            _subfig_new_names = {}
+                            _subfig_new_deleted = set(_subfig_deleted)
+                            for _subfig_series_item in sorted(_subfig_series_items, key=lambda _s: _s.series_index):
+                                _subfig_idx = _subfig_series_item.series_index
+                                _subfig_cols = st.columns([4, 1])
+                                with _subfig_cols[0]:
+                                    _subfig_new_names[str(_subfig_idx)] = st.text_input(
+                                        f"Series {_subfig_idx} name",
+                                        value=_subfig_names.get(str(_subfig_idx), f"Series {_subfig_idx}"),
+                                        key=f"subfig_series_name_{safe_doi}_{subfig_dir.name}_{_subfig_idx}",
+                                    )
+                                with _subfig_cols[1]:
+                                    if st.checkbox("Delete", value=_subfig_idx in _subfig_deleted, key=f"subfig_series_del_{safe_doi}_{subfig_dir.name}_{_subfig_idx}"):
+                                        _subfig_new_deleted.add(_subfig_idx)
+                                    elif _subfig_idx in _subfig_new_deleted:
+                                        _subfig_new_deleted.remove(_subfig_idx)
+
+                            if st.button("Save series mapping", key=f"subfig_save_series_{safe_doi}_{subfig_dir.name}"):
+                                save_mapping(
+                                    rr.run_dir,
+                                    safe_doi,
+                                    subfig_dir.name,
+                                    {"series_names": _subfig_new_names, "deleted": sorted(list(_subfig_new_deleted))},
+                                )
+                                st.success("Saved series mapping for subfigure.")
+
                     # Show extracted dataset in expander
                     final_dir = subfig_dir / "final"
                     final_csv = final_dir / "final_dataset.csv"
                     if final_csv.exists():
-                        with st.expander("Extracted Data", expanded=False):
+                        with st.expander("OCR-Extracted Data", expanded=False):
                             try:
                                 df_subfig = pd.read_csv(final_csv)
                                 df_subfig = _apply_axis_title_override_df(df_subfig, subfig_dir)
@@ -2717,16 +2814,16 @@ with tab_figs:
                             except Exception as e:
                                 st.warning(f"Failed to load: {e}")
 
-                        # Show emit_rows for this subfigure from row_cache
-                        emit_rows_path_subfig = find_emit_rows_for_source(
-                            rr.run_dir, selected_doi, "figure", subfig_dir.name
-                        )
-                        if emit_rows_path_subfig:
-                            df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
-                            if df_emit_subfig is not None and not df_emit_subfig.empty:
-                                with st.expander("LLM-Generated Dataset", expanded=False):
-                                    st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
-                                    st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
+                    # Show emit_rows for this subfigure from row_cache
+                    emit_rows_path_subfig = find_emit_rows_for_source(
+                        rr.run_dir, selected_doi, "figure", subfig_dir.name
+                    )
+                    if emit_rows_path_subfig:
+                        df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
+                        if df_emit_subfig is not None and not df_emit_subfig.empty:
+                            with st.expander("LLM-Generated Dataset", expanded=False):
+                                st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
+                                st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
 
                     # Add separator between subfigures if there are multiple
                     if subfig_dir != subfig_dirs[-1]:
