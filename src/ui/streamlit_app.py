@@ -2090,36 +2090,36 @@ with tab_figs:
                     _sm_subfig_dirs_er = _found_er
                     break  # use the first workdir that has subfigures
 
-            if _sm_subfig_dirs_er:
-                st.info(f"Found {len(_sm_subfig_dirs_er)} cropped subfigure(s). Select one to manage its series:")
-                _sm_subfig_opts_er = [d.name for d in _sm_subfig_dirs_er]
-                _sm_sel_subfig_er = st.selectbox(
-                    "Select subfigure for series management",
-                    _sm_subfig_opts_er,
-                    key=f"er_series_subfig_{_safe_doi_er}_{_fig_id_er}"
-                )
-                _sm_subfig_idx_er = _sm_subfig_opts_er.index(_sm_sel_subfig_er)
-                _sm_fig_dir_er = _sm_subfig_dirs_er[_sm_subfig_idx_er]
-                _sm_fig_id_er = _sm_fig_dir_er.name
+            # if _sm_subfig_dirs_er:
+            #     st.info(f"Found {len(_sm_subfig_dirs_er)} cropped subfigure(s). Select one to manage its series:")
+            #     _sm_subfig_opts_er = [d.name for d in _sm_subfig_dirs_er]
+            #     _sm_sel_subfig_er = st.selectbox(
+            #         "Select subfigure for series management",
+            #         _sm_subfig_opts_er,
+            #         key=f"er_series_subfig_{_safe_doi_er}_{_fig_id_er}"
+            #     )
+            #     _sm_subfig_idx_er = _sm_subfig_opts_er.index(_sm_sel_subfig_er)
+            #     _sm_fig_dir_er = _sm_subfig_dirs_er[_sm_subfig_idx_er]
+            #     _sm_fig_id_er = _sm_fig_dir_er.name
 
-                # Try to find source image for this subfigure
-                _crops_dir_sm = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
-                _subfig_match_er = re.search(r"_subfig_(\d+)$", Path(_sm_fig_id_er).stem)
-                _subfig_num_er = _subfig_match_er.group(1) if _subfig_match_er else str(_sm_subfig_idx_er)
-                _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_subfig_num_er}.png"
-                if _subfig_src_er.exists():
-                    _sm_source_img_er = _subfig_src_er
-                else:
-                    _run_root_sm = _sm_fig_dir_er.parent.parent.parent
-                    _input_dir_sm = _run_root_sm / "input" / _safe_doi_er
-                    _input_cand_sm = _input_dir_sm / _sm_fig_id_er
-                    if _input_cand_sm.exists():
-                        _sm_source_img_er = _input_cand_sm
-                    else:
-                        _stem_sm = Path(_sm_fig_id_er).stem
-                        _fallback_hits_sm = sorted(_input_dir_sm.glob(f"{_stem_sm}.*")) if _input_dir_sm.exists() else []
-                        if _fallback_hits_sm:
-                            _sm_source_img_er = _fallback_hits_sm[0]
+            #     # Try to find source image for this subfigure
+            #     _crops_dir_sm = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
+            #     _subfig_match_er = re.search(r"_subfig_(\d+)$", Path(_sm_fig_id_er).stem)
+            #     _subfig_num_er = _subfig_match_er.group(1) if _subfig_match_er else str(_sm_subfig_idx_er)
+            #     _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_subfig_num_er}.png"
+            #     if _subfig_src_er.exists():
+            #         _sm_source_img_er = _subfig_src_er
+            #     else:
+            #         _run_root_sm = _sm_fig_dir_er.parent.parent.parent
+            #         _input_dir_sm = _run_root_sm / "input" / _safe_doi_er
+            #         _input_cand_sm = _input_dir_sm / _sm_fig_id_er
+            #         if _input_cand_sm.exists():
+            #             _sm_source_img_er = _input_cand_sm
+            #         else:
+            #             _stem_sm = Path(_sm_fig_id_er).stem
+            #             _fallback_hits_sm = sorted(_input_dir_sm.glob(f"{_stem_sm}.*")) if _input_dir_sm.exists() else []
+            #             if _fallback_hits_sm:
+            #                 _sm_source_img_er = _fallback_hits_sm[0]
 
             _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
 
