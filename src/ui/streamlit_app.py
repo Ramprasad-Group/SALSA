@@ -2697,6 +2697,17 @@ with tab_figs:
         # Show new OCR and LLM data once a per-figure plextract_interventions
         # run exists (i.e. the user has clicked "Rerun data extraction").
         # ========================
+        fig_stem = Path(f.id).stem
+        _int_doi_dir = rr.run_dir / "interventions" / safe_doi
+        _per_fig_plextract: Path | None = None
+        if _int_doi_dir.exists():
+            for _int_fig_d in _int_doi_dir.iterdir():
+                if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
+                    _candidate = _int_fig_d / "plextract_interventions"
+                    if _candidate.exists():
+                        _per_fig_plextract = _candidate
+                    break
+
         if _per_fig_plextract and _per_fig_plextract.exists():
             _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
             _int_out_base = (
@@ -2728,10 +2739,7 @@ with tab_figs:
         # Collect subfigure dirs from all relevant workdirs, deduplicating by name.
         # Per-figure plextract_interventions takes highest priority (most up-to-date),
         # then the legacy shared interventions_plextract, then original plextract.
-        fig_stem = Path(f.id).stem
         _subfig_map: dict[str, Path] = {}  # name -> dir (first match wins)
-
-        from intervention import latest_plextract_run_dir
 
         # Build priority-ordered list of workdirs to search for subfigures.
         _workdirs_priority: list[Path] = []
@@ -2739,16 +2747,8 @@ with tab_figs:
         # 1. Per-figure plextract_interventions: each figure dir under
         #    interventions/<safe_doi>/ may have its own plextract_interventions/
         #    subdir when the user ran "Re-run extraction" for that specific figure.
-        _int_doi_dir = rr.run_dir / "interventions" / safe_doi
-        _per_fig_plextract: Path | None = None
-        if _int_doi_dir.exists():
-            for _int_fig_d in _int_doi_dir.iterdir():
-                if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
-                    _candidate = _int_fig_d / "plextract_interventions"
-                    if _candidate.exists():
-                        _per_fig_plextract = _candidate
-                        _workdirs_priority.append(_candidate)
-                    break
+        if _per_fig_plextract is not None:
+            _workdirs_priority.append(_per_fig_plextract)
 
         # 2. Legacy shared interventions_plextract (backward compatibility).
         _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
