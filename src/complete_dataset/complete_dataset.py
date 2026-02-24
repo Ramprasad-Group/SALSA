@@ -963,6 +963,7 @@ def main():
             log.error(f"Failed to write combined record for DOI {doi} to {combined_json_path}: {e}")
 
         # Build dataset per DOI
+        print('===complete_record===', complete_record)
         try:
             # dataset_df = complete_dataset_with_plans(complete_record, client)
             dataset_df = complete_dataset_llm(complete_record, client)

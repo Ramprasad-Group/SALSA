@@ -401,6 +401,7 @@ def infer_rows_for_table(
         - Do NOT merge multiple data points into one row.
         - Do not invent values.
         - Do not infer trends.
+        - Do not perform any unit conversions.
 
         Allowed information sources:
         - (1) the provided table
@@ -577,6 +578,7 @@ def infer_rows_for_figure_dataset(
         - Do NOT merge multiple data points into one row.
         - Do not invent values.
         - Do not infer trends.
+        - Do not perform any unit conversions.
 
         Allowed information sources:
         - (1) the provided figure data

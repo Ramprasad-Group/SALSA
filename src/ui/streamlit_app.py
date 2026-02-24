@@ -1419,7 +1419,9 @@ with tab_figs:
                         _ax_subfig_options_er.append(_ax_d_er.name)
                         _ax_subfig_dirs_er.append(_ax_d_er)
 
-        # ---- 1. Figure image expander ----
+        # ========================
+        # SECTION: Figure expander
+        # ========================
         with st.expander(f"Figure: {f.id}", expanded=True):
             if f.caption:
                 st.markdown(f"**Caption:** {f.caption}")
@@ -1430,62 +1432,190 @@ with tab_figs:
             else:
                 st.warning("No source image found for this figure.")
 
-        # ---- 2. Crop Figure expander ----
+
+        # ========================
+        # SECTION: Cropping
+        # ========================
         with st.expander("Crop Figure", expanded=False):
-            if _source_img_er and _source_img_er.exists():
+            if not (_source_img_er and _source_img_er.exists()):
+                st.warning("No source image found for this figure.")
+            else:
+                # ---- Load image ----
                 _pil_img_er = Image.open(_source_img_er).convert("RGB")
                 _orig_w_er, _orig_h_er = _pil_img_er.size
 
-                _crop_w_er = min(_orig_w_er, 1100)
-                _display_h_er = int(_orig_h_er * (_crop_w_er / _orig_w_er))
+                # ---- Display sizing ----
+                _max_display_w_er = 1100
+                _disp_w_er = min(_orig_w_er, _max_display_w_er)
+                _disp_h_er = int(round(_orig_h_er * (_disp_w_er / _orig_w_er)))
+
+                # IMPORTANT: streamlit-drawable-canvas draws correctly when the background image
+                # is a *PIL Image* (RGB/RGBA) that matches the canvas width/height exactly.
+                _bg_img_er = _pil_img_er.resize((_disp_w_er, _disp_h_er), Image.Resampling.LANCZOS).convert("RGBA")
+
+                # ---- Controls ----
+                st.write("**Draw crop rectangles directly on top of the image.**")
+
+                _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
+                _canvas_key_er = f"er_canvas_{_safe_doi_er}_{_fig_id_er}_{_disp_w_er}x{_disp_h_er}"
 
                 _draw_mode_er = st.radio(
-                    "Canvas mode", ["rect", "transform"],
-                    format_func=lambda x: "Draw new rectangles" if x == "rect" else "Edit/reshape rectangles",
-                    key=f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}", horizontal=True
+                    "Mode",
+                    ["rect", "transform"],
+                    format_func=lambda x: "Draw rectangles" if x == "rect" else "Move/resize rectangles",
+                    key=_mode_key_er,
+                    horizontal=True,
                 )
 
-                _bg_img_er = _pil_img_er.resize((_crop_w_er, _display_h_er), Image.Resampling.LANCZOS).convert("RGBA")
-                st.write("**Draw crop regions directly on the image below.**")
-                # Include _crop_w_er in the key so the canvas re-initialises with the
-                # correct background image whenever the display width changes.
+                _btn_cols_er = st.columns([1, 1, 2])
+                with _btn_cols_er[0]:
+                    _clear_canvas_clicked = st.button("Clear drawn rectangles", key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}")
+                with _btn_cols_er[1]:
+                    _show_json = st.checkbox("Show raw canvas JSON", value=False, key=f"er_show_canvas_json_{_safe_doi_er}_{_fig_id_er}")
+
+                # ---- Clear canvas (must change canvas key OR use session_state for the canvas component) ----
+                # streamlit-drawable-canvas stores state by key; to truly clear, we bump a version suffix.
+                _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
+                if _cv_ver_key not in st.session_state:
+                    st.session_state[_cv_ver_key] = 0
+                if _clear_canvas_clicked:
+                    st.session_state[_cv_ver_key] += 1
+                    st.rerun()
+
+                _canvas_key_er = f"{_canvas_key_er}_v{st.session_state[_cv_ver_key]}"
+
+                # ---- Canvas ----
+                # NOTE: The most common reason you "can't crop anything" is the canvas is in a mode
+                # that doesn't create rectangles, or the object parsing ignores transforms.
+                # We set drawing_mode to rect/transform and parse *all* rect transforms properly.
                 _canvas_er = st_canvas(
                     background_image=_bg_img_er,
-                    fill_color="rgba(255, 165, 0, 0.3)", stroke_color="#e63946", stroke_width=2,
-                    update_streamlit=True, height=_display_h_er, width=_crop_w_er,
-                    drawing_mode=_draw_mode_er,
-                    key=f"er_canvas_{_safe_doi_er}_{_fig_id_er}",
+                    drawing_mode=_draw_mode_er,          # "rect" draws; "transform" edits
+                    update_streamlit=True,
+                    height=_disp_h_er,
+                    width=_disp_w_er,
+                    stroke_width=3,
+                    stroke_color="#ff0000",
+                    fill_color="rgba(255, 0, 0, 0.20)",
+                    key=_canvas_key_er,
                 )
 
-                _scale_x_er = _orig_w_er / _crop_w_er
-                _scale_y_er = _orig_h_er / _display_h_er
+                if _show_json and _canvas_er.json_data is not None:
+                    st.code(json.dumps(_canvas_er.json_data, indent=2), language="json")
+
+                # ---- Extract rectangles from canvas JSON ----
+                # Fabric.js rect coords are in canvas space; need to account for:
+                # - left/top
+                # - width/height
+                # - scaleX/scaleY
+                # - (optional) angle: we will convert rotated rects to an axis-aligned bounding box
+                def _rect_to_bbox_canvas(obj: dict):
+                    # base dims
+                    left = float(obj.get("left", 0.0))
+                    top = float(obj.get("top", 0.0))
+                    w = float(obj.get("width", 0.0))
+                    h = float(obj.get("height", 0.0))
+                    sx = float(obj.get("scaleX", 1.0))
+                    sy = float(obj.get("scaleY", 1.0))
+                    angle = float(obj.get("angle", 0.0))
+
+                    # If not rotated, easy:
+                    if abs(angle) < 1e-6:
+                        w2 = w * sx
+                        h2 = h * sy
+                        x1 = left
+                        y1 = top
+                        x2 = left + w2
+                        y2 = top + h2
+                        return x1, y1, x2, y2
+
+                    # Rotated: compute axis-aligned bbox of the rotated rectangle
+                    import math
+                    w2 = w * sx
+                    h2 = h * sy
+
+                    # Fabric rect is defined with origin at top-left by default in this canvas,
+                    # and rotation happens around its center.
+                    cx = left + w2 / 2.0
+                    cy = top + h2 / 2.0
+
+                    theta = math.radians(angle)
+                    cos_t = math.cos(theta)
+                    sin_t = math.sin(theta)
+
+                    # corners relative to center
+                    dx = w2 / 2.0
+                    dy = h2 / 2.0
+                    corners = [(-dx, -dy), (dx, -dy), (dx, dy), (-dx, dy)]
+
+                    xs, ys = [], []
+                    for (px, py) in corners:
+                        rx = cos_t * px - sin_t * py
+                        ry = sin_t * px + cos_t * py
+                        xs.append(cx + rx)
+                        ys.append(cy + ry)
+
+                    return min(xs), min(ys), max(xs), max(ys)
+
+                _scale_x_er = _orig_w_er / _disp_w_er
+                _scale_y_er = _orig_h_er / _disp_h_er
+
                 _rects_er = []
-                if _canvas_er.json_data and "objects" in _canvas_er.json_data:
-                    for _obj_er in _canvas_er.json_data["objects"]:
-                        if _obj_er.get("type") != "rect":
-                            continue
-                        _l_er = float(_obj_er.get("left", 0))
-                        _t_er = float(_obj_er.get("top", 0))
-                        _w_obj_er = float(_obj_er.get("width", 0)) * float(_obj_er.get("scaleX", 1))
-                        _h_obj_er = float(_obj_er.get("height", 0)) * float(_obj_er.get("scaleY", 1))
-                        _rects_er.append((
-                            int(_l_er * _scale_x_er), int(_t_er * _scale_y_er),
-                            int((_l_er + _w_obj_er) * _scale_x_er), int((_t_er + _h_obj_er) * _scale_y_er)
-                        ))
+                _objs = (_canvas_er.json_data or {}).get("objects", []) if _canvas_er is not None else []
+                for _obj_er in _objs:
+                    if _obj_er.get("type") != "rect":
+                        continue
+                    x1c, y1c, x2c, y2c = _rect_to_bbox_canvas(_obj_er)
 
-                st.write(f"Rectangles drawn: **{len(_rects_er)}**")
+                    # clamp to canvas bounds
+                    x1c = max(0.0, min(float(_disp_w_er), x1c))
+                    x2c = max(0.0, min(float(_disp_w_er), x2c))
+                    y1c = max(0.0, min(float(_disp_h_er), y1c))
+                    y2c = max(0.0, min(float(_disp_h_er), y2c))
 
+                    # ensure ordering
+                    if x2c <= x1c or y2c <= y1c:
+                        continue
+
+                    # scale back to original image coords
+                    x1 = int(round(x1c * _scale_x_er))
+                    y1 = int(round(y1c * _scale_y_er))
+                    x2 = int(round(x2c * _scale_x_er))
+                    y2 = int(round(y2c * _scale_y_er))
+
+                    # clamp to original bounds
+                    x1 = max(0, min(_orig_w_er - 1, x1))
+                    x2 = max(1, min(_orig_w_er, x2))
+                    y1 = max(0, min(_orig_h_er - 1, y1))
+                    y2 = max(1, min(_orig_h_er, y2))
+
+                    if x2 > x1 and y2 > y1:
+                        _rects_er.append((x1, y1, x2, y2))
+
+                # de-duplicate exact duplicates (can happen when editing)
+                _rects_er = list(dict.fromkeys(_rects_er))
+
+                st.write(f"Rectangles detected: **{len(_rects_er)}**")
+
+                # ---- Save crops ----
                 _cc1_er, _cc2_er = st.columns(2)
                 with _cc1_er:
-                    if st.button("Save crops", disabled=len(_rects_er) == 0, key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}"):
+                    if st.button(
+                        "Save crops",
+                        disabled=len(_rects_er) == 0,
+                        key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}",
+                    ):
                         _saved_er = save_crops(_source_img_er, _rects_er, _crops_out_dir_er, prefix=_fig_stem_er)
                         st.success(f"Saved {len(_saved_er)} crops to `{_crops_out_dir_er}`")
-                        _sc = st.columns(min(len(_saved_er), 4)) if _saved_er else []
-                        for _si, _p in enumerate(_saved_er):
-                            with _sc[_si % len(_sc)]:
-                                st.image(str(_p), width=200)
-                                st.caption(_p.name)
 
+                        if _saved_er:
+                            _sc = st.columns(min(len(_saved_er), 4))
+                            for _si, _p in enumerate(_saved_er):
+                                with _sc[_si % len(_sc)]:
+                                    st.image(str(_p), width=200)
+                                    st.caption(_p.name)
+
+                # ---- Existing crops ----
                 _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
                 if _existing_crops_er:
                     st.write(f"**Existing crops:** {len(_existing_crops_er)}")
@@ -1498,13 +1628,16 @@ with tab_figs:
                     _cl1_er, _cl2_er = st.columns(2)
                     with _cl1_er:
                         if st.button("Clear all crops", key=f"er_clear_crops_{_safe_doi_er}_{_fig_id_er}"):
-                            import shutil as _shutil_er
                             for _cp in _existing_crops_er:
                                 _cp.unlink(missing_ok=True)
                             st.success("Cleared existing crops.")
                             st.rerun()
                     with _cl2_er:
-                        if st.button("Re-run extraction on existing crops", type="primary", key=f"er_rerun_crops_{_safe_doi_er}_{_fig_id_er}"):
+                        if st.button(
+                            "Re-run extraction on existing crops",
+                            type="primary",
+                            key=f"er_rerun_crops_{_safe_doi_er}_{_fig_id_er}",
+                        ):
                             try:
                                 with st.spinner("Running plextract on crops..."):
                                     run_plextract_on_manual_crops(
@@ -1519,610 +1652,406 @@ with tab_figs:
                                 st.error(f"Extraction failed: {_e_er}")
                 else:
                     st.info("No crops saved yet. Draw rectangles above to create crops.")
-            else:
-                st.warning("No source image found for this figure.")
 
-        # ---- 3. Axis Configuration expander ----
+        # ========================
+        # SECTION: Axis Configuration
+        # ========================
         with st.expander("Axis Configuration", expanded=False):
+            import math
+            import os
+            import json
+            from pathlib import Path
+            from PIL import Image
+
             if not _ax_subfig_dirs_er:
                 st.info("No plextract output found for this figure. Run plextract extraction first.")
             else:
-                if len(_ax_subfig_dirs_er) > 1:
-                    _ax_sel_name_er = st.selectbox(
-                        "Select figure/subfigure to configure",
-                        _ax_subfig_options_er,
-                        key=f"er_ax_sel_{_safe_doi_er}_{_fig_id_er}"
-                    )
-                    _ax_sel_dir_er = _ax_subfig_dirs_er[_ax_subfig_options_er.index(_ax_sel_name_er)]
-                else:
-                    _ax_sel_dir_er = _ax_subfig_dirs_er[0]
-                    _ax_sel_name_er = _ax_subfig_options_er[0]
+                # -------------------------------------------------
+                # Work on the CURRENT figure only (no selection UI)
+                # -------------------------------------------------
+                # Convention: first/only subfig dir is "current"
+                _ax_sel_dir_er = _ax_subfig_dirs_er[0]
+                _ax_sel_name_er = _ax_subfig_options_er[0] if _ax_subfig_options_er else "figure"
 
                 _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
+                _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
 
-                # --- Axis Titles ---
+                # =================================================
+                # Image from INPUT section (not output)
+                # =================================================
+                # Prefer whatever your UI already determined as the source image.
+                # Fallback to searching PLEXTRACT_BASE_INPUT using figure tokens.
+                _calib_img_path_er: Path | None = None
+
+                if "_source_img_er" in locals() and _source_img_er and Path(_source_img_er).exists():
+                    _calib_img_path_er = Path(_source_img_er)
+
+                if _calib_img_path_er is None:
+                    _base_input = os.environ.get("PLEXTRACT_BASE_INPUT", "")
+                    if not _base_input:
+                        st.error("PLEXTRACT_BASE_INPUT is not set and _source_img_er is missing; cannot locate input image.")
+                    else:
+                        _base_input_p = Path(_base_input)
+
+                        _tokens = [
+                            str(_fig_id_er).lower() if "_fig_id_er" in locals() else "",
+                            str(_fig_stem_er).lower() if "_fig_stem_er" in locals() else "",
+                            str(_img_name_er).lower() if "_img_name_er" in locals() else "",
+                        ]
+                        _tokens = [t for t in _tokens if t]
+
+                        def _score(p: Path) -> int:
+                            s = p.as_posix().lower()
+                            score = 0
+                            for t in _tokens:
+                                if t in s:
+                                    score += 10
+                            score -= len(p.parts)  # slight preference for shorter paths
+                            return score
+
+                        _all_imgs: list[Path] = []
+                        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+                            _all_imgs.extend(_base_input_p.rglob(ext))
+                        _all_imgs = sorted(set(_all_imgs), key=_score, reverse=True)
+
+                        if _all_imgs:
+                            _calib_img_path_er = _all_imgs[0]
+
+                if _calib_img_path_er is None or not _calib_img_path_er.exists():
+                    st.warning("Could not locate the INPUT image for this figure. Make sure `_source_img_er` is set or PLEXTRACT_BASE_INPUT is correct.")
+                    st.stop()
+
+                st.caption(f"Calibrating on INPUT image: `{_calib_img_path_er}`")
+
+                # ========================
+                # Axis Titles
+                # ========================
                 st.markdown("**Axis Titles**")
                 _ax_title_override_er = _ax_chartdete_er / "axis_title_override.json"
                 _ax_title_ocr_er = _ax_chartdete_er / "axis_title_texts.json"
-                _ax_x_title_er = ""
-                _ax_y_title_er = ""
-                if _ax_title_override_er.exists():
-                    try:
-                        _ax_ov_er = json.loads(_ax_title_override_er.read_text())
-                        _ax_x_title_er = _ax_ov_er.get("x_title", "")
-                        _ax_y_title_er = _ax_ov_er.get("y_title", "")
-                    except Exception:
-                        pass
-                elif _ax_title_ocr_er.exists():
-                    try:
-                        _ax_titles_dict_er = json.loads(_ax_title_ocr_er.read_text())
-                        for _ap_er, _at_er in _ax_titles_dict_er.items():
-                            _ab_er = Path(_ap_er).name.lower()
-                            if any(x in _ab_er for x in ("x_", "x-", "_x.", "xtitle", "xlabel")):
-                                _ax_x_title_er = _at_er
-                            elif any(x in _ab_er for x in ("y_", "y-", "_y.", "ytitle", "ylabel")):
-                                _ax_y_title_er = _at_er
-                        if not _ax_x_title_er and not _ax_y_title_er and len(_ax_titles_dict_er) == 2:
-                            _ax_vals_er = list(_ax_titles_dict_er.values())
-                            _ax_x_title_er = _ax_vals_er[0]
-                            _ax_y_title_er = _ax_vals_er[1]
-                    except Exception:
-                        pass
+
+                def _load_axis_titles_default() -> tuple[str, str]:
+                    if _ax_title_override_er.exists():
+                        try:
+                            d = json.loads(_ax_title_override_er.read_text())
+                            return d.get("x_title", "") or "", d.get("y_title", "") or ""
+                        except Exception:
+                            return "", ""
+                    if _ax_title_ocr_er.exists():
+                        try:
+                            d = json.loads(_ax_title_ocr_er.read_text())
+                            x_title, y_title = "", ""
+                            for ap, txt in d.items():
+                                bn = Path(ap).name.lower()
+                                if any(t in bn for t in ("x_", "x-", "_x.", "xtitle", "xlabel")):
+                                    x_title = txt
+                                elif any(t in bn for t in ("y_", "y-", "_y.", "ytitle", "ylabel")):
+                                    y_title = txt
+                            if not x_title and not y_title and len(d) == 2:
+                                vals = list(d.values())
+                                x_title, y_title = vals[0], vals[1]
+                            return x_title or "", y_title or ""
+                        except Exception:
+                            return "", ""
+                    return "", ""
+
+                _ax_x_title_er, _ax_y_title_er = _load_axis_titles_default()
+
+                _x_title_key = f"er_x_title_{_safe_doi_er}_{_ax_sel_name_er}"
+                _y_title_key = f"er_y_title_{_safe_doi_er}_{_ax_sel_name_er}"
+                if _x_title_key not in st.session_state:
+                    st.session_state[_x_title_key] = _ax_x_title_er
+                if _y_title_key not in st.session_state:
+                    st.session_state[_y_title_key] = _ax_y_title_er
 
                 _col_xt_er, _col_yt_er = st.columns(2)
                 with _col_xt_er:
-                    _new_x_title_er = st.text_input("X axis title", value=_ax_x_title_er, key=f"er_x_title_{_safe_doi_er}_{_ax_sel_name_er}")
+                    _new_x_title_er = st.text_input("X axis title", key=_x_title_key)
                 with _col_yt_er:
-                    _new_y_title_er = st.text_input("Y axis title", value=_ax_y_title_er, key=f"er_y_title_{_safe_doi_er}_{_ax_sel_name_er}")
+                    _new_y_title_er = st.text_input("Y axis title", key=_y_title_key)
 
                 if st.button("Save axis titles", key=f"er_save_titles_{_safe_doi_er}_{_ax_sel_name_er}"):
-                    _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
                     _ax_title_override_er.write_text(json.dumps({"x_title": _new_x_title_er, "y_title": _new_y_title_er}, indent=2))
-                    st.success("Axis title overrides saved. These will be used by finalize_labels when you rerun dataset generation.")
+                    st.success("Axis title overrides saved.")
+                    st.rerun()
 
-                # --- Axis Calibration ---
+                # ========================
+                # Axis Calibration (click endpoints)
+                # ========================
                 st.markdown("**Axis Calibration**")
-                st.caption("Set the min/max values for each axis. Changes are preserved as overrides and survive plextract reruns.")
+                st.caption(
+                    "Click the image to set Xmin/Xmax/Ymin/Ymax pixel locations, then enter the numeric values. "
+                    "This writes `chartdete/pix2val_override.json` for this figure."
+                )
+
                 _pix2val_override_er = _ax_chartdete_er / "pix2val_override.json"
                 _pix2val_orig_er = _ax_chartdete_er / "pix2val.json"
-                _bb_json_er = _ax_chartdete_er / "bounding_boxes.json"
+                _label_coords_er = _ax_chartdete_er / "label_coordinates.json"
 
-                _pix2val_data_er = None
-                _pix2val_source_er = ""
-                if _pix2val_override_er.exists():
+                # ---- Plot area bbox (optional but helpful) ----
+                _plot_area_er = None
+                if _label_coords_er.exists():
                     try:
-                        _pix2val_data_er = json.loads(_pix2val_override_er.read_text())
-                        _pix2val_source_er = "(using override)"
+                        _lc = json.loads(_label_coords_er.read_text())
+                        if "plot_area" in _lc and len(_lc["plot_area"]) >= 4:
+                            _plot_area_er = list(map(float, _lc["plot_area"][:4]))
                     except Exception:
-                        pass
-                if _pix2val_data_er is None and _pix2val_orig_er.exists():
-                    try:
-                        _pix2val_data_er = json.loads(_pix2val_orig_er.read_text())
-                        _pix2val_source_er = "(from OCR)"
-                    except Exception:
-                        pass
+                        _plot_area_er = None
 
-                if _pix2val_data_er:
-                    st.caption(f"Calibration data {_pix2val_source_er}")
+                if _plot_area_er is None:
+                    st.info(
+                        "No plot_area found (`chartdete/label_coordinates.json`). "
+                        "You can still calibrate from clicks; domain will use your entered min/max."
+                    )
 
-                    # Try to derive human-readable min/max from pix2val + bounding box
-                    _plot_area_er = None
-                    if _bb_json_er.exists():
+                # ---- Resizable view width (slider = draggable control in Streamlit) ----
+                _pil_img_cal = Image.open(_calib_img_path_er).convert("RGB")
+                _img_w, _img_h = _pil_img_cal.size
+
+                _width_key = f"er_calib_canvas_w_{_safe_doi_er}_{_ax_sel_name_er}"
+                if _width_key not in st.session_state:
+                    st.session_state[_width_key] = min(1100, _img_w)
+
+                _disp_w = st.slider(
+                    "Calibration view width (px)",
+                    min_value=400,
+                    max_value=1800,
+                    value=int(st.session_state[_width_key]),
+                    step=50,
+                    key=_width_key,
+                )
+                _disp_h = int(round(_img_h * (_disp_w / _img_w)))
+
+                _bg = _pil_img_cal.resize((_disp_w, _disp_h), Image.Resampling.LANCZOS).convert("RGBA")
+                _scale_x = _img_w / _disp_w
+                _scale_y = _img_h / _disp_h
+
+                # Which endpoint are we setting?
+                _endpoint_key = f"er_calib_endpoint_{_safe_doi_er}_{_ax_sel_name_er}"
+                _endpoint = st.radio("Click target", ["Xmin", "Xmax", "Ymin", "Ymax"], key=_endpoint_key, horizontal=True)
+
+                # Markers state version (so resize + clear works reliably)
+                _cv_ver_key = f"er_calib_canvas_ver_{_safe_doi_er}_{_ax_sel_name_er}"
+                if _cv_ver_key not in st.session_state:
+                    st.session_state[_cv_ver_key] = 0
+
+                _c1, _c2 = st.columns([1, 3])
+                with _c1:
+                    if st.button("Clear markers", key=f"er_clear_markers_{_safe_doi_er}_{_ax_sel_name_er}"):
+                        st.session_state[_cv_ver_key] += 1
+                        for k in ("xmin", "xmax", "ymin", "ymax"):
+                            st.session_state.pop(f"er_calib_pt_{k}_{_safe_doi_er}_{_ax_sel_name_er}", None)
+                        st.rerun()
+
+                st.write("**Click on the image to place the selected endpoint.**")
+
+                # IMPORTANT: include width/height + image name in the canvas key so changing width reinitializes correctly
+                _canvas_key = (
+                    f"er_calib_canvas_{_safe_doi_er}_{_ax_sel_name_er}_"
+                    f"{Path(_calib_img_path_er).name}_{_disp_w}x{_disp_h}_v{st.session_state[_cv_ver_key]}"
+                )
+
+                _canvas = st_canvas(
+                    background_image=_bg,
+                    drawing_mode="circle",
+                    update_streamlit=True,
+                    height=_disp_h,
+                    width=_disp_w,
+                    stroke_width=2,
+                    stroke_color="#00ff00",
+                    fill_color="rgba(0,255,0,0.35)",
+                    key=_canvas_key,
+                )
+
+                def _last_circle_center(json_data: dict | None):
+                    if not json_data:
+                        return None
+                    objs = json_data.get("objects") or []
+                    circles = [o for o in objs if o.get("type") == "circle"]
+                    if not circles:
+                        return None
+                    o = circles[-1]
+                    left = float(o.get("left", 0.0))
+                    top = float(o.get("top", 0.0))
+                    r = float(o.get("radius", 0.0)) * float(o.get("scaleX", 1.0))
+                    return left + r, top + r
+
+                _click = _last_circle_center(getattr(_canvas, "json_data", None))
+
+                def _store_endpoint(ep_name: str, cx_disp: float, cy_disp: float):
+                    cx_img = cx_disp * _scale_x
+                    cy_img = cy_disp * _scale_y
+                    st.session_state[f"er_calib_pt_{ep_name.lower()}_{_safe_doi_er}_{_ax_sel_name_er}"] = {
+                        "disp": [float(cx_disp), float(cy_disp)],
+                        "img":  [float(cx_img), float(cy_img)],
+                        "img_wh": [int(_img_w), int(_img_h)],
+                        "shown_wh": [int(_disp_w), int(_disp_h)],
+                        "source_image": str(_calib_img_path_er),
+                    }
+
+                if _click is not None:
+                    _store_endpoint(_endpoint, _click[0], _click[1])
+
+                def _get_pt(ep_name: str):
+                    return st.session_state.get(f"er_calib_pt_{ep_name.lower()}_{_safe_doi_er}_{_ax_sel_name_er}")
+
+                _pt_xmin = _get_pt("Xmin")
+                _pt_xmax = _get_pt("Xmax")
+                _pt_ymin = _get_pt("Ymin")
+                _pt_ymax = _get_pt("Ymax")
+
+                _show_click_debug = st.checkbox("Show click debug", value=False, key=f"er_show_click_dbg_{_safe_doi_er}_{_ax_sel_name_er}")
+                if _show_click_debug:
+                    st.write("Latest click (disp):", _click)
+                    st.write("Xmin:", _pt_xmin)
+                    st.write("Xmax:", _pt_xmax)
+                    st.write("Ymin:", _pt_ymin)
+                    st.write("Ymax:", _pt_ymax)
+
+                st.markdown("**Endpoint values** (enter the numeric value for each clicked point)")
+                _vxmin_key = f"er_val_xmin_{_safe_doi_er}_{_ax_sel_name_er}"
+                _vxmax_key = f"er_val_xmax_{_safe_doi_er}_{_ax_sel_name_er}"
+                _vymin_key = f"er_val_ymin_{_safe_doi_er}_{_ax_sel_name_er}"
+                _vymax_key = f"er_val_ymax_{_safe_doi_er}_{_ax_sel_name_er}"
+
+                for k in (_vxmin_key, _vxmax_key, _vymin_key, _vymax_key):
+                    if k not in st.session_state:
+                        st.session_state[k] = ""
+
+                _vcols = st.columns(4)
+                with _vcols[0]:
+                    _vxmin = st.text_input("Xmin value", key=_vxmin_key, disabled=_pt_xmin is None)
+                    if _pt_xmin is None:
+                        st.caption("Click Xmin on image")
+                with _vcols[1]:
+                    _vxmax = st.text_input("Xmax value", key=_vxmax_key, disabled=_pt_xmax is None)
+                    if _pt_xmax is None:
+                        st.caption("Click Xmax on image")
+                with _vcols[2]:
+                    _vymin = st.text_input("Ymin value", key=_vymin_key, disabled=_pt_ymin is None)
+                    if _pt_ymin is None:
+                        st.caption("Click Ymin on image")
+                with _vcols[3]:
+                    _vymax = st.text_input("Ymax value", key=_vymax_key, disabled=_pt_ymax is None)
+                    if _pt_ymax is None:
+                        st.caption("Click Ymax on image")
+
+                def _parse_float(s: str):
+                    s = (s or "").strip()
+                    return None if not s else float(s)
+
+                _nxmin = _parse_float(_vxmin)
+                _nxmax = _parse_float(_vxmax)
+                _nymin = _parse_float(_vymin)
+                _nymax = _parse_float(_vymax)
+
+                _xtype_key = f"er_xtype_{_safe_doi_er}_{_ax_sel_name_er}"
+                _ytype_key = f"er_ytype_{_safe_doi_er}_{_ax_sel_name_er}"
+                if _xtype_key not in st.session_state:
+                    st.session_state[_xtype_key] = "linear"
+                if _ytype_key not in st.session_state:
+                    st.session_state[_ytype_key] = "linear"
+
+                _tcols = st.columns(2)
+                with _tcols[0]:
+                    _new_xtype = st.selectbox("X axis type", ["linear", "log10"], key=_xtype_key)
+                with _tcols[1]:
+                    _new_ytype = st.selectbox("Y axis type", ["linear", "log10"], key=_ytype_key)
+
+                def _ab_from_two_points(p1_img, v1, p2_img, v2, axis: str, typ: str):
+                    if axis == "x":
+                        u1, u2 = float(p1_img[0]), float(p2_img[0])
+                    else:
+                        u1, u2 = float(p1_img[1]), float(p2_img[1])
+
+                    if u2 == u1:
+                        raise ValueError(f"{axis} endpoints have identical pixel coordinate; cannot calibrate.")
+
+                    if typ == "linear":
+                        a = (v2 - v1) / (u2 - u1)
+                        b = v1 - a * u1
+                        return float(a), float(b)
+
+                    if v1 <= 0 or v2 <= 0:
+                        raise ValueError(f"{axis}-axis log10 requires positive values.")
+                    lv1, lv2 = math.log10(v1), math.log10(v2)
+                    a = (lv2 - lv1) / (u2 - u1)
+                    b = lv1 - a * u1
+                    return float(a), float(b)
+
+                _ready = (
+                    _pt_xmin and _pt_xmax and _pt_ymin and _pt_ymax and
+                    None not in (_nxmin, _nxmax, _nymin, _nymax)
+                )
+
+                _bcols = st.columns([1, 1, 2])
+                with _bcols[0]:
+                    if st.button(
+                        "Save calibration override from clicks",
+                        disabled=not _ready,
+                        key=f"er_save_click_calib_{_safe_doi_er}_{_ax_sel_name_er}",
+                    ):
                         try:
-                            _bbs_er = json.loads(_bb_json_er.read_text())
-                            _areas_er = sorted(_bbs_er.get("plot_area", []), key=lambda el: el[4] if len(el) > 4 else -1, reverse=True)
-                            if _areas_er:
-                                _plot_area_er = _areas_er[0]
-                        except Exception:
-                            pass
+                            xa, xb = _ab_from_two_points(_pt_xmin["img"], _nxmin, _pt_xmax["img"], _nxmax, axis="x", typ=_new_xtype)
+                            ya, yb = _ab_from_two_points(_pt_ymin["img"], _nymin, _pt_ymax["img"], _nymax, axis="y", typ=_new_ytype)
 
-                    _xmap_er = _pix2val_data_er.get("x", {})
-                    _ymap_er = _pix2val_data_er.get("y", {})
-                    _xtype_er = _xmap_er.get("type", "linear")
-                    _ytype_er = _ymap_er.get("type", "linear")
-                    _xa_er = float(_xmap_er.get("a", 1.0))
-                    _xb_er = float(_xmap_er.get("b", 0.0))
-                    _ya_er = float(_ymap_er.get("a", 1.0))
-                    _yb_er = float(_ymap_er.get("b", 0.0))
-                    _domain_er = _pix2val_data_er.get("domain", {})
+                            # Domain: if plot_area exists, derive from plot_area; else use your entered min/max
+                            if _plot_area_er is not None:
+                                px1, py1, px2, py2 = _plot_area_er
+                                if _new_xtype == "linear":
+                                    x_min = xa * px1 + xb
+                                    x_max = xa * px2 + xb
+                                else:
+                                    x_min = 10 ** (xa * px1 + xb)
+                                    x_max = 10 ** (xa * px2 + xb)
 
-                    # Compute current min/max from plot area + coefficients
-                    _x_val_min_er = _x_val_max_er = _y_val_min_er = _y_val_max_er = None
-                    if _plot_area_er and len(_plot_area_er) >= 4:
-                        _px1_er = float(_plot_area_er[0])
-                        _py1_er = float(_plot_area_er[1])
-                        _px2_er = float(_plot_area_er[2])
-                        _py2_er = float(_plot_area_er[3])
-                        if _xtype_er == "linear":
-                            _x_val_min_er = _xa_er * _px1_er + _xb_er
-                            _x_val_max_er = _xa_er * _px2_er + _xb_er
-                        elif _xtype_er == "log10":
-                            _x_val_min_er = 10 ** (_xa_er * _px1_er + _xb_er)
-                            _x_val_max_er = 10 ** (_xa_er * _px2_er + _xb_er)
-                        if _ytype_er == "linear":
-                            _y_val_min_er = _ya_er * _py2_er + _yb_er
-                            _y_val_max_er = _ya_er * _py1_er + _yb_er
-                        elif _ytype_er == "log10":
-                            _y_val_min_er = 10 ** (_ya_er * _py2_er + _yb_er)
-                            _y_val_max_er = 10 ** (_ya_er * _py1_er + _yb_er)
+                                if _new_ytype == "linear":
+                                    y_min = ya * py2 + yb
+                                    y_max = ya * py1 + yb
+                                else:
+                                    y_min = 10 ** (ya * py2 + yb)
+                                    y_max = 10 ** (ya * py1 + yb)
+                            else:
+                                x_min, x_max = _nxmin, _nxmax
+                                y_min, y_max = _nymin, _nymax
 
-                    # Fall back to domain field if no plot area
-                    if _x_val_min_er is None and "x" in _domain_er and len(_domain_er["x"]) >= 2:
-                        _x_val_min_er, _x_val_max_er = _domain_er["x"][0], _domain_er["x"][1]
-                    if _y_val_min_er is None and "y" in _domain_er and len(_domain_er["y"]) >= 2:
-                        _y_val_min_er, _y_val_max_er = _domain_er["y"][0], _domain_er["y"][1]
-
-                    _col_ax_type_er, _col_ay_type_er = st.columns(2)
-                    with _col_ax_type_er:
-                        _new_xtype_er = st.selectbox("X axis type", ["linear", "log10"], index=0 if _xtype_er == "linear" else 1, key=f"er_xtype_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_ay_type_er:
-                        _new_ytype_er = st.selectbox("Y axis type", ["linear", "log10"], index=0 if _ytype_er == "linear" else 1, key=f"er_ytype_{_safe_doi_er}_{_ax_sel_name_er}")
-
-                    _col_xmin_er, _col_xmax_er, _col_ymin_er, _col_ymax_er = st.columns(4)
-                    with _col_xmin_er:
-                        _new_x_min_er = st.text_input("X min", value=f"{_x_val_min_er:.6g}" if _x_val_min_er is not None else "", key=f"er_x_min_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_xmax_er:
-                        _new_x_max_er = st.text_input("X max", value=f"{_x_val_max_er:.6g}" if _x_val_max_er is not None else "", key=f"er_x_max_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_ymin_er:
-                        _new_y_min_er = st.text_input("Y min", value=f"{_y_val_min_er:.6g}" if _y_val_min_er is not None else "", key=f"er_y_min_{_safe_doi_er}_{_ax_sel_name_er}")
-                    with _col_ymax_er:
-                        _new_y_max_er = st.text_input("Y max", value=f"{_y_val_max_er:.6g}" if _y_val_max_er is not None else "", key=f"er_y_max_{_safe_doi_er}_{_ax_sel_name_er}")
-
-                    if st.button("Save calibration overrides", key=f"er_save_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
-                        try:
-                            _nxmin_er = float(_new_x_min_er) if _new_x_min_er.strip() else None
-                            _nxmax_er = float(_new_x_max_er) if _new_x_max_er.strip() else None
-                            _nymin_er = float(_new_y_min_er) if _new_y_min_er.strip() else None
-                            _nymax_er = float(_new_y_max_er) if _new_y_max_er.strip() else None
-
-                            _new_pix2val_er = dict(_pix2val_data_er)
-                            _new_pix2val_er["x"] = dict(_xmap_er)
-                            _new_pix2val_er["y"] = dict(_ymap_er)
-                            _new_pix2val_er["x"]["type"] = _new_xtype_er
-                            _new_pix2val_er["y"]["type"] = _new_ytype_er
-
-                            # Recompute a, b from new min/max if plot area is available
-                            if _plot_area_er and len(_plot_area_er) >= 4 and None not in (_nxmin_er, _nxmax_er, _nymin_er, _nymax_er):
-                                _px1n_er = float(_plot_area_er[0])
-                                _py1n_er = float(_plot_area_er[1])
-                                _px2n_er = float(_plot_area_er[2])
-                                _py2n_er = float(_plot_area_er[3])
-                                if _new_xtype_er == "linear" and _px2n_er != _px1n_er:
-                                    _nxa_er = (_nxmax_er - _nxmin_er) / (_px2n_er - _px1n_er)
-                                    _nxb_er = _nxmin_er - _nxa_er * _px1n_er
-                                    _new_pix2val_er["x"]["a"] = _nxa_er
-                                    _new_pix2val_er["x"]["b"] = _nxb_er
-                                elif _new_xtype_er == "log10" and _px2n_er != _px1n_er and _nxmin_er > 0 and _nxmax_er > 0:
-                                    _nxa_er = (math.log10(_nxmax_er) - math.log10(_nxmin_er)) / (_px2n_er - _px1n_er)
-                                    _nxb_er = math.log10(_nxmin_er) - _nxa_er * _px1n_er
-                                    _new_pix2val_er["x"]["a"] = _nxa_er
-                                    _new_pix2val_er["x"]["b"] = _nxb_er
-                                if _new_ytype_er == "linear" and _py2n_er != _py1n_er:
-                                    _nya_er = (_nymax_er - _nymin_er) / (_py1n_er - _py2n_er)
-                                    _nyb_er = _nymin_er - _nya_er * _py2n_er
-                                    _new_pix2val_er["y"]["a"] = _nya_er
-                                    _new_pix2val_er["y"]["b"] = _nyb_er
-                                elif _new_ytype_er == "log10" and _py2n_er != _py1n_er and _nymin_er > 0 and _nymax_er > 0:
-                                    _nya_er = (math.log10(_nymax_er) - math.log10(_nymin_er)) / (_py1n_er - _py2n_er)
-                                    _nyb_er = math.log10(_nymin_er) - _nya_er * _py2n_er
-                                    _new_pix2val_er["y"]["a"] = _nya_er
-                                    _new_pix2val_er["y"]["b"] = _nyb_er
-
-                            _new_pix2val_er["domain"] = {
-                                "x": [_nxmin_er, _nxmax_er] if None not in (_nxmin_er, _nxmax_er) else _domain_er.get("x", [None, None]),
-                                "y": [_nymin_er, _nymax_er] if None not in (_nymin_er, _nymax_er) else _domain_er.get("y", [None, None]),
+                            _pix2val = {
+                                "x": {"type": _new_xtype, "a": xa, "b": xb},
+                                "y": {"type": _new_ytype, "a": ya, "b": yb},
+                                "domain": {"x": [x_min, x_max], "y": [y_min, y_max]},
+                                "meta": {
+                                    "source": "ui_click_endpoints",
+                                    "image_used": str(_calib_img_path_er),
+                                    "x_clicks": {"min": _pt_xmin["img"], "max": _pt_xmax["img"]},
+                                    "y_clicks": {"min": _pt_ymin["img"], "max": _pt_ymax["img"]},
+                                    "x_values": {"min": _nxmin, "max": _nxmax},
+                                    "y_values": {"min": _nymin, "max": _nymax},
+                                    "plot_area": _plot_area_er,
+                                },
                             }
-                            _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
-                            _pix2val_override_er.write_text(json.dumps(_new_pix2val_er, indent=2))
-                            st.success("Calibration override saved.")
-                        except Exception as _e_ax_er:
-                            st.error(f"Failed to save calibration: {_e_ax_er}")
 
-                    if _pix2val_override_er.exists():
-                        if st.button("Clear calibration override (revert to OCR)", key=f"er_clear_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
-                            _pix2val_override_er.unlink()
-                            st.success("Cleared calibration override.")
+                            _pix2val_override_er.write_text(json.dumps(_pix2val, indent=2))
+                            st.success(f"Saved calibration override: {_pix2val_override_er}")
                             st.rerun()
-                else:
-                    st.info("No pix2val calibration data found. Run plextract extraction first.")
+                        except Exception as e:
+                            st.error(f"Failed to save click calibration: {e}")
 
-        # --- Extracted dataset table (plextract final_dataset.csv) ---
-        final_csv = None
-        if isinstance(getattr(f, "extra", None), dict):
-            final_csv = f.extra.get("final_dataset_csv")
+                with _bcols[1]:
+                    if st.button("Clear calibration override", key=f"er_clear_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
+                        if _pix2val_override_er.exists():
+                            _pix2val_override_er.unlink()
+                        st.success("Cleared calibration override.")
+                        st.rerun()
 
-        # --- Display extracted data in expander ---
-        with st.expander("OCR-Extracted Data", expanded=False):
-            if final_csv and Path(final_csv).exists():
-                try:
-                    df = _load_csv(final_csv)
-                    _figure_dir_for_overrides = Path(final_csv).parent.parent
-                    df = _apply_axis_title_override_df(df, _figure_dir_for_overrides)
-                    st.data_editor(df, use_container_width=True, hide_index=True, key=f"fig_extracted_{selected_doi}_{f.id}")
-                    st.caption(final_csv)
-                except Exception as e:
-                    st.warning(f"Failed to load extracted dataset:\n`{final_csv}`\n\n{e}")
-            else:
-                st.info("No extracted dataset found for this figure.")
-
-        # --- Display LLM-generated emit_rows from row_cache ---
-        emit_rows_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", f.id)
-        if emit_rows_path:
-            df_emit = load_emit_rows(emit_rows_path)
-            if df_emit is not None and not df_emit.empty:
-                with st.expander("LLM-Generated Dataset Rows", expanded=False):
-                    st.markdown("*Normalized dataset rows generated by LLM from extracted figure data*")
-                    st.caption(f"**Source:** `{emit_rows_path.relative_to(rr.run_dir)}`")
-                    st.data_editor(df_emit, use_container_width=True, hide_index=True, key=f"fig_emit_{selected_doi}_{f.id}")
-
-                    csv_data = df_emit.to_csv(index=False)
-                    st.download_button(
-                        label="Download emit_rows CSV",
-                        data=csv_data,
-                        file_name=f"{f.id}_emit_rows.csv",
-                        mime="text/csv",
-                    )
-        else:
-            # Check if row_cache exists but no data found for this figure
-            row_cache_dir = rr.run_dir / "complete_dataset" / "row_cache"
-            if row_cache_dir.exists():
-                with st.expander("LLM-Generated Dataset", expanded=False):
-                    st.info(f"No row_cache data found for {f.id}. Cache may not have been generated yet.")
-
-        # --- Display cropped subfigures from plextract and interventions ---
-        # Collect subfigure dirs from all relevant workdirs, deduplicating by name.
-        # Per-figure plextract_interventions takes highest priority (most up-to-date),
-        # then the legacy shared interventions_plextract, then original plextract.
-        safe_doi = selected_doi.replace("/", "@").strip()
-        fig_stem = Path(f.id).stem
-        _subfig_map: dict[str, Path] = {}  # name -> dir (first match wins)
-
-        from intervention import latest_plextract_run_dir
-
-        # Build priority-ordered list of workdirs to search for subfigures.
-        _workdirs_priority: list[Path] = []
-
-        # 1. Per-figure plextract_interventions: each figure dir under
-        #    interventions/<safe_doi>/ may have its own plextract_interventions/
-        #    subdir when the user ran "Re-run extraction" for that specific figure.
-        _int_doi_dir = rr.run_dir / "interventions" / safe_doi
-        _per_fig_plextract: Path | None = None
-        if _int_doi_dir.exists():
-            for _int_fig_d in _int_doi_dir.iterdir():
-                if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
-                    _candidate = _int_fig_d / "plextract_interventions"
-                    if _candidate.exists():
-                        _per_fig_plextract = _candidate
-                        _workdirs_priority.append(_candidate)
-                    break
-
-        # 2. Legacy shared interventions_plextract (backward compatibility).
-        _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
-
-        # 3. Original plextract output.
-        _workdirs_priority.append(rr.run_dir / "plextract")
-
-        for _wd in _workdirs_priority:
-            if not _wd.exists():
-                continue
-            _latest = latest_plextract_run_dir(_wd)
-            if not _latest:
-                continue
-            _out_base = _latest / "output" / safe_doi
-            if not _out_base.exists():
-                continue
-            for _d in _out_base.iterdir():
-                if _d.is_dir() and _d.name.startswith(fig_stem + "_subfig_"):
-                    # First match wins (per-figure intervention has priority)
-                    if _d.name not in _subfig_map:
-                        _subfig_map[_d.name] = _d
-
-        subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
-
-        # Set latest_manual / out_base for use by the data completion button and
-        # the original-image lookup below.  Prefer the per-figure workdir, then
-        # fall back to the shared interventions_plextract, then plain plextract.
-        latest_manual = None
-        out_base = None
-        for _wd in [
-            _per_fig_plextract,
-            rr.run_dir / "interventions" / "interventions_plextract",
-            rr.run_dir / "plextract",
-        ]:
-            if _wd is None or not _wd.exists():
-                continue
-            _lat = latest_plextract_run_dir(_wd)
-            if _lat:
-                _ob = _lat / "output" / safe_doi
-                if _ob.exists():
-                    latest_manual = _lat
-                    out_base = _ob
-                    break
-
-        if subfig_dirs:
-                # Header for subfigures section
-                st.markdown("**Cropped Subfigures**")
-
-                for subfig_dir in subfig_dirs:
-                    # Subfigure header with data completion button
-                    col_header, col_button = st.columns([3, 1])
-                    with col_header:
-                        st.markdown(f"### {subfig_dir.name}")
-                    with col_button:
-                        if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
-                            with st.spinner(f"Running data completion for {subfig_dir.name}..."):
-                                try:
-                                    # Verify index.csv exists
-                                    reparsed_dir = rr.run_dir / "reparsed"
-                                    index_csv_path = reparsed_dir / "index.csv"
-
-                                    if not index_csv_path.exists():
-                                        error_msg = f"**Required file not found:** `{index_csv_path.relative_to(rr.run_dir)}`\n\n"
-
-                                        if not reparsed_dir.exists():
-                                            error_msg += "The `reparsed/` directory doesn't exist. "
-                                        else:
-                                            error_msg += "The `reparsed/` directory exists but `index.csv` is missing. "
-
-                                        error_msg += ("This file is created during the 'Download DOIs' stage of the pipeline.\n\n"
-                                                     "**To fix this:**\n"
-                                                     "1. Run the full pipeline with 'Download DOIs' enabled, OR\n"
-                                                     "2. If you've already downloaded papers, check if `index.csv` exists in a different workspace")
-
-                                        st.error(error_msg)
-                                        continue
-
-                                    # Create temporary CSV with this DOI
-                                    import tempfile
-                                    import subprocess
-                                    import re as _re_dc
-
-                                    # Clear any existing row_cache entries for this subfigure so the
-                                    # LLM is always re-called and the most recent result is stored.
-                                    _row_cache_dir_dc = rr.run_dir / "complete_dataset" / "row_cache"
-                                    if _row_cache_dir_dc.exists():
-                                        _safe_fn_dc = lambda s: _re_dc.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
-                                        _cache_pfx_dc = _safe_fn_dc(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
-                                        for _cf_dc in list(_row_cache_dir_dc.iterdir()):
-                                            if _cf_dc.suffix == ".json" and (
-                                                _cf_dc.stem.startswith(_cache_pfx_dc) or
-                                                _cf_dc.name.startswith(_cache_pfx_dc)
-                                            ):
-                                                _cf_dc.unlink(missing_ok=True)
-
-                                    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
-                                        tmp.write(f"DOI\n{selected_doi}\n")
-                                        tmp_path = tmp.name
-
-                                    # Run complete_dataset.py
-                                    complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-
-                                    # Determine the best extracted_figures_root for this subfigure.
-                                    # The subfig_dir already points to the correct output directory.
-                                    _efr = subfig_dir.parent.parent  # .../output
-                                    cmd = [
-                                        "python", str(complete_dataset_script),
-                                        "--file_path", tmp_path,
-                                        "--output_dir", str(rr.run_dir / "complete_dataset"),
-                                        "--index_csv_path", str(index_csv_path),
-                                        "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
-                                        "--extracted_figures_root", str(_efr),
-                                        "--target_figure", subfig_dir.name,
-                                    ]
-
-                                    # Pass LLM configuration environment variables to subprocess
-                                    env = os.environ.copy()
-
-                                    # Apply LLM configuration from session state
-                                    provider = st.session_state.get("llm_provider", "Ollama")
-                                    model = st.session_state.get("llm_model", "")
-
-                                    if provider == "Ollama":
-                                        env["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                        env["AEM_OCR_LLM_MODEL"] = model
-                                        env["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                        ollama_models_dir = st.session_state.get("ollama_models_dir", "")
-                                        if ollama_models_dir:
-                                            env["OLLAMA_MODELS"] = ollama_models_dir
-                                    else:
-                                        env["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                        env["AEM_OCR_LLM_MODEL"] = model
-                                        env["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                        if st.session_state.get("openai_api_key"):
-                                            env["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-
-                                    # Apply data processing LLM configuration if separate
-                                    if st.session_state.get("use_separate_processing_llm"):
-                                        p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
-                                        p_model = st.session_state.get("processing_llm_model", "")
-                                        if p_provider == "Ollama":
-                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                                        else:
-                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                                            p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                            p_key = st.session_state.get("processing_openai_api_key", "")
-                                            if p_base:
-                                                env["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
-                                            if p_key:
-                                                env["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
-                                    else:
-                                        # Clear processing-specific env vars so processing uses the general LLM
-                                        for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                                   "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                                            env.pop(k, None)
-
-                                    # Validate that a model is configured
-                                    if not model and not st.session_state.get("processing_llm_model"):
-                                        st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
-                                        Path(tmp_path).unlink(missing_ok=True)
-                                        continue
-
-                                    # Set custom instructions path if it exists in the workspace
-                                    ci_path = rr.run_dir.parent / "custom_instructions" / "default.json"
-                                    if ci_path.exists():
-                                        env["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
-
-                                    # Set run ID and run directory for cost tracking
-                                    env["AEM_OCR_RUN_ID"] = rr.run_id
-                                    env["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
-
-                                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
-
-                                    # Clean up temp file
-                                    Path(tmp_path).unlink(missing_ok=True)
-
-                                    if result.returncode == 0:
-                                        st.success(f"Data completion completed for {subfig_dir.name}!")
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
-                                except subprocess.TimeoutExpired:
-                                    st.error("Data completion timed out (>5 minutes)")
-                                except Exception as e:
-                                    st.error(f"Error running data completion: {e}")
-
-                    with st.expander(f"### {subfig_dir.name}"):
-                        # Show original cropped image instead of recreated image.
-                        # subfig_dir.name already includes the extension (e.g.
-                        # "Figure_5_subfig_0.png"), so do NOT append ".png" again.
-                        _subfig_img_found = False
-                        if latest_manual:
-                            input_dir = latest_manual / "input" / safe_doi
-                            original_img = input_dir / subfig_dir.name
-                            if original_img.exists():
-                                st_resizable_image(original_img, caption="Original cropped image", key=f"subfig_orig_{safe_doi}_{subfig_dir.name}")
-                                _subfig_img_found = True
-                        if not _subfig_img_found:
-                            # Fallback: check interventions crop directory
-                            _crops_dir = rr.run_dir / "interventions" / safe_doi
-                            for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
-                                _candidate = _fig_d / subfig_dir.name
-                                if _candidate.exists():
-                                    st_resizable_image(_candidate, caption="Original cropped image", key=f"subfig_crop_{safe_doi}_{subfig_dir.name}")
-                                    _subfig_img_found = True
-                                    break
-                        if not _subfig_img_found:
-                            # Fallback to recreated image
-                            final_dir = subfig_dir / "final"
-                            if final_dir.exists():
-                                final_img = final_dir / "final_image.png"
-                                if final_img.exists():
-                                    st_resizable_image(final_img, caption="Recreated image (original not found)", key=f"subfig_final_{safe_doi}_{subfig_dir.name}")
-
-                    # Show extracted dataset in expander
-                    final_dir = subfig_dir / "final"
-                    final_csv = final_dir / "final_dataset.csv"
-                    if final_csv.exists():
-                        with st.expander("Extracted Data", expanded=False):
-                            try:
-                                df_subfig = pd.read_csv(final_csv)
-                                df_subfig = _apply_axis_title_override_df(df_subfig, subfig_dir)
-                                st.data_editor(df_subfig, use_container_width=True, hide_index=True, key=f"subfig_extracted_{selected_doi}_{subfig_dir.name}")
-                            except Exception as e:
-                                st.warning(f"Failed to load: {e}")
-
-                        # Show emit_rows for this subfigure from row_cache
-                        emit_rows_path_subfig = find_emit_rows_for_source(
-                            rr.run_dir, selected_doi, "figure", subfig_dir.name
-                        )
-                        if emit_rows_path_subfig:
-                            df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
-                            if df_emit_subfig is not None and not df_emit_subfig.empty:
-                                with st.expander("LLM-Generated Dataset", expanded=False):
-                                    st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
-                                    st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
-
-                    # Add separator between subfigures if there are multiple
-                    if subfig_dir != subfig_dirs[-1]:
-                        st.markdown("---")
-
-        # ========================
-        # SECTION: Intervention Results
-        # Show new OCR and LLM data once a per-figure plextract_interventions
-        # run exists (i.e. the user has clicked "Rerun data extraction").
-        # ========================
-        if _per_fig_plextract and _per_fig_plextract.exists():
-            _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
-            _int_out_base = (
-                (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
-            )
-
-            # --- New OCR-Extracted Data ---
-            _int_csv_paths: list[Path] = []
-            if _int_out_base and _int_out_base.exists():
-                for _idir in sorted(_int_out_base.iterdir()):
-                    if _idir.is_dir():
-                        _icsvp = _idir / "final" / "final_dataset.csv"
-                        if _icsvp.exists():
-                            _int_csv_paths.append(_icsvp)
-
-            if _int_csv_paths:
-                with st.expander("New OCR-Extracted Data", expanded=False):
-                    st.markdown(
-                        "*Extracted after intervention — re-run with edited masks / series / axis changes*"
-                    )
-                    for _icsvp in _int_csv_paths:
-                        try:
-                            _idf = pd.read_csv(_icsvp)
-                            st.caption(
-                                f"**{_icsvp.parent.parent.name}** — "
-                                f"`{_icsvp.relative_to(rr.run_dir)}`"
-                            )
-                            st.data_editor(
-                                _idf,
-                                use_container_width=True,
-                                hide_index=True,
-                                key=f"int_ocr_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
-                            )
-                            st.download_button(
-                                label="Download CSV",
-                                data=_idf.to_csv(index=False),
-                                file_name=f"{_icsvp.parent.parent.name}_intervention.csv",
-                                mime="text/csv",
-                                key=f"int_ocr_dl_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
-                            )
-                        except Exception as _ie:
-                            st.warning(f"Failed to load {_icsvp.name}: {_ie}")
-
-            # --- New LLM-Generated Dataset Rows ---
-            # Collect figure names from the intervention output dir plus the
-            # top-level figure id, then look up the most-recently cached rows.
-            _int_names_to_check: set[str] = {f.id}
-            if _int_out_base and _int_out_base.exists():
-                for _idir in sorted(_int_out_base.iterdir()):
-                    if _idir.is_dir():
-                        _int_names_to_check.add(_idir.name)
-
-            _int_emit_items: list[tuple[str, Path]] = []
-            for _iname in sorted(_int_names_to_check):
-                _iep = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _iname)
-                if _iep:
-                    _int_emit_items.append((_iname, _iep))
-
-            if _int_emit_items:
-                with st.expander("New LLM-Generated Dataset", expanded=False):
-                    for _iname, _iep in _int_emit_items:
-                        _idf_emit = load_emit_rows(_iep)
-                        if _idf_emit is not None and not _idf_emit.empty:
-                            st.caption(
-                                f"**{_iname}** — `{_iep.relative_to(rr.run_dir)}`"
-                            )
-                            st.data_editor(
-                                _idf_emit,
-                                use_container_width=True,
-                                hide_index=True,
-                                key=f"int_llm_{safe_doi}_{f.id}_{_iname}",
-                            )
-                            st.download_button(
-                                label="Download emit_rows CSV",
-                                data=_idf_emit.to_csv(index=False),
-                                file_name=f"{_iname}_intervention_emit_rows.csv",
-                                mime="text/csv",
-                                key=f"int_llm_dl_{safe_doi}_{f.id}_{_iname}",
-                            )
-
+                with _bcols[2]:
+                    _show_json = st.checkbox("Show current calibration JSON", value=False, key=f"er_show_calib_json_{_safe_doi_er}_{_ax_sel_name_er}")
+                    if _show_json:
+                        if _pix2val_override_er.exists():
+                            st.code(_pix2val_override_er.read_text(), language="json")
+                        elif _pix2val_orig_er.exists():
+                            st.code(_pix2val_orig_er.read_text(), language="json")
+                        else:
+                            st.info("No pix2val JSON exists yet. Save calibration from clicks first.")
         # ========================
         # SECTION: Series Management
         # ========================
@@ -2521,6 +2450,409 @@ with tab_figs:
                     st.success(f"Saved mapping: {_p_er}")
                     st.rerun()
 
+
+        # ========================
+        # SECTION: OCR Data
+        # ========================        
+        # --- Extracted dataset table (plextract final_dataset.csv) ---
+        final_csv = None
+        if isinstance(getattr(f, "extra", None), dict):
+            final_csv = f.extra.get("final_dataset_csv")
+
+        # --- Display extracted data in expander ---
+        with st.expander("OCR-Extracted Data", expanded=False):
+            if final_csv and Path(final_csv).exists():
+                try:
+                    df = _load_csv(final_csv)
+                    _figure_dir_for_overrides = Path(final_csv).parent.parent
+                    df = _apply_axis_title_override_df(df, _figure_dir_for_overrides)
+                    st.data_editor(df, use_container_width=True, hide_index=True, key=f"fig_extracted_{selected_doi}_{f.id}")
+                    st.caption(final_csv)
+                except Exception as e:
+                    st.warning(f"Failed to load extracted dataset:\n`{final_csv}`\n\n{e}")
+            else:
+                st.info("No extracted dataset found for this figure.")
+
+        
+        # ========================
+        # SECTION: LLM Data
+        # ========================  
+        emit_rows_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", f.id)
+        if emit_rows_path:
+            df_emit = load_emit_rows(emit_rows_path)
+            if df_emit is not None and not df_emit.empty:
+                with st.expander("LLM-Generated Dataset Rows", expanded=False):
+                    st.markdown("*Normalized dataset rows generated by LLM from extracted figure data*")
+                    st.caption(f"**Source:** `{emit_rows_path.relative_to(rr.run_dir)}`")
+                    st.data_editor(df_emit, use_container_width=True, hide_index=True, key=f"fig_emit_{selected_doi}_{f.id}")
+
+                    csv_data = df_emit.to_csv(index=False)
+                    st.download_button(
+                        label="Download emit_rows CSV",
+                        data=csv_data,
+                        file_name=f"{f.id}_emit_rows.csv",
+                        mime="text/csv",
+                    )
+        else:
+            # Check if row_cache exists but no data found for this figure
+            row_cache_dir = rr.run_dir / "complete_dataset" / "row_cache"
+            if row_cache_dir.exists():
+                with st.expander("LLM-Generated Dataset", expanded=False):
+                    st.info(f"No row_cache data found for {f.id}. Cache may not have been generated yet.")
+
+        # --- Display cropped subfigures from plextract and interventions ---
+        # Collect subfigure dirs from all relevant workdirs, deduplicating by name.
+        # Per-figure plextract_interventions takes highest priority (most up-to-date),
+        # then the legacy shared interventions_plextract, then original plextract.
+        safe_doi = selected_doi.replace("/", "@").strip()
+        fig_stem = Path(f.id).stem
+        _subfig_map: dict[str, Path] = {}  # name -> dir (first match wins)
+
+        from intervention import latest_plextract_run_dir
+
+        # Build priority-ordered list of workdirs to search for subfigures.
+        _workdirs_priority: list[Path] = []
+
+        # 1. Per-figure plextract_interventions: each figure dir under
+        #    interventions/<safe_doi>/ may have its own plextract_interventions/
+        #    subdir when the user ran "Re-run extraction" for that specific figure.
+        _int_doi_dir = rr.run_dir / "interventions" / safe_doi
+        _per_fig_plextract: Path | None = None
+        if _int_doi_dir.exists():
+            for _int_fig_d in _int_doi_dir.iterdir():
+                if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
+                    _candidate = _int_fig_d / "plextract_interventions"
+                    if _candidate.exists():
+                        _per_fig_plextract = _candidate
+                        _workdirs_priority.append(_candidate)
+                    break
+
+        # 2. Legacy shared interventions_plextract (backward compatibility).
+        _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
+
+        # 3. Original plextract output.
+        _workdirs_priority.append(rr.run_dir / "plextract")
+
+        for _wd in _workdirs_priority:
+            if not _wd.exists():
+                continue
+            _latest = latest_plextract_run_dir(_wd)
+            if not _latest:
+                continue
+            _out_base = _latest / "output" / safe_doi
+            if not _out_base.exists():
+                continue
+            for _d in _out_base.iterdir():
+                if _d.is_dir() and _d.name.startswith(fig_stem + "_subfig_"):
+                    # First match wins (per-figure intervention has priority)
+                    if _d.name not in _subfig_map:
+                        _subfig_map[_d.name] = _d
+
+        subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
+
+        # Set latest_manual / out_base for use by the data completion button and
+        # the original-image lookup below.  Prefer the per-figure workdir, then
+        # fall back to the shared interventions_plextract, then plain plextract.
+        latest_manual = None
+        out_base = None
+        for _wd in [
+            _per_fig_plextract,
+            rr.run_dir / "interventions" / "interventions_plextract",
+            rr.run_dir / "plextract",
+        ]:
+            if _wd is None or not _wd.exists():
+                continue
+            _lat = latest_plextract_run_dir(_wd)
+            if _lat:
+                _ob = _lat / "output" / safe_doi
+                if _ob.exists():
+                    latest_manual = _lat
+                    out_base = _ob
+                    break
+
+        if subfig_dirs:
+                # Header for subfigures section
+                st.markdown("**Cropped Subfigures**")
+
+                for subfig_dir in subfig_dirs:
+                    # Subfigure header with data completion button
+                    col_header, col_button = st.columns([3, 1])
+                    with col_header:
+                        st.markdown(f"### {subfig_dir.name}")
+                    with col_button:
+                        if st.button("Run Data Completion", key=f"complete_{subfig_dir.name}", help="Run complete_dataset.py to extract dataset rows from this subfigure"):
+                            with st.spinner(f"Running data completion for {subfig_dir.name}..."):
+                                try:
+                                    # Verify index.csv exists
+                                    reparsed_dir = rr.run_dir / "reparsed"
+                                    index_csv_path = reparsed_dir / "index.csv"
+
+                                    if not index_csv_path.exists():
+                                        error_msg = f"**Required file not found:** `{index_csv_path.relative_to(rr.run_dir)}`\n\n"
+
+                                        if not reparsed_dir.exists():
+                                            error_msg += "The `reparsed/` directory doesn't exist. "
+                                        else:
+                                            error_msg += "The `reparsed/` directory exists but `index.csv` is missing. "
+
+                                        error_msg += ("This file is created during the 'Download DOIs' stage of the pipeline.\n\n"
+                                                     "**To fix this:**\n"
+                                                     "1. Run the full pipeline with 'Download DOIs' enabled, OR\n"
+                                                     "2. If you've already downloaded papers, check if `index.csv` exists in a different workspace")
+
+                                        st.error(error_msg)
+                                        continue
+
+                                    # Create temporary CSV with this DOI
+                                    import tempfile
+                                    import subprocess
+                                    import re as _re_dc
+
+                                    # Clear any existing row_cache entries for this subfigure so the
+                                    # LLM is always re-called and the most recent result is stored.
+                                    _row_cache_dir_dc = rr.run_dir / "complete_dataset" / "row_cache"
+                                    if _row_cache_dir_dc.exists():
+                                        _safe_fn_dc = lambda s: _re_dc.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                                        _cache_pfx_dc = _safe_fn_dc(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
+                                        for _cf_dc in list(_row_cache_dir_dc.iterdir()):
+                                            if _cf_dc.suffix == ".json" and (
+                                                _cf_dc.stem.startswith(_cache_pfx_dc) or
+                                                _cf_dc.name.startswith(_cache_pfx_dc)
+                                            ):
+                                                _cf_dc.unlink(missing_ok=True)
+
+                                    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
+                                        tmp.write(f"DOI\n{selected_doi}\n")
+                                        tmp_path = tmp.name
+
+                                    # Run complete_dataset.py
+                                    complete_dataset_script = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+
+                                    # Determine the best extracted_figures_root for this subfigure.
+                                    # The subfig_dir already points to the correct output directory.
+                                    _efr = subfig_dir.parent.parent  # .../output
+                                    cmd = [
+                                        "python", str(complete_dataset_script),
+                                        "--file_path", tmp_path,
+                                        "--output_dir", str(rr.run_dir / "complete_dataset"),
+                                        "--index_csv_path", str(index_csv_path),
+                                        "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
+                                        "--extracted_figures_root", str(_efr),
+                                        "--target_figure", subfig_dir.name,
+                                    ]
+
+                                    # Pass LLM configuration environment variables to subprocess
+                                    env = os.environ.copy()
+
+                                    # Apply LLM configuration from session state
+                                    provider = st.session_state.get("llm_provider", "Ollama")
+                                    model = st.session_state.get("llm_model", "")
+
+                                    if provider == "Ollama":
+                                        env["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                                        env["AEM_OCR_LLM_MODEL"] = model
+                                        env["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                        ollama_models_dir = st.session_state.get("ollama_models_dir", "")
+                                        if ollama_models_dir:
+                                            env["OLLAMA_MODELS"] = ollama_models_dir
+                                    else:
+                                        env["AEM_OCR_LLM_PROVIDER"] = "openai"
+                                        env["AEM_OCR_LLM_MODEL"] = model
+                                        env["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                                        if st.session_state.get("openai_api_key"):
+                                            env["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+                                    # Apply data processing LLM configuration if separate
+                                    if st.session_state.get("use_separate_processing_llm"):
+                                        p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
+                                        p_model = st.session_state.get("processing_llm_model", "")
+                                        if p_provider == "Ollama":
+                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
+                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                                        else:
+                                            env["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
+                                            env["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                                            p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
+                                            p_key = st.session_state.get("processing_openai_api_key", "")
+                                            if p_base:
+                                                env["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
+                                            if p_key:
+                                                env["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
+                                    else:
+                                        # Clear processing-specific env vars so processing uses the general LLM
+                                        for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
+                                                   "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
+                                            env.pop(k, None)
+
+                                    # Validate that a model is configured
+                                    if not model and not st.session_state.get("processing_llm_model"):
+                                        st.error("No LLM model configured. Please configure LLM settings in the sidebar before running data completion.")
+                                        Path(tmp_path).unlink(missing_ok=True)
+                                        continue
+
+                                    # Set custom instructions path if it exists in the workspace
+                                    ci_path = rr.run_dir.parent / "custom_instructions" / "default.json"
+                                    if ci_path.exists():
+                                        env["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+
+                                    # Set run ID and run directory for cost tracking
+                                    env["AEM_OCR_RUN_ID"] = rr.run_id
+                                    env["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+
+                                    result = subprocess.run(cmd, stdout=None, stderr=None, text=True, timeout=300, env=env)
+
+                                    # Clean up temp file
+                                    Path(tmp_path).unlink(missing_ok=True)
+
+                                    if result.returncode == 0:
+                                        st.success(f"Data completion completed for {subfig_dir.name}!")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Data completion failed:\n```\n{result.stderr}\n```")
+                                except subprocess.TimeoutExpired:
+                                    st.error("Data completion timed out (>5 minutes)")
+                                except Exception as e:
+                                    st.error(f"Error running data completion: {e}")
+
+                    with st.expander(f"### {subfig_dir.name}"):
+                        # Show original cropped image instead of recreated image.
+                        # subfig_dir.name already includes the extension (e.g.
+                        # "Figure_5_subfig_0.png"), so do NOT append ".png" again.
+                        _subfig_img_found = False
+                        if latest_manual:
+                            input_dir = latest_manual / "input" / safe_doi
+                            original_img = input_dir / subfig_dir.name
+                            if original_img.exists():
+                                st_resizable_image(original_img, caption="Original cropped image", key=f"subfig_orig_{safe_doi}_{subfig_dir.name}")
+                                _subfig_img_found = True
+                        if not _subfig_img_found:
+                            # Fallback: check interventions crop directory
+                            _crops_dir = rr.run_dir / "interventions" / safe_doi
+                            for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
+                                _candidate = _fig_d / subfig_dir.name
+                                if _candidate.exists():
+                                    st_resizable_image(_candidate, caption="Original cropped image", key=f"subfig_crop_{safe_doi}_{subfig_dir.name}")
+                                    _subfig_img_found = True
+                                    break
+                        if not _subfig_img_found:
+                            # Fallback to recreated image
+                            final_dir = subfig_dir / "final"
+                            if final_dir.exists():
+                                final_img = final_dir / "final_image.png"
+                                if final_img.exists():
+                                    st_resizable_image(final_img, caption="Recreated image (original not found)", key=f"subfig_final_{safe_doi}_{subfig_dir.name}")
+
+                    # Show extracted dataset in expander
+                    final_dir = subfig_dir / "final"
+                    final_csv = final_dir / "final_dataset.csv"
+                    if final_csv.exists():
+                        with st.expander("Extracted Data", expanded=False):
+                            try:
+                                df_subfig = pd.read_csv(final_csv)
+                                df_subfig = _apply_axis_title_override_df(df_subfig, subfig_dir)
+                                st.data_editor(df_subfig, use_container_width=True, hide_index=True, key=f"subfig_extracted_{selected_doi}_{subfig_dir.name}")
+                            except Exception as e:
+                                st.warning(f"Failed to load: {e}")
+
+                        # Show emit_rows for this subfigure from row_cache
+                        emit_rows_path_subfig = find_emit_rows_for_source(
+                            rr.run_dir, selected_doi, "figure", subfig_dir.name
+                        )
+                        if emit_rows_path_subfig:
+                            df_emit_subfig = load_emit_rows(emit_rows_path_subfig)
+                            if df_emit_subfig is not None and not df_emit_subfig.empty:
+                                with st.expander("LLM-Generated Dataset", expanded=False):
+                                    st.caption(f"**Source:** `{emit_rows_path_subfig.relative_to(rr.run_dir)}`")
+                                    st.data_editor(df_emit_subfig, use_container_width=True, hide_index=True, key=f"subfig_emit_{selected_doi}_{subfig_dir.name}")
+
+                    # Add separator between subfigures if there are multiple
+                    if subfig_dir != subfig_dirs[-1]:
+                        st.markdown("---")
+
+        # ========================
+        # SECTION: Intervention Results
+        # Show new OCR and LLM data once a per-figure plextract_interventions
+        # run exists (i.e. the user has clicked "Rerun data extraction").
+        # ========================
+        if _per_fig_plextract and _per_fig_plextract.exists():
+            _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
+            _int_out_base = (
+                (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
+            )
+
+            # --- New OCR-Extracted Data ---
+            _int_csv_paths: list[Path] = []
+            if _int_out_base and _int_out_base.exists():
+                for _idir in sorted(_int_out_base.iterdir()):
+                    if _idir.is_dir():
+                        _icsvp = _idir / "final" / "final_dataset.csv"
+                        if _icsvp.exists():
+                            _int_csv_paths.append(_icsvp)
+
+            if _int_csv_paths:
+                with st.expander("New OCR-Extracted Data", expanded=False):
+                    st.markdown(
+                        "*Extracted after intervention — re-run with edited masks / series / axis changes*"
+                    )
+                    for _icsvp in _int_csv_paths:
+                        try:
+                            _idf = pd.read_csv(_icsvp)
+                            st.caption(
+                                f"**{_icsvp.parent.parent.name}** — "
+                                f"`{_icsvp.relative_to(rr.run_dir)}`"
+                            )
+                            st.data_editor(
+                                _idf,
+                                use_container_width=True,
+                                hide_index=True,
+                                key=f"int_ocr_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
+                            )
+                            st.download_button(
+                                label="Download CSV",
+                                data=_idf.to_csv(index=False),
+                                file_name=f"{_icsvp.parent.parent.name}_intervention.csv",
+                                mime="text/csv",
+                                key=f"int_ocr_dl_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
+                            )
+                        except Exception as _ie:
+                            st.warning(f"Failed to load {_icsvp.name}: {_ie}")
+
+            # --- New LLM-Generated Dataset Rows ---
+            # Collect figure names from the intervention output dir plus the
+            # top-level figure id, then look up the most-recently cached rows.
+            _int_names_to_check: set[str] = {f.id}
+            if _int_out_base and _int_out_base.exists():
+                for _idir in sorted(_int_out_base.iterdir()):
+                    if _idir.is_dir():
+                        _int_names_to_check.add(_idir.name)
+
+            _int_emit_items: list[tuple[str, Path]] = []
+            for _iname in sorted(_int_names_to_check):
+                _iep = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _iname)
+                if _iep:
+                    _int_emit_items.append((_iname, _iep))
+
+            if _int_emit_items:
+                with st.expander("New LLM-Generated Dataset", expanded=False):
+                    for _iname, _iep in _int_emit_items:
+                        _idf_emit = load_emit_rows(_iep)
+                        if _idf_emit is not None and not _idf_emit.empty:
+                            st.caption(
+                                f"**{_iname}** — `{_iep.relative_to(rr.run_dir)}`"
+                            )
+                            st.data_editor(
+                                _idf_emit,
+                                use_container_width=True,
+                                hide_index=True,
+                                key=f"int_llm_{safe_doi}_{f.id}_{_iname}",
+                            )
+                            st.download_button(
+                                label="Download emit_rows CSV",
+                                data=_idf_emit.to_csv(index=False),
+                                file_name=f"{_iname}_intervention_emit_rows.csv",
+                                mime="text/csv",
+                                key=f"int_llm_dl_{safe_doi}_{f.id}_{_iname}",
+                            )
         # ========================
         # SECTION: Display metadata
         # ========================
@@ -2727,7 +3059,7 @@ with tab_figs:
                             _env_er["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
 
                             with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
-                                _result_er = subprocess.run(_cmd_er, capture_output=True, text=True, timeout=300, env=_env_er)
+                                _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
                             Path(_tmp_path_er).unlink(missing_ok=True)
                             if _result_er.returncode == 0:
                                 st.success(f"LLM dataset generation complete for {_llm_sel_er}!")
