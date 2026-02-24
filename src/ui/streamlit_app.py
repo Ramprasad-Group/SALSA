@@ -322,6 +322,7 @@ def section_dropdown(title: str, *, expanded: bool = False):
     """
     return st.expander(title, expanded=expanded)
 
+
 def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None):
     """Render OCR-extracted data using the shared dropdown structure."""
     with section_dropdown("OCR-Extracted Data", expanded=False):
@@ -336,6 +337,7 @@ def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_overr
             st.caption(str(csv_path))
         except Exception as e:
             st.warning(f"Failed to load extracted dataset:\n`{csv_path}`\n\n{e}")
+
 
 def render_llm_dropdown(*, run_dir: Path, emit_rows_path: Optional[Path], key_prefix: str, file_name_prefix: str):
     """Render LLM-generated dataset using the shared dropdown structure."""
@@ -358,6 +360,7 @@ def render_llm_dropdown(*, run_dir: Path, emit_rows_path: Optional[Path], key_pr
             key=f"{key_prefix}_llm_download",
         )
 
+
 def render_metadata_dropdown(*, metadata_path: Optional[Path], empty_message: str = "No metadata found."):
     """Render metadata using the shared dropdown structure."""
     with section_dropdown("Metadata", expanded=False):
@@ -366,13 +369,689 @@ def render_metadata_dropdown(*, metadata_path: Optional[Path], empty_message: st
         else:
             st.info(empty_message)
 
-def axis_configuration_dropdown(*, expanded: bool = False):
-    """Shared helper for the Axis Configuration dropdown."""
-    return section_dropdown("Axis Configuration", expanded=expanded)
 
-def series_management_dropdown(*, expanded: bool = False):
-    """Shared helper for the Series Management dropdown."""
-    return section_dropdown("Series Management", expanded=expanded)
+
+def render_figure_image_dropdown(
+    *,
+    image: Optional[Path],
+    image_caption: Optional[str] = None,
+    figure_caption: Optional[str] = None,
+    title: str,
+    key: str,
+    expanded: bool = False,
+):
+    """Render the figure image inside a dropdown, shared between figures and subfigures."""
+    with section_dropdown(title, expanded=expanded):
+        if figure_caption:
+            st.markdown(f"**Caption:** {figure_caption}")
+        if image and image.exists():
+            st_resizable_image(image, caption=image_caption, key=key)
+        else:
+            st.warning("No source image found for this figure.")
+
+
+def render_axis_configuration_dropdown(
+    *,
+    chartdete_dir: Optional[Path],
+    source_img: Optional[Path],
+    key_prefix: str,
+    expanded: bool = False,
+):
+    """Render the full Axis Configuration dropdown, shared between figures and subfigures."""
+    with section_dropdown("Axis Configuration", expanded=expanded):
+        if chartdete_dir is None:
+            st.info("No plextract output found for this figure. Run plextract extraction first.")
+            return
+        chartdete_dir.mkdir(parents=True, exist_ok=True)
+
+        # ========================
+        # Axis Titles
+        # ========================
+        st.markdown("**Axis Titles**")
+        title_override_path = chartdete_dir / "axis_title_override.json"
+        title_ocr_path = chartdete_dir / "axis_title_texts.json"
+
+        def _load_axis_titles_default() -> tuple[str, str]:
+            if title_override_path.exists():
+                try:
+                    d = json.loads(title_override_path.read_text())
+                    return d.get("x_title", "") or "", d.get("y_title", "") or ""
+                except Exception:
+                    return "", ""
+            if title_ocr_path.exists():
+                try:
+                    d = json.loads(title_ocr_path.read_text())
+                    x_title, y_title = "", ""
+                    for ap, txt in d.items():
+                        bn = Path(ap).name.lower()
+                        if any(t in bn for t in ("x_", "x-", "_x.", "xtitle", "xlabel")):
+                            x_title = txt
+                        elif any(t in bn for t in ("y_", "y-", "_y.", "ytitle", "ylabel")):
+                            y_title = txt
+                    if not x_title and not y_title and len(d) == 2:
+                        vals = list(d.values())
+                        x_title, y_title = vals[0], vals[1]
+                    return x_title or "", y_title or ""
+                except Exception:
+                    return "", ""
+            return "", ""
+
+        x_title_default, y_title_default = _load_axis_titles_default()
+        x_title_key = f"{key_prefix}_ax_x_title"
+        y_title_key = f"{key_prefix}_ax_y_title"
+        if x_title_key not in st.session_state:
+            st.session_state[x_title_key] = x_title_default
+        if y_title_key not in st.session_state:
+            st.session_state[y_title_key] = y_title_default
+
+        col_xt, col_yt = st.columns(2)
+        with col_xt:
+            new_x_title = st.text_input("X axis title", key=x_title_key)
+        with col_yt:
+            new_y_title = st.text_input("Y axis title", key=y_title_key)
+
+        if st.button("Save axis titles", key=f"{key_prefix}_ax_save_titles"):
+            title_override_path.write_text(json.dumps({"x_title": new_x_title, "y_title": new_y_title}, indent=2))
+            st.success("Axis title overrides saved.")
+            st.rerun()
+
+        # ========================
+        # Axis Calibration
+        # ========================
+        st.markdown("**Axis Calibration**")
+        if source_img is None or not source_img.exists():
+            st.info("No source image available for axis calibration.")
+            return
+
+        st.caption(
+            "Click the image to set Xmin/Xmax/Ymin/Ymax pixel locations, then enter the numeric values. "
+            "This writes `chartdete/pix2val_override.json` for this figure."
+        )
+        st.caption(f"Calibrating on image: `{source_img}`")
+
+        pix2val_override_path = chartdete_dir / "pix2val_override.json"
+        pix2val_orig_path = chartdete_dir / "pix2val.json"
+        axis_type_path = chartdete_dir / "axis_type_override.json"
+        label_coords_path = chartdete_dir / "label_coordinates.json"
+
+        # Plot area bbox (optional but helpful)
+        plot_area = None
+        if label_coords_path.exists():
+            try:
+                _lc = json.loads(label_coords_path.read_text())
+                if "plot_area" in _lc and len(_lc["plot_area"]) >= 4:
+                    plot_area = list(map(float, _lc["plot_area"][:4]))
+            except Exception:
+                pass
+
+        if plot_area is None:
+            st.info(
+                "No plot_area found (`chartdete/label_coordinates.json`). "
+                "You can still calibrate from clicks; domain will use your entered min/max."
+            )
+
+        pil_img = Image.open(source_img).convert("RGB")
+        img_w, img_h = pil_img.size
+
+        width_key = f"{key_prefix}_ax_calib_w"
+        if width_key not in st.session_state:
+            st.session_state[width_key] = min(1100, img_w)
+        disp_w = st.slider(
+            "Calibration view width (px)", min_value=400, max_value=1800,
+            value=int(st.session_state[width_key]), step=50, key=width_key,
+        )
+        disp_h = int(round(img_h * (disp_w / img_w)))
+
+        bg = pil_img.resize((disp_w, disp_h), Image.Resampling.LANCZOS).convert("RGBA")
+        scale_x = img_w / disp_w
+        scale_y = img_h / disp_h
+
+        endpoint_key = f"{key_prefix}_ax_calib_endpoint"
+        endpoint = st.radio("Click target", ["Xmin", "Xmax", "Ymin", "Ymax"], key=endpoint_key, horizontal=True)
+
+        cv_ver_key = f"{key_prefix}_ax_calib_ver"
+        if cv_ver_key not in st.session_state:
+            st.session_state[cv_ver_key] = 0
+
+        c1_ax, _c2_ax = st.columns([1, 3])
+        with c1_ax:
+            if st.button("Clear markers", key=f"{key_prefix}_ax_clear_markers"):
+                st.session_state[cv_ver_key] += 1
+                for k in ("xmin", "xmax", "ymin", "ymax"):
+                    st.session_state.pop(f"{key_prefix}_ax_pt_{k}", None)
+                st.rerun()
+
+        st.write("**Click on the image to place the selected endpoint.**")
+
+        canvas_key = (
+            f"{key_prefix}_ax_calib_canvas_{Path(source_img).name}_{disp_w}x{disp_h}"
+            f"_v{st.session_state[cv_ver_key]}"
+        )
+        canvas = st_canvas(
+            background_image=bg,
+            drawing_mode="circle",
+            update_streamlit=True,
+            height=disp_h, width=disp_w,
+            stroke_width=2, stroke_color="#00ff00", fill_color="rgba(0,255,0,0.35)",
+            key=canvas_key,
+        )
+
+        def _last_circle_center(json_data):
+            if not json_data:
+                return None
+            objs = json_data.get("objects") or []
+            circles = [o for o in objs if o.get("type") == "circle"]
+            if not circles:
+                return None
+            o = circles[-1]
+            left = float(o.get("left", 0.0))
+            top = float(o.get("top", 0.0))
+            r = float(o.get("radius", 0.0)) * float(o.get("scaleX", 1.0))
+            return left + r, top + r
+
+        click = _last_circle_center(getattr(canvas, "json_data", None))
+
+        def _store_endpoint(ep_name: str, cx_disp: float, cy_disp: float):
+            st.session_state[f"{key_prefix}_ax_pt_{ep_name.lower()}"] = {
+                "disp": [float(cx_disp), float(cy_disp)],
+                "img": [float(cx_disp * scale_x), float(cy_disp * scale_y)],
+                "img_wh": [int(img_w), int(img_h)],
+                "shown_wh": [int(disp_w), int(disp_h)],
+                "source_image": str(source_img),
+            }
+
+        if click is not None:
+            _store_endpoint(endpoint, click[0], click[1])
+
+        def _get_pt(ep_name: str):
+            return st.session_state.get(f"{key_prefix}_ax_pt_{ep_name.lower()}")
+
+        pt_xmin = _get_pt("Xmin")
+        pt_xmax = _get_pt("Xmax")
+        pt_ymin = _get_pt("Ymin")
+        pt_ymax = _get_pt("Ymax")
+
+        show_debug = st.checkbox("Show click debug", value=False, key=f"{key_prefix}_ax_show_debug")
+        if show_debug:
+            st.write("Latest click (disp):", click)
+            st.write("Xmin:", pt_xmin)
+            st.write("Xmax:", pt_xmax)
+            st.write("Ymin:", pt_ymin)
+            st.write("Ymax:", pt_ymax)
+
+        st.markdown("**Endpoint values** (enter the numeric value for each clicked point)")
+        vxmin_key = f"{key_prefix}_ax_val_xmin"
+        vxmax_key = f"{key_prefix}_ax_val_xmax"
+        vymin_key = f"{key_prefix}_ax_val_ymin"
+        vymax_key = f"{key_prefix}_ax_val_ymax"
+        for k in (vxmin_key, vxmax_key, vymin_key, vymax_key):
+            if k not in st.session_state:
+                st.session_state[k] = ""
+
+        vcols = st.columns(4)
+        with vcols[0]:
+            vxmin = st.text_input("Xmin value", key=vxmin_key, disabled=pt_xmin is None)
+            if pt_xmin is None:
+                st.caption("Click Xmin on image")
+        with vcols[1]:
+            vxmax = st.text_input("Xmax value", key=vxmax_key, disabled=pt_xmax is None)
+            if pt_xmax is None:
+                st.caption("Click Xmax on image")
+        with vcols[2]:
+            vymin = st.text_input("Ymin value", key=vymin_key, disabled=pt_ymin is None)
+            if pt_ymin is None:
+                st.caption("Click Ymin on image")
+        with vcols[3]:
+            vymax = st.text_input("Ymax value", key=vymax_key, disabled=pt_ymax is None)
+            if pt_ymax is None:
+                st.caption("Click Ymax on image")
+
+        def _parse_float(s):
+            s = (s or "").strip()
+            return None if not s else float(s)
+
+        nxmin = _parse_float(vxmin)
+        nxmax = _parse_float(vxmax)
+        nymin = _parse_float(vymin)
+        nymax = _parse_float(vymax)
+
+        # Axis type (also saved to axis_type_override.json for consistency)
+        ax_type_default = {"x_axis_type": "linear", "y_axis_type": "linear"}
+        if axis_type_path.exists():
+            try:
+                _atd = json.loads(axis_type_path.read_text())
+                ax_type_default["x_axis_type"] = _atd.get("x_axis_type", "linear")
+                ax_type_default["y_axis_type"] = _atd.get("y_axis_type", "linear")
+            except Exception:
+                pass
+        elif pix2val_override_path.exists():
+            try:
+                _pv = json.loads(pix2val_override_path.read_text())
+                ax_type_default["x_axis_type"] = _pv.get("x", {}).get("type", "linear")
+                ax_type_default["y_axis_type"] = _pv.get("y", {}).get("type", "linear")
+            except Exception:
+                pass
+
+        xtype_key = f"{key_prefix}_ax_xtype"
+        ytype_key = f"{key_prefix}_ax_ytype"
+        if xtype_key not in st.session_state:
+            st.session_state[xtype_key] = ax_type_default["x_axis_type"]
+        if ytype_key not in st.session_state:
+            st.session_state[ytype_key] = ax_type_default["y_axis_type"]
+
+        tcols = st.columns(2)
+        with tcols[0]:
+            new_xtype = st.selectbox("X axis type", ["linear", "log10"], key=xtype_key)
+        with tcols[1]:
+            new_ytype = st.selectbox("Y axis type", ["linear", "log10"], key=ytype_key)
+
+        def _ab_from_two_points(p1_img, v1, p2_img, v2, axis: str, typ: str):
+            u1, u2 = (float(p1_img[0]), float(p2_img[0])) if axis == "x" else (float(p1_img[1]), float(p2_img[1]))
+            if u2 == u1:
+                raise ValueError(f"{axis} endpoints have identical pixel coordinate; cannot calibrate.")
+            if typ == "linear":
+                a = (v2 - v1) / (u2 - u1)
+                return float(a), float(v1 - a * u1)
+            if v1 <= 0 or v2 <= 0:
+                raise ValueError(f"{axis}-axis log10 requires positive values.")
+            lv1, lv2 = math.log10(v1), math.log10(v2)
+            a = (lv2 - lv1) / (u2 - u1)
+            return float(a), float(lv1 - a * u1)
+
+        ready = (
+            pt_xmin and pt_xmax and pt_ymin and pt_ymax and
+            None not in (nxmin, nxmax, nymin, nymax)
+        )
+        bcols = st.columns([1, 1, 2])
+        with bcols[0]:
+            if st.button(
+                "Save calibration override from clicks",
+                disabled=not ready,
+                key=f"{key_prefix}_ax_save_calib",
+            ):
+                try:
+                    xa, xb = _ab_from_two_points(pt_xmin["img"], nxmin, pt_xmax["img"], nxmax, axis="x", typ=new_xtype)
+                    ya, yb = _ab_from_two_points(pt_ymin["img"], nymin, pt_ymax["img"], nymax, axis="y", typ=new_ytype)
+                    if plot_area is not None:
+                        px1, py1, px2, py2 = plot_area
+                        x_min = xa * px1 + xb if new_xtype == "linear" else 10 ** (xa * px1 + xb)
+                        x_max = xa * px2 + xb if new_xtype == "linear" else 10 ** (xa * px2 + xb)
+                        y_min = ya * py2 + yb if new_ytype == "linear" else 10 ** (ya * py2 + yb)
+                        y_max = ya * py1 + yb if new_ytype == "linear" else 10 ** (ya * py1 + yb)
+                    else:
+                        x_min, x_max = nxmin, nxmax
+                        y_min, y_max = nymin, nymax
+                    pix2val = {
+                        "x": {"type": new_xtype, "a": xa, "b": xb},
+                        "y": {"type": new_ytype, "a": ya, "b": yb},
+                        "domain": {"x": [x_min, x_max], "y": [y_min, y_max]},
+                        "meta": {
+                            "source": "ui_click_endpoints",
+                            "image_used": str(source_img),
+                            "x_clicks": {"min": pt_xmin["img"], "max": pt_xmax["img"]},
+                            "y_clicks": {"min": pt_ymin["img"], "max": pt_ymax["img"]},
+                            "x_values": {"min": nxmin, "max": nxmax},
+                            "y_values": {"min": nymin, "max": nymax},
+                            "plot_area": plot_area,
+                        },
+                    }
+                    pix2val_override_path.write_text(json.dumps(pix2val, indent=2))
+                    axis_type_path.write_text(json.dumps({"x_axis_type": new_xtype, "y_axis_type": new_ytype}, indent=2))
+                    st.success(f"Saved calibration override: {pix2val_override_path}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save click calibration: {e}")
+
+        with bcols[1]:
+            if st.button("Clear calibration override", key=f"{key_prefix}_ax_clear_calib"):
+                if pix2val_override_path.exists():
+                    pix2val_override_path.unlink()
+                st.success("Cleared calibration override.")
+                st.rerun()
+
+        with bcols[2]:
+            show_json = st.checkbox("Show current calibration JSON", value=False, key=f"{key_prefix}_ax_show_json")
+            if show_json:
+                if pix2val_override_path.exists():
+                    st.code(pix2val_override_path.read_text(), language="json")
+                elif pix2val_orig_path.exists():
+                    st.code(pix2val_orig_path.read_text(), language="json")
+                else:
+                    st.info("No pix2val JSON exists yet. Save calibration from clicks first.")
+
+
+def render_series_management_dropdown(
+    *,
+    run_dir: Path,
+    safe_doi: str,
+    fig_id: str,
+    fig_dir: Optional[Path],
+    lf_dir: Optional[Path],
+    lf_override_dir: Path,
+    source_img: Optional[Path],
+    key_prefix: str,
+    expanded: bool = False,
+):
+    """Render the full Series Management dropdown, shared between figures and subfigures."""
+    with section_dropdown("Series Management", expanded=expanded):
+        # Ensure we have a usable lineformer dir
+        if lf_dir is None or not lf_dir.exists():
+            lf_override_dir.mkdir(parents=True, exist_ok=True)
+            lf_cat = lf_override_dir / "series_catalog.json"
+            if not lf_cat.exists():
+                lf_cat.write_text("[]")
+            lf_dir = lf_override_dir
+            st.info("No plextract lineformer output found for this figure. You can still create new series below.")
+
+        series_items = load_series_catalog(lf_dir)
+        mapping = load_mapping(run_dir, safe_doi, fig_id)
+        names = mapping.get("series_names", {})
+        deleted = set(int(x) for x in mapping.get("deleted", []))
+        override_masks = list_override_masks(run_dir, safe_doi, fig_id)
+
+        # Include newly-created series from override masks
+        orig_indices = {s.series_index for s in series_items}
+        for idx, mask_path in sorted(override_masks.items()):
+            if idx not in orig_indices:
+                try:
+                    mimg = Image.open(mask_path).convert("L")
+                    marr = np.array(mimg)
+                    ys, xs = np.where(marr > 0)
+                    cx = float(np.mean(xs)) if len(xs) > 0 else 0.0
+                    cy = float(np.mean(ys)) if len(ys) > 0 else 0.0
+                except Exception:
+                    cx, cy = 0.0, 0.0
+                from intervention import SeriesItem as _SeriesItem
+                series_items.append(_SeriesItem(series_index=idx, mask_path=mask_path, centroid=(cx, cy)))
+
+        SERIES_COLORS = [
+            (255, 0, 0), (0, 128, 255), (0, 200, 0), (255, 165, 0),
+            (148, 0, 211), (0, 206, 209), (255, 20, 147), (128, 128, 0),
+            (0, 255, 127), (100, 149, 237),
+        ]
+
+        # Load series labels from plextract final_dataset.csv
+        plextract_labels: dict = {}
+        final_csv_sm = (fig_dir / "final" / "final_dataset.csv") if fig_dir else None
+        if final_csv_sm and final_csv_sm.exists():
+            try:
+                fdf = pd.read_csv(final_csv_sm)
+                if "series_label" in fdf.columns:
+                    for sl in fdf["series_label"].dropna().unique():
+                        sl_str = str(sl).strip()
+                        try:
+                            si = int(sl_str)
+                            plextract_labels[si] = sl_str
+                        except ValueError:
+                            si = len(plextract_labels)
+                            plextract_labels[si] = sl_str
+            except Exception:
+                pass
+
+        def _display_name(idx):
+            if str(idx) in names and names[str(idx)] != f"Series {idx}":
+                return names[str(idx)]
+            if idx in plextract_labels:
+                return plextract_labels[idx]
+            return f"Series {idx}"
+
+        if source_img and source_img.exists():
+            st_resizable_image(source_img, key=f"{key_prefix}_series_src")
+            base_img = Image.open(source_img).convert("RGBA")
+            w, h = base_img.size
+        else:
+            st.warning("No source image for series overlay.")
+            base_img = None
+            w, h = 600, 400
+
+        disp_w = min(w, 900)
+        disp_h = int(h * (disp_w / w))
+
+        # Build overlay
+        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        legend_lines = []
+        for s in sorted(series_items, key=lambda x: x.series_index):
+            i = s.series_index
+            if i in deleted:
+                continue
+            color = SERIES_COLORS[i % len(SERIES_COLORS)]
+            mp = override_masks.get(i, s.mask_path)
+            try:
+                mask = Image.open(mp).convert("L")
+                marr2 = np.array(mask)
+                cl = np.zeros((*marr2.shape, 4), dtype=np.uint8)
+                cl[marr2 > 0] = (*color, 140)
+                overlay = Image.alpha_composite(overlay, Image.fromarray(cl))
+            except Exception:
+                pass
+            hex_c = "#{:02x}{:02x}{:02x}".format(*color)
+            legend_lines.append(f'<span style="color:{hex_c}; font-weight:bold;">&#9632;</span> {_display_name(i)}')
+
+        if base_img is not None:
+            composite = Image.alpha_composite(base_img, overlay).convert("RGB")
+            composite_disp = composite.resize((disp_w, disp_h))
+        else:
+            composite_disp = None
+
+        # Edit or Create Series Mask
+        st.write("**Edit or Create Series Mask**")
+        active_series = [s for s in series_items if s.series_index not in deleted]
+        existing_indices = [s.series_index for s in series_items]
+        next_idx = max(existing_indices) + 1 if existing_indices else 0
+
+        mode_options = ["Edit existing series", "Create new series"]
+        mode = st.radio("Mode", mode_options, key=f"{key_prefix}_series_mode", horizontal=True)
+        is_creating = (mode == "Create new series")
+        cur_mask_img = None
+
+        if is_creating:
+            selected_idx = next_idx
+            series_name = st.text_input(
+                "Name for new series",
+                value=f"Series {next_idx}",
+                key=f"{key_prefix}_new_series_name",
+            )
+        else:
+            if not active_series:
+                st.info("No active series to edit.")
+                selected_idx = None
+                series_name = ""
+            else:
+                sel_opts = [f"{_display_name(s.series_index)}" for s in active_series]
+                sel_ui = st.selectbox(
+                    "Select series to edit",
+                    range(len(active_series)),
+                    format_func=lambda i: sel_opts[i],
+                    key=f"{key_prefix}_mask_edit_sel",
+                )
+                sel_s = active_series[sel_ui]
+                selected_idx = sel_s.series_index
+                series_name = _display_name(selected_idx)
+                orig_mask_path = next(s.mask_path for s in series_items if s.series_index == selected_idx)
+                cur_mask_path = override_masks.get(selected_idx, orig_mask_path)
+                cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
+
+        if selected_idx is not None:
+            sel_color = SERIES_COLORS[selected_idx % len(SERIES_COLORS)]
+            hex_color = "#{:02x}{:02x}{:02x}".format(*sel_color)
+            st.markdown(
+                f'**Drawing with color:** <span style="color:{hex_color}; font-size:1.8em; font-weight:bold;">&#9632;</span> {series_name}',
+                unsafe_allow_html=True,
+            )
+            stroke_rgba = f"rgba({sel_color[0]},{sel_color[1]},{sel_color[2]},1.0)"
+            scale_x_s = w / disp_w
+            scale_y_s = h / disp_h
+
+            input_mode = st.radio(
+                "Input mode", ["Freehand drawing", "Pick exact points"],
+                horizontal=True,
+                key=f"{key_prefix}_input_mode_{selected_idx}_{mode}",
+            )
+            c1_sm, c2_sm = st.columns([3, 1])
+
+            if input_mode == "Freehand drawing":
+                with c1_sm:
+                    st.write("Draw on the colored series image below")
+                    brush = st.slider("Brush width", 1, 40, 10, key=f"{key_prefix}_brush_{selected_idx}")
+                    mask_canvas = st_canvas(
+                        background_image=composite_disp,
+                        drawing_mode="freedraw",
+                        stroke_width=brush, stroke_color=stroke_rgba,
+                        fill_color=stroke_rgba, update_streamlit=True,
+                        height=disp_h, width=disp_w,
+                        key=f"{key_prefix}_mask_canvas_{selected_idx}_{mode}",
+                    )
+                if legend_lines:
+                    st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
+
+                if mask_canvas.image_data is not None:
+                    rgba = mask_canvas.image_data.astype(np.uint8)
+                    r, g, b = sel_color
+                    color_match = (
+                        (np.abs(rgba[..., 0].astype(int) - r) < 30) &
+                        (np.abs(rgba[..., 1].astype(int) - g) < 30) &
+                        (np.abs(rgba[..., 2].astype(int) - b) < 30) &
+                        (rgba[..., 3] > 0)
+                    )
+                    new_mask_small = color_match.astype(np.uint8) * 255
+                    if np.any(new_mask_small > 0):
+                        new_mask_full = cv2.resize(new_mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+                        new_mask_pil = Image.fromarray(new_mask_full).convert("L")
+                        colA, colB = st.columns(2)
+                        with colA:
+                            save_label = "Create new series" if is_creating else "Save edited mask"
+                            if st.button(save_label, type="primary", key=f"{key_prefix}_save_mask_{selected_idx}_{mode}"):
+                                outp = save_mask_override(run_dir, safe_doi, fig_id, selected_idx, new_mask_pil)
+                                if is_creating:
+                                    map_upd = load_mapping(run_dir, safe_doi, fig_id)
+                                    if "series_names" not in map_upd:
+                                        map_upd["series_names"] = {}
+                                    map_upd["series_names"][str(selected_idx)] = series_name
+                                    save_mapping(run_dir, safe_doi, fig_id, map_upd)
+                                    marr3 = np.array(new_mask_pil)
+                                    yc, xc = np.where(marr3 > 0)
+                                    cx3 = float(np.mean(xc)) if len(xc) > 0 else 0.0
+                                    cy3 = float(np.mean(yc)) if len(yc) > 0 else 0.0
+                                    from intervention import SeriesItem as _SI3
+                                    series_items.append(_SI3(series_index=selected_idx, mask_path=outp, centroid=(cx3, cy3)))
+                                    st.success(f"Created new series '{series_name}'")
+                                else:
+                                    st.success(f"Saved override mask for {series_name}")
+                                om_upd = list_override_masks(run_dir, safe_doi, fig_id)
+                                write_series_catalog_override(run_dir, safe_doi, fig_id, series_items, om_upd)
+                                st.rerun()
+                        with colB:
+                            if st.button("Reset canvas", key=f"{key_prefix}_reset_mask_{selected_idx}_{mode}"):
+                                st.rerun()
+
+            else:  # Pick exact points
+                lf_ov_dir = override_lineformer_dir(run_dir, safe_doi, fig_id)
+                pts_file = lf_ov_dir / f"clicked_points_{selected_idx}.json"
+                existing_pts: list = []
+                if pts_file.exists():
+                    try:
+                        existing_pts = json.loads(pts_file.read_text())
+                    except Exception:
+                        pass
+                with c1_sm:
+                    dot_size = st.slider(
+                        "Point display size", 1, 15, 3,
+                        key=f"{key_prefix}_dot_size_{selected_idx}_{mode}",
+                    )
+                    if existing_pts:
+                        st.caption(f"Currently saved: **{len(existing_pts)} point(s)**. Placing new points replaces them.")
+                    else:
+                        st.caption("Click on the figure to place data points.")
+                    point_canvas = st_canvas(
+                        background_image=composite_disp,
+                        drawing_mode="point", point_display_radius=dot_size,
+                        stroke_color=stroke_rgba, fill_color=stroke_rgba,
+                        update_streamlit=True, height=disp_h, width=disp_w,
+                        key=f"{key_prefix}_point_canvas_{selected_idx}_{mode}",
+                    )
+                if legend_lines:
+                    st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
+
+                new_pts: list = []
+                if point_canvas.json_data and "objects" in point_canvas.json_data:
+                    for obj2 in point_canvas.json_data["objects"]:
+                        if obj2.get("type") == "circle":
+                            r2 = float(obj2.get("radius", dot_size))
+                            cxd = float(obj2.get("left", 0)) + r2
+                            cyd = float(obj2.get("top", 0)) + r2
+                            new_pts.append({"x": cxd * scale_x_s, "y": cyd * scale_y_s})
+                new_pts.sort(key=lambda p: p["x"])
+
+                if new_pts:
+                    st.caption(f"Placed **{len(new_pts)} new point(s)** — click Save to apply.")
+                    colA2, colB2 = st.columns(2)
+                    with colA2:
+                        save_label2 = "Create new series" if is_creating else "Save points"
+                        if st.button(save_label2, type="primary", key=f"{key_prefix}_save_pts_{selected_idx}_{mode}"):
+                            lf_ov_dir.mkdir(parents=True, exist_ok=True)
+                            pts_file.write_text(json.dumps(new_pts, indent=2))
+                            dot_r = max(3, int(5 * scale_x_s))
+                            mask_arr = np.zeros((h, w), dtype=np.uint8)
+                            for pt in new_pts:
+                                cv2.circle(mask_arr, (int(round(pt["x"])), int(round(pt["y"]))), dot_r, 255, -1)
+                            mask_pil = Image.fromarray(mask_arr).convert("L")
+                            outp2 = save_mask_override(run_dir, safe_doi, fig_id, selected_idx, mask_pil)
+                            if is_creating:
+                                map_upd2 = load_mapping(run_dir, safe_doi, fig_id)
+                                if "series_names" not in map_upd2:
+                                    map_upd2["series_names"] = {}
+                                map_upd2["series_names"][str(selected_idx)] = series_name
+                                save_mapping(run_dir, safe_doi, fig_id, map_upd2)
+                                from intervention import SeriesItem as _SI4
+                                cx4 = float(np.mean([p["x"] for p in new_pts]))
+                                cy4 = float(np.mean([p["y"] for p in new_pts]))
+                                series_items.append(_SI4(series_index=selected_idx, mask_path=outp2, centroid=(cx4, cy4)))
+                                st.success(f"Created new series '{series_name}' with {len(new_pts)} points")
+                            else:
+                                st.success(f"Saved {len(new_pts)} points for {series_name}")
+                            om_upd2 = list_override_masks(run_dir, safe_doi, fig_id)
+                            write_series_catalog_override(run_dir, safe_doi, fig_id, series_items, om_upd2)
+                            st.rerun()
+                    with colB2:
+                        if st.button("Reset", key=f"{key_prefix}_reset_pts_{selected_idx}_{mode}"):
+                            st.rerun()
+
+            with c2_sm:
+                if cur_mask_img is not None:
+                    st.write("Current mask")
+                    st_image_auto(cur_mask_img, full_width=True, use_container_width=True)
+                else:
+                    st.info("Drawing new series")
+
+        # Rename / delete section
+        st.write("**Rename or delete** each series below.")
+        new_names = {}
+        new_deleted = set(deleted)
+        for s2 in sorted(series_items, key=lambda x: x.series_index):
+            i2 = s2.series_index
+            if i2 in deleted:
+                continue
+            color2 = SERIES_COLORS[i2 % len(SERIES_COLORS)]
+            hex2 = "#{:02x}{:02x}{:02x}".format(*color2)
+            cols = st.columns([0.5, 3, 1])
+            with cols[0]:
+                st.markdown(f'<span style="color:{hex2}; font-size:1.4em; font-weight:bold;">&#9632;</span>', unsafe_allow_html=True)
+            with cols[1]:
+                new_names[str(i2)] = st.text_input(
+                    f"Name for series {i2}", value=_display_name(i2),
+                    key=f"{key_prefix}_series_name_{i2}",
+                    label_visibility="collapsed",
+                )
+            with cols[2]:
+                del_flag = st.checkbox("Delete", value=False, key=f"{key_prefix}_series_del_{i2}")
+                if del_flag:
+                    new_deleted.add(i2)
+
+        if st.button("Save series mapping", type="primary", key=f"{key_prefix}_save_mapping"):
+            map2 = {"series_names": new_names, "deleted": sorted(list(new_deleted))}
+            p = save_mapping(run_dir, safe_doi, fig_id, map2)
+            st.success(f"Saved mapping: {p}")
+            st.rerun()
 
 def st_resizable_image(image_path: Path, *, caption: Optional[str] = None, key: str = ""):
     """
@@ -408,6 +1087,7 @@ def st_resizable_image(image_path: Path, *, caption: Optional[str] = None, key: 
         st.warning(f"Failed to render resizable image: {_img_ex}")
         st_image_auto(str(image_path), full_width=True)
 
+
 def _parse_axis_title_for_override(text: str):
     if not text:
         return None, None
@@ -418,6 +1098,7 @@ def _parse_axis_title_for_override(text: str):
         _unit = m.group(2).strip() or None
         return _name, _unit
     return text or None, None
+
 
 def _apply_axis_title_override_df(df: pd.DataFrame, figure_dir: Path) -> pd.DataFrame:
     _override_path = figure_dir / "chartdete" / "axis_title_override.json"
@@ -498,6 +1179,7 @@ def completed_dataset_json_path(run_dir: Path, doi: str) -> Path:
     modified = doi_to_safe(doi)
     return run_dir / "complete_dataset" / f"{modified}_complete.json"
 
+
 def find_emit_rows_for_source(
     run_dir: Path,
     doi: str,
@@ -549,6 +1231,7 @@ def find_emit_rows_for_source(
 
     return None
 
+
 def load_emit_rows(cache_path: Path | None) -> pd.DataFrame | None:
     """
     Load emit_rows from cache file and return as DataFrame.
@@ -578,6 +1261,7 @@ def load_emit_rows(cache_path: Path | None) -> pd.DataFrame | None:
     except Exception as e:
         st.error(f"Failed to load emit_rows: {e}")
         return None
+
 
 def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
     """
@@ -640,6 +1324,7 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
 
     return combined
 
+
 def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: list[str] | None = None) -> pd.DataFrame:
     rows = []
     flagged = []
@@ -683,6 +1368,9 @@ default_ollama_dir = _default_ollama_models_dir()
 default_ollama_host = _default_ollama_host()
 
 _openai_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
+
+
+
 st.set_page_config(page_title="AEM_OCR UI", layout="wide")
 st.title("AEM_OCR")
 
@@ -701,6 +1389,7 @@ div[data-testid="stExpanderDetails"] {
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
+
     # Set workspace variables – resolve relative to this file, not cwd
     scripts_root = (Path(__file__).resolve().parent / "..").resolve()
     workspaces_root = Path(str(scripts_root / "ui_runs"))
@@ -1471,15 +2160,21 @@ with tab_figs:
         # ========================
         # SECTION: Figure expander
         # ========================
-        with st.expander(f"Figure: {f.id}", expanded=True):
-            if f.caption:
-                st.markdown(f"**Caption:** {f.caption}")
-            if _source_img_er and _source_img_er.exists():
-                st_resizable_image(_source_img_er, key=f"fig_src_{_safe_doi_er}_{_fig_id_er}")
-            elif f.figure_path and f.figure_path.exists():
-                st_resizable_image(f.figure_path, caption=str(f.figure_path), key=f"fig_fallback_{_safe_doi_er}_{_fig_id_er}")
-            else:
-                st.warning("No source image found for this figure.")
+        _fig_display_img = None
+        _fig_display_img_caption = None
+        if _source_img_er and _source_img_er.exists():
+            _fig_display_img = _source_img_er
+        elif f.figure_path and f.figure_path.exists():
+            _fig_display_img = f.figure_path
+            _fig_display_img_caption = str(f.figure_path)
+        render_figure_image_dropdown(
+            image=_fig_display_img,
+            image_caption=_fig_display_img_caption,
+            figure_caption=f.caption,
+            title=f"Figure: {f.id}",
+            key=f"fig_{_safe_doi_er}_{_fig_id_er}_img",
+            expanded=True,
+        )
 
 
         # ========================
@@ -1705,800 +2400,63 @@ with tab_figs:
         # ========================
         # SECTION: Axis Configuration
         # ========================
-        with axis_configuration_dropdown(expanded=False):
-            import math
-            import os
-            import json
-            from pathlib import Path
-            from PIL import Image
+        # Determine chartdete dir and source image for calibration
+        _ax_chartdete_er: Path | None = None
+        _ax_sel_name_er = "figure"
+        if _ax_subfig_dirs_er:
+            _ax_sel_dir_er = _ax_subfig_dirs_er[0]
+            _ax_sel_name_er = _ax_subfig_options_er[0] if _ax_subfig_options_er else "figure"
+            _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
+        _calib_img_path_er: Path | None = None
+        if _source_img_er and Path(_source_img_er).exists():
+            _calib_img_path_er = Path(_source_img_er)
+        if _calib_img_path_er is None:
+            _base_input = os.environ.get("PLEXTRACT_BASE_INPUT", "")
+            if _base_input:
+                _base_input_p = Path(_base_input)
+                _tokens = [str(_fig_id_er).lower(), str(_fig_stem_er).lower(), str(_img_name_er).lower()]
+                _tokens = [t for t in _tokens if t]
+                def _score(p: Path) -> int:
+                    s = p.as_posix().lower()
+                    score = sum(10 for t in _tokens if t in s)
+                    score -= len(p.parts)
+                    return score
+                _all_imgs: list[Path] = []
+                for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+                    _all_imgs.extend(_base_input_p.rglob(ext))
+                _all_imgs = sorted(set(_all_imgs), key=_score, reverse=True)
+                if _all_imgs:
+                    _calib_img_path_er = _all_imgs[0]
+        render_axis_configuration_dropdown(
+            chartdete_dir=_ax_chartdete_er,
+            source_img=_calib_img_path_er,
+            key_prefix=f"er_{_safe_doi_er}_{_ax_sel_name_er}",
+        )
 
-            if not _ax_subfig_dirs_er:
-                st.info("No plextract output found for this figure. Run plextract extraction first.")
-            else:
-                # -------------------------------------------------
-                # Work on the CURRENT figure only (no selection UI)
-                # -------------------------------------------------
-                # Convention: first/only subfig dir is "current"
-                _ax_sel_dir_er = _ax_subfig_dirs_er[0]
-                _ax_sel_name_er = _ax_subfig_options_er[0] if _ax_subfig_options_er else "figure"
-
-                _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
-                _ax_chartdete_er.mkdir(parents=True, exist_ok=True)
-
-                # =================================================
-                # Image from INPUT section (not output)
-                # =================================================
-                # Prefer whatever your UI already determined as the source image.
-                # Fallback to searching PLEXTRACT_BASE_INPUT using figure tokens.
-                _calib_img_path_er: Path | None = None
-
-                if "_source_img_er" in locals() and _source_img_er and Path(_source_img_er).exists():
-                    _calib_img_path_er = Path(_source_img_er)
-
-                if _calib_img_path_er is None:
-                    _base_input = os.environ.get("PLEXTRACT_BASE_INPUT", "")
-                    if not _base_input:
-                        st.error("PLEXTRACT_BASE_INPUT is not set and _source_img_er is missing; cannot locate input image.")
-                    else:
-                        _base_input_p = Path(_base_input)
-
-                        _tokens = [
-                            str(_fig_id_er).lower() if "_fig_id_er" in locals() else "",
-                            str(_fig_stem_er).lower() if "_fig_stem_er" in locals() else "",
-                            str(_img_name_er).lower() if "_img_name_er" in locals() else "",
-                        ]
-                        _tokens = [t for t in _tokens if t]
-
-                        def _score(p: Path) -> int:
-                            s = p.as_posix().lower()
-                            score = 0
-                            for t in _tokens:
-                                if t in s:
-                                    score += 10
-                            score -= len(p.parts)  # slight preference for shorter paths
-                            return score
-
-                        _all_imgs: list[Path] = []
-                        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
-                            _all_imgs.extend(_base_input_p.rglob(ext))
-                        _all_imgs = sorted(set(_all_imgs), key=_score, reverse=True)
-
-                        if _all_imgs:
-                            _calib_img_path_er = _all_imgs[0]
-
-                if _calib_img_path_er is None or not _calib_img_path_er.exists():
-                    st.warning("Could not locate the INPUT image for this figure. Make sure `_source_img_er` is set or PLEXTRACT_BASE_INPUT is correct.")
-                    st.stop()
-
-                st.caption(f"Calibrating on INPUT image: `{_calib_img_path_er}`")
-
-                # ========================
-                # Axis Titles
-                # ========================
-                st.markdown("**Axis Titles**")
-                _ax_title_override_er = _ax_chartdete_er / "axis_title_override.json"
-                _ax_title_ocr_er = _ax_chartdete_er / "axis_title_texts.json"
-
-                def _load_axis_titles_default() -> tuple[str, str]:
-                    if _ax_title_override_er.exists():
-                        try:
-                            d = json.loads(_ax_title_override_er.read_text())
-                            return d.get("x_title", "") or "", d.get("y_title", "") or ""
-                        except Exception:
-                            return "", ""
-                    if _ax_title_ocr_er.exists():
-                        try:
-                            d = json.loads(_ax_title_ocr_er.read_text())
-                            x_title, y_title = "", ""
-                            for ap, txt in d.items():
-                                bn = Path(ap).name.lower()
-                                if any(t in bn for t in ("x_", "x-", "_x.", "xtitle", "xlabel")):
-                                    x_title = txt
-                                elif any(t in bn for t in ("y_", "y-", "_y.", "ytitle", "ylabel")):
-                                    y_title = txt
-                            if not x_title and not y_title and len(d) == 2:
-                                vals = list(d.values())
-                                x_title, y_title = vals[0], vals[1]
-                            return x_title or "", y_title or ""
-                        except Exception:
-                            return "", ""
-                    return "", ""
-
-                _ax_x_title_er, _ax_y_title_er = _load_axis_titles_default()
-
-                _x_title_key = f"er_x_title_{_safe_doi_er}_{_ax_sel_name_er}"
-                _y_title_key = f"er_y_title_{_safe_doi_er}_{_ax_sel_name_er}"
-                if _x_title_key not in st.session_state:
-                    st.session_state[_x_title_key] = _ax_x_title_er
-                if _y_title_key not in st.session_state:
-                    st.session_state[_y_title_key] = _ax_y_title_er
-
-                _col_xt_er, _col_yt_er = st.columns(2)
-                with _col_xt_er:
-                    _new_x_title_er = st.text_input("X axis title", key=_x_title_key)
-                with _col_yt_er:
-                    _new_y_title_er = st.text_input("Y axis title", key=_y_title_key)
-
-                if st.button("Save axis titles", key=f"er_save_titles_{_safe_doi_er}_{_ax_sel_name_er}"):
-                    _ax_title_override_er.write_text(json.dumps({"x_title": _new_x_title_er, "y_title": _new_y_title_er}, indent=2))
-                    st.success("Axis title overrides saved.")
-                    st.rerun()
-
-                # ========================
-                # Axis Calibration (click endpoints)
-                # ========================
-                st.markdown("**Axis Calibration**")
-                st.caption(
-                    "Click the image to set Xmin/Xmax/Ymin/Ymax pixel locations, then enter the numeric values. "
-                    "This writes `chartdete/pix2val_override.json` for this figure."
-                )
-
-                _pix2val_override_er = _ax_chartdete_er / "pix2val_override.json"
-                _pix2val_orig_er = _ax_chartdete_er / "pix2val.json"
-                _label_coords_er = _ax_chartdete_er / "label_coordinates.json"
-
-                # ---- Plot area bbox (optional but helpful) ----
-                _plot_area_er = None
-                if _label_coords_er.exists():
-                    try:
-                        _lc = json.loads(_label_coords_er.read_text())
-                        if "plot_area" in _lc and len(_lc["plot_area"]) >= 4:
-                            _plot_area_er = list(map(float, _lc["plot_area"][:4]))
-                    except Exception:
-                        _plot_area_er = None
-
-                if _plot_area_er is None:
-                    st.info(
-                        "No plot_area found (`chartdete/label_coordinates.json`). "
-                        "You can still calibrate from clicks; domain will use your entered min/max."
-                    )
-
-                # ---- Resizable view width (slider = draggable control in Streamlit) ----
-                _pil_img_cal = Image.open(_calib_img_path_er).convert("RGB")
-                _img_w, _img_h = _pil_img_cal.size
-
-                _width_key = f"er_calib_canvas_w_{_safe_doi_er}_{_ax_sel_name_er}"
-                if _width_key not in st.session_state:
-                    st.session_state[_width_key] = min(1100, _img_w)
-
-                _disp_w = st.slider(
-                    "Calibration view width (px)",
-                    min_value=400,
-                    max_value=1800,
-                    value=int(st.session_state[_width_key]),
-                    step=50,
-                    key=_width_key,
-                )
-                _disp_h = int(round(_img_h * (_disp_w / _img_w)))
-
-                _bg = _pil_img_cal.resize((_disp_w, _disp_h), Image.Resampling.LANCZOS).convert("RGBA")
-                _scale_x = _img_w / _disp_w
-                _scale_y = _img_h / _disp_h
-
-                # Which endpoint are we setting?
-                _endpoint_key = f"er_calib_endpoint_{_safe_doi_er}_{_ax_sel_name_er}"
-                _endpoint = st.radio("Click target", ["Xmin", "Xmax", "Ymin", "Ymax"], key=_endpoint_key, horizontal=True)
-
-                # Markers state version (so resize + clear works reliably)
-                _cv_ver_key = f"er_calib_canvas_ver_{_safe_doi_er}_{_ax_sel_name_er}"
-                if _cv_ver_key not in st.session_state:
-                    st.session_state[_cv_ver_key] = 0
-
-                _c1, _c2 = st.columns([1, 3])
-                with _c1:
-                    if st.button("Clear markers", key=f"er_clear_markers_{_safe_doi_er}_{_ax_sel_name_er}"):
-                        st.session_state[_cv_ver_key] += 1
-                        for k in ("xmin", "xmax", "ymin", "ymax"):
-                            st.session_state.pop(f"er_calib_pt_{k}_{_safe_doi_er}_{_ax_sel_name_er}", None)
-                        st.rerun()
-
-                st.write("**Click on the image to place the selected endpoint.**")
-
-                # IMPORTANT: include width/height + image name in the canvas key so changing width reinitializes correctly
-                _canvas_key = (
-                    f"er_calib_canvas_{_safe_doi_er}_{_ax_sel_name_er}_"
-                    f"{Path(_calib_img_path_er).name}_{_disp_w}x{_disp_h}_v{st.session_state[_cv_ver_key]}"
-                )
-
-                _canvas = st_canvas(
-                    background_image=_bg,
-                    drawing_mode="circle",
-                    update_streamlit=True,
-                    height=_disp_h,
-                    width=_disp_w,
-                    stroke_width=2,
-                    stroke_color="#00ff00",
-                    fill_color="rgba(0,255,0,0.35)",
-                    key=_canvas_key,
-                )
-
-                def _last_circle_center(json_data: dict | None):
-                    if not json_data:
-                        return None
-                    objs = json_data.get("objects") or []
-                    circles = [o for o in objs if o.get("type") == "circle"]
-                    if not circles:
-                        return None
-                    o = circles[-1]
-                    left = float(o.get("left", 0.0))
-                    top = float(o.get("top", 0.0))
-                    r = float(o.get("radius", 0.0)) * float(o.get("scaleX", 1.0))
-                    return left + r, top + r
-
-                _click = _last_circle_center(getattr(_canvas, "json_data", None))
-
-                def _store_endpoint(ep_name: str, cx_disp: float, cy_disp: float):
-                    cx_img = cx_disp * _scale_x
-                    cy_img = cy_disp * _scale_y
-                    st.session_state[f"er_calib_pt_{ep_name.lower()}_{_safe_doi_er}_{_ax_sel_name_er}"] = {
-                        "disp": [float(cx_disp), float(cy_disp)],
-                        "img":  [float(cx_img), float(cy_img)],
-                        "img_wh": [int(_img_w), int(_img_h)],
-                        "shown_wh": [int(_disp_w), int(_disp_h)],
-                        "source_image": str(_calib_img_path_er),
-                    }
-
-                if _click is not None:
-                    _store_endpoint(_endpoint, _click[0], _click[1])
-
-                def _get_pt(ep_name: str):
-                    return st.session_state.get(f"er_calib_pt_{ep_name.lower()}_{_safe_doi_er}_{_ax_sel_name_er}")
-
-                _pt_xmin = _get_pt("Xmin")
-                _pt_xmax = _get_pt("Xmax")
-                _pt_ymin = _get_pt("Ymin")
-                _pt_ymax = _get_pt("Ymax")
-
-                _show_click_debug = st.checkbox("Show click debug", value=False, key=f"er_show_click_dbg_{_safe_doi_er}_{_ax_sel_name_er}")
-                if _show_click_debug:
-                    st.write("Latest click (disp):", _click)
-                    st.write("Xmin:", _pt_xmin)
-                    st.write("Xmax:", _pt_xmax)
-                    st.write("Ymin:", _pt_ymin)
-                    st.write("Ymax:", _pt_ymax)
-
-                st.markdown("**Endpoint values** (enter the numeric value for each clicked point)")
-                _vxmin_key = f"er_val_xmin_{_safe_doi_er}_{_ax_sel_name_er}"
-                _vxmax_key = f"er_val_xmax_{_safe_doi_er}_{_ax_sel_name_er}"
-                _vymin_key = f"er_val_ymin_{_safe_doi_er}_{_ax_sel_name_er}"
-                _vymax_key = f"er_val_ymax_{_safe_doi_er}_{_ax_sel_name_er}"
-
-                for k in (_vxmin_key, _vxmax_key, _vymin_key, _vymax_key):
-                    if k not in st.session_state:
-                        st.session_state[k] = ""
-
-                _vcols = st.columns(4)
-                with _vcols[0]:
-                    _vxmin = st.text_input("Xmin value", key=_vxmin_key, disabled=_pt_xmin is None)
-                    if _pt_xmin is None:
-                        st.caption("Click Xmin on image")
-                with _vcols[1]:
-                    _vxmax = st.text_input("Xmax value", key=_vxmax_key, disabled=_pt_xmax is None)
-                    if _pt_xmax is None:
-                        st.caption("Click Xmax on image")
-                with _vcols[2]:
-                    _vymin = st.text_input("Ymin value", key=_vymin_key, disabled=_pt_ymin is None)
-                    if _pt_ymin is None:
-                        st.caption("Click Ymin on image")
-                with _vcols[3]:
-                    _vymax = st.text_input("Ymax value", key=_vymax_key, disabled=_pt_ymax is None)
-                    if _pt_ymax is None:
-                        st.caption("Click Ymax on image")
-
-                def _parse_float(s: str):
-                    s = (s or "").strip()
-                    return None if not s else float(s)
-
-                _nxmin = _parse_float(_vxmin)
-                _nxmax = _parse_float(_vxmax)
-                _nymin = _parse_float(_vymin)
-                _nymax = _parse_float(_vymax)
-
-                _xtype_key = f"er_xtype_{_safe_doi_er}_{_ax_sel_name_er}"
-                _ytype_key = f"er_ytype_{_safe_doi_er}_{_ax_sel_name_er}"
-                if _xtype_key not in st.session_state:
-                    st.session_state[_xtype_key] = "linear"
-                if _ytype_key not in st.session_state:
-                    st.session_state[_ytype_key] = "linear"
-
-                _tcols = st.columns(2)
-                with _tcols[0]:
-                    _new_xtype = st.selectbox("X axis type", ["linear", "log10"], key=_xtype_key)
-                with _tcols[1]:
-                    _new_ytype = st.selectbox("Y axis type", ["linear", "log10"], key=_ytype_key)
-
-                def _ab_from_two_points(p1_img, v1, p2_img, v2, axis: str, typ: str):
-                    if axis == "x":
-                        u1, u2 = float(p1_img[0]), float(p2_img[0])
-                    else:
-                        u1, u2 = float(p1_img[1]), float(p2_img[1])
-
-                    if u2 == u1:
-                        raise ValueError(f"{axis} endpoints have identical pixel coordinate; cannot calibrate.")
-
-                    if typ == "linear":
-                        a = (v2 - v1) / (u2 - u1)
-                        b = v1 - a * u1
-                        return float(a), float(b)
-
-                    if v1 <= 0 or v2 <= 0:
-                        raise ValueError(f"{axis}-axis log10 requires positive values.")
-                    lv1, lv2 = math.log10(v1), math.log10(v2)
-                    a = (lv2 - lv1) / (u2 - u1)
-                    b = lv1 - a * u1
-                    return float(a), float(b)
-
-                _ready = (
-                    _pt_xmin and _pt_xmax and _pt_ymin and _pt_ymax and
-                    None not in (_nxmin, _nxmax, _nymin, _nymax)
-                )
-
-                _bcols = st.columns([1, 1, 2])
-                with _bcols[0]:
-                    if st.button(
-                        "Save calibration override from clicks",
-                        disabled=not _ready,
-                        key=f"er_save_click_calib_{_safe_doi_er}_{_ax_sel_name_er}",
-                    ):
-                        try:
-                            xa, xb = _ab_from_two_points(_pt_xmin["img"], _nxmin, _pt_xmax["img"], _nxmax, axis="x", typ=_new_xtype)
-                            ya, yb = _ab_from_two_points(_pt_ymin["img"], _nymin, _pt_ymax["img"], _nymax, axis="y", typ=_new_ytype)
-
-                            # Domain: if plot_area exists, derive from plot_area; else use your entered min/max
-                            if _plot_area_er is not None:
-                                px1, py1, px2, py2 = _plot_area_er
-                                if _new_xtype == "linear":
-                                    x_min = xa * px1 + xb
-                                    x_max = xa * px2 + xb
-                                else:
-                                    x_min = 10 ** (xa * px1 + xb)
-                                    x_max = 10 ** (xa * px2 + xb)
-
-                                if _new_ytype == "linear":
-                                    y_min = ya * py2 + yb
-                                    y_max = ya * py1 + yb
-                                else:
-                                    y_min = 10 ** (ya * py2 + yb)
-                                    y_max = 10 ** (ya * py1 + yb)
-                            else:
-                                x_min, x_max = _nxmin, _nxmax
-                                y_min, y_max = _nymin, _nymax
-
-                            _pix2val = {
-                                "x": {"type": _new_xtype, "a": xa, "b": xb},
-                                "y": {"type": _new_ytype, "a": ya, "b": yb},
-                                "domain": {"x": [x_min, x_max], "y": [y_min, y_max]},
-                                "meta": {
-                                    "source": "ui_click_endpoints",
-                                    "image_used": str(_calib_img_path_er),
-                                    "x_clicks": {"min": _pt_xmin["img"], "max": _pt_xmax["img"]},
-                                    "y_clicks": {"min": _pt_ymin["img"], "max": _pt_ymax["img"]},
-                                    "x_values": {"min": _nxmin, "max": _nxmax},
-                                    "y_values": {"min": _nymin, "max": _nymax},
-                                    "plot_area": _plot_area_er,
-                                },
-                            }
-
-                            _pix2val_override_er.write_text(json.dumps(_pix2val, indent=2))
-                            st.success(f"Saved calibration override: {_pix2val_override_er}")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to save click calibration: {e}")
-
-                with _bcols[1]:
-                    if st.button("Clear calibration override", key=f"er_clear_calib_{_safe_doi_er}_{_ax_sel_name_er}"):
-                        if _pix2val_override_er.exists():
-                            _pix2val_override_er.unlink()
-                        st.success("Cleared calibration override.")
-                        st.rerun()
-
-                with _bcols[2]:
-                    _show_json = st.checkbox("Show current calibration JSON", value=False, key=f"er_show_calib_json_{_safe_doi_er}_{_ax_sel_name_er}")
-                    if _show_json:
-                        if _pix2val_override_er.exists():
-                            st.code(_pix2val_override_er.read_text(), language="json")
-                        elif _pix2val_orig_er.exists():
-                            st.code(_pix2val_orig_er.read_text(), language="json")
-                        else:
-                            st.info("No pix2val JSON exists yet. Save calibration from clicks first.")
-        
         # ========================
         # SECTION: Series Management
         # ========================
-        with series_management_dropdown(expanded=False):
-            # Determine which plextract workdir to use for series management.
-            # Search across all relevant workdirs in priority order:
-            #   1. Per-figure interventions plextract
-            #   2. Shared interventions plextract
-            #   3. Main plextract output
-            _sm_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
-
-            _sm_fig_dir_er = _plextract_fig_dir_er
-            _sm_fig_id_er = _fig_id_er
-            _sm_source_img_er = _source_img_er
-
-            _sm_workdirs_to_search_er = [
-                _sm_int_wd_er,
-                rr.run_dir / "interventions" / "interventions_plextract",
-                rr.run_dir / "plextract",
-            ]
-            _sm_subfig_dirs_er = []
-            for _sm_wd_check_er in _sm_workdirs_to_search_er:
-                if not _sm_wd_check_er.exists():
-                    continue
-                _sm_lat_check_er = latest_plextract_run_dir(_sm_wd_check_er)
-                if not _sm_lat_check_er:
-                    continue
-                _sm_out_base_check_er = _sm_lat_check_er / "output" / _safe_doi_er
-                if not _sm_out_base_check_er.exists():
-                    continue
-                _found_er = sorted([
-                    d for d in _sm_out_base_check_er.iterdir()
-                    if d.is_dir() and d.name.startswith(_fig_stem_er + "_subfig_")
-                ])
-                if _found_er:
-                    _sm_subfig_dirs_er = _found_er
-                    break  # use the first workdir that has subfigures
-
-            # if _sm_subfig_dirs_er:
-            #     st.info(f"Found {len(_sm_subfig_dirs_er)} cropped subfigure(s). Select one to manage its series:")
-            #     _sm_subfig_opts_er = [d.name for d in _sm_subfig_dirs_er]
-            #     _sm_sel_subfig_er = st.selectbox(
-            #         "Select subfigure for series management",
-            #         _sm_subfig_opts_er,
-            #         key=f"er_series_subfig_{_safe_doi_er}_{_fig_id_er}"
-            #     )
-            #     _sm_subfig_idx_er = _sm_subfig_opts_er.index(_sm_sel_subfig_er)
-            #     _sm_fig_dir_er = _sm_subfig_dirs_er[_sm_subfig_idx_er]
-            #     _sm_fig_id_er = _sm_fig_dir_er.name
-
-            #     # Try to find source image for this subfigure
-            #     _crops_dir_sm = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
-            #     _subfig_match_er = re.search(r"_subfig_(\d+)$", Path(_sm_fig_id_er).stem)
-            #     _subfig_num_er = _subfig_match_er.group(1) if _subfig_match_er else str(_sm_subfig_idx_er)
-            #     _subfig_src_er = _crops_dir_sm / f"{_fig_stem_er}_subfig_{_subfig_num_er}.png"
-            #     if _subfig_src_er.exists():
-            #         _sm_source_img_er = _subfig_src_er
-            #     else:
-            #         _run_root_sm = _sm_fig_dir_er.parent.parent.parent
-            #         _input_dir_sm = _run_root_sm / "input" / _safe_doi_er
-            #         _input_cand_sm = _input_dir_sm / _sm_fig_id_er
-            #         if _input_cand_sm.exists():
-            #             _sm_source_img_er = _input_cand_sm
-            #         else:
-            #             _stem_sm = Path(_sm_fig_id_er).stem
-            #             _fallback_hits_sm = sorted(_input_dir_sm.glob(f"{_stem_sm}.*")) if _input_dir_sm.exists() else []
-            #             if _fallback_hits_sm:
-            #                 _sm_source_img_er = _fallback_hits_sm[0]
-
-            _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
-
-            # If the lineformer dir doesn't exist, create the override dir so that
-            # users can create new series from scratch without running extraction first.
-            _sm_lf_override_dir_er = override_lineformer_dir(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-            if _sm_lf_dir_er is None or not _sm_lf_dir_er.exists():
-                _sm_lf_override_dir_er.mkdir(parents=True, exist_ok=True)
-                _sm_lf_cat_path_er = _sm_lf_override_dir_er / "series_catalog.json"
-                if not _sm_lf_cat_path_er.exists():
-                    _sm_lf_cat_path_er.write_text("[]")
-                _sm_lf_dir_er = _sm_lf_override_dir_er
-                st.info("No plextract lineformer output found for this figure. You can still create new series below.")
-
-            if True:
-                _sm_series_items_er = load_series_catalog(_sm_lf_dir_er)
-                _sm_mapping_er = load_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                _sm_names_er = _sm_mapping_er.get("series_names", {})
-                _sm_deleted_er = set(int(x) for x in _sm_mapping_er.get("deleted", []))
-                _sm_override_masks_er = list_override_masks(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-
-                # Include newly-created series
-                _sm_orig_indices_er = {s.series_index for s in _sm_series_items_er}
-                for _idx_er, _mask_path_er in sorted(_sm_override_masks_er.items()):
-                    if _idx_er not in _sm_orig_indices_er:
-                        try:
-                            _mimg_er = Image.open(_mask_path_er).convert("L")
-                            _marr_er = np.array(_mimg_er)
-                            _ys_er, _xs_er = np.where(_marr_er > 0)
-                            _cx_er = float(np.mean(_xs_er)) if len(_xs_er) > 0 else 0.0
-                            _cy_er = float(np.mean(_ys_er)) if len(_ys_er) > 0 else 0.0
-                        except Exception:
-                            _cx_er, _cy_er = 0.0, 0.0
-                        from intervention import SeriesItem as _SeriesItem_er
-                        _sm_series_items_er.append(_SeriesItem_er(
-                            series_index=_idx_er, mask_path=_mask_path_er, centroid=(_cx_er, _cy_er)
-                        ))
-
-                _SERIES_COLORS_ER = [
-                    (255, 0, 0), (0, 128, 255), (0, 200, 0), (255, 165, 0),
-                    (148, 0, 211), (0, 206, 209), (255, 20, 147), (128, 128, 0),
-                    (0, 255, 127), (100, 149, 237),
-                ]
-
-                # Load series labels from plextract final_dataset.csv
-                _plextract_series_labels_er: dict = {}
-                _final_csv_er = (_sm_fig_dir_er / "final" / "final_dataset.csv") if _sm_fig_dir_er else None
-                if _final_csv_er and _final_csv_er.exists():
-                    try:
-                        _fdf_er = pd.read_csv(_final_csv_er)
-                        if "series_label" in _fdf_er.columns:
-                            for _sl in _fdf_er["series_label"].dropna().unique():
-                                _sl_str = str(_sl).strip()
-                                try:
-                                    _si = int(_sl_str)
-                                    _plextract_series_labels_er[_si] = _sl_str
-                                except ValueError:
-                                    _si = len(_plextract_series_labels_er)
-                                    _plextract_series_labels_er[_si] = _sl_str
-                    except Exception:
-                        pass
-
-                def _display_name_er(idx):
-                    if str(idx) in _sm_names_er and _sm_names_er[str(idx)] != f"Series {idx}":
-                        return _sm_names_er[str(idx)]
-                    if idx in _plextract_series_labels_er:
-                        return _plextract_series_labels_er[idx]
-                    return f"Series {idx}"
-
-                if _sm_source_img_er and _sm_source_img_er.exists():
-                    st_resizable_image(_sm_source_img_er, key=f"series_src_{_safe_doi_er}_{_sm_fig_id_er}")
-                    _base_img_er = Image.open(_sm_source_img_er).convert("RGBA")
-                    _w_er, _h_er = _base_img_er.size
-                else:
-                    st.warning("No source image for series overlay.")
-                    _base_img_er = None
-                    _w_er, _h_er = 600, 400
-
-                _disp_w_er = min(_w_er, 900)
-                _disp_h_er = int(_h_er * (_disp_w_er / _w_er))
-
-                # Build overlay
-                _overlay_er = Image.new("RGBA", (_w_er, _h_er), (0, 0, 0, 0))
-                _legend_lines_er = []
-                for _s_er in sorted(_sm_series_items_er, key=lambda x: x.series_index):
-                    _i_er = _s_er.series_index
-                    if _i_er in _sm_deleted_er:
-                        continue
-                    _color_er = _SERIES_COLORS_ER[_i_er % len(_SERIES_COLORS_ER)]
-                    _mp_er = _sm_override_masks_er.get(_i_er, _s_er.mask_path)
-                    try:
-                        _mask_er = Image.open(_mp_er).convert("L")
-                        _marr2_er = np.array(_mask_er)
-                        _cl_er = np.zeros((*_marr2_er.shape, 4), dtype=np.uint8)
-                        _cl_er[_marr2_er > 0] = (*_color_er, 140)
-                        _overlay_er = Image.alpha_composite(_overlay_er, Image.fromarray(_cl_er))
-                    except Exception:
-                        pass
-                    _hex_c_er = "#{:02x}{:02x}{:02x}".format(*_color_er)
-                    _legend_lines_er.append(f'<span style="color:{_hex_c_er}; font-weight:bold;">&#9632;</span> {_display_name_er(_i_er)}')
-
-                if _base_img_er is not None:
-                    _composite_er = Image.alpha_composite(_base_img_er, _overlay_er).convert("RGB")
-                    _composite_disp_er = _composite_er.resize((_disp_w_er, _disp_h_er))
-                else:
-                    _composite_disp_er = None
-
-                # Edit or Create Series Mask
-                st.write("**Edit or Create Series Mask**")
-                _active_series_er = [s for s in _sm_series_items_er if s.series_index not in _sm_deleted_er]
-                _existing_indices_er = [s.series_index for s in _sm_series_items_er]
-                _next_idx_er = max(_existing_indices_er) + 1 if _existing_indices_er else 0
-
-                _mode_options_er = ["Edit existing series", "Create new series"]
-                _mode_er = st.radio(
-                    "Mode", _mode_options_er,
-                    key=f"er_series_mode_{_safe_doi_er}_{_sm_fig_id_er}", horizontal=True,
-                )
-                _is_creating_er = (_mode_er == "Create new series")
-                _cur_mask_img_er = None
-
-                if _is_creating_er:
-                    _selected_idx_er = _next_idx_er
-                    _series_name_er = st.text_input(
-                        "Name for new series",
-                        value=f"Series {_next_idx_er}",
-                        key=f"er_new_series_name_{_safe_doi_er}_{_sm_fig_id_er}",
-                    )
-                else:
-                    if not _active_series_er:
-                        st.info("No active series to edit.")
-                        _selected_idx_er = None
-                        _series_name_er = ""
-                    else:
-                        _sel_opts_er = [f"{_display_name_er(s.series_index)}" for s in _active_series_er]
-                        _sel_ui_er = st.selectbox(
-                            "Select series to edit",
-                            range(len(_active_series_er)),
-                            format_func=lambda i: _sel_opts_er[i],
-                            key=f"er_mask_edit_sel_{_safe_doi_er}_{_sm_fig_id_er}",
-                        )
-                        _sel_s_er = _active_series_er[_sel_ui_er]
-                        _selected_idx_er = _sel_s_er.series_index
-                        _series_name_er = _display_name_er(_selected_idx_er)
-                        _orig_mask_path_er = next(s.mask_path for s in _sm_series_items_er if s.series_index == _selected_idx_er)
-                        _cur_mask_path_er = _sm_override_masks_er.get(_selected_idx_er, _orig_mask_path_er)
-                        _cur_mask_img_er = Image.open(_cur_mask_path_er).convert("L").resize((_disp_w_er, _disp_h_er))
-
-                if _selected_idx_er is not None:
-                    _sel_color_er = _SERIES_COLORS_ER[_selected_idx_er % len(_SERIES_COLORS_ER)]
-                    _hex_color_er = "#{:02x}{:02x}{:02x}".format(*_sel_color_er)
-                    st.markdown(
-                        f'**Drawing with color:** <span style="color:{_hex_color_er}; font-size:1.8em; font-weight:bold;">&#9632;</span> {_series_name_er}',
-                        unsafe_allow_html=True,
-                    )
-                    _stroke_rgba_er = f"rgba({_sel_color_er[0]},{_sel_color_er[1]},{_sel_color_er[2]},1.0)"
-                    _scale_x_s_er = _w_er / _disp_w_er
-                    _scale_y_s_er = _h_er / _disp_h_er
-
-                    _input_mode_er = st.radio(
-                        "Input mode", ["Freehand drawing", "Pick exact points"],
-                        horizontal=True,
-                        key=f"er_input_mode_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}",
-                    )
-                    _c1_er, _c2_er = st.columns([3, 1])
-
-                    if _input_mode_er == "Freehand drawing":
-                        with _c1_er:
-                            st.write("Draw on the colored series image below")
-                            _brush_er = st.slider("Brush width", 1, 40, 10, key=f"er_brush_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}")
-                            _mask_canvas_er = st_canvas(
-                                background_image=_composite_disp_er,
-                                drawing_mode="freedraw",
-                                stroke_width=_brush_er, stroke_color=_stroke_rgba_er,
-                                fill_color=_stroke_rgba_er, update_streamlit=True,
-                                height=_disp_h_er, width=_disp_w_er,
-                                key=f"er_mask_canvas_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}",
-                            )
-                        if _legend_lines_er:
-                            st.markdown(" &nbsp; ".join(_legend_lines_er), unsafe_allow_html=True)
-
-                        if _mask_canvas_er.image_data is not None:
-                            _rgba_er = _mask_canvas_er.image_data.astype(np.uint8)
-                            _r_er, _g_er, _b_er = _sel_color_er
-                            _color_match_er = (
-                                (np.abs(_rgba_er[..., 0].astype(int) - _r_er) < 30) &
-                                (np.abs(_rgba_er[..., 1].astype(int) - _g_er) < 30) &
-                                (np.abs(_rgba_er[..., 2].astype(int) - _b_er) < 30) &
-                                (_rgba_er[..., 3] > 0)
-                            )
-                            _new_mask_small_er = _color_match_er.astype(np.uint8) * 255
-                            if np.any(_new_mask_small_er > 0):
-                                _new_mask_full_er = cv2.resize(_new_mask_small_er, (_w_er, _h_er), interpolation=cv2.INTER_NEAREST)
-                                _new_mask_pil_er = Image.fromarray(_new_mask_full_er).convert("L")
-                                _colA_er, _colB_er = st.columns(2)
-                                with _colA_er:
-                                    _save_label_er = "Create new series" if _is_creating_er else "Save edited mask"
-                                    if st.button(_save_label_er, type="primary", key=f"er_save_mask_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}"):
-                                        _outp_er = save_mask_override(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _selected_idx_er, _new_mask_pil_er)
-                                        if _is_creating_er:
-                                            _map_upd_er = load_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                                            if "series_names" not in _map_upd_er:
-                                                _map_upd_er["series_names"] = {}
-                                            _map_upd_er["series_names"][str(_selected_idx_er)] = _series_name_er
-                                            save_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _map_upd_er)
-                                            _marr3_er = np.array(_new_mask_pil_er)
-                                            _yc_er, _xc_er = np.where(_marr3_er > 0)
-                                            _cx3_er = float(np.mean(_xc_er)) if len(_xc_er) > 0 else 0.0
-                                            _cy3_er = float(np.mean(_yc_er)) if len(_yc_er) > 0 else 0.0
-                                            from intervention import SeriesItem as _SI3_er
-                                            _sm_series_items_er.append(_SI3_er(series_index=_selected_idx_er, mask_path=_outp_er, centroid=(_cx3_er, _cy3_er)))
-                                            st.success(f"Created new series '{_series_name_er}'")
-                                        else:
-                                            st.success(f"Saved override mask for {_series_name_er}")
-                                        _om_upd_er = list_override_masks(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                                        write_series_catalog_override(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _sm_series_items_er, _om_upd_er)
-                                        st.rerun()
-                                with _colB_er:
-                                    if st.button("Reset canvas", key=f"er_reset_mask_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}"):
-                                        st.rerun()
-
-                    else:  # Pick exact points
-                        _lf_ov_dir_er = override_lineformer_dir(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                        _pts_file_er = _lf_ov_dir_er / f"clicked_points_{_selected_idx_er}.json"
-                        _existing_pts_er: list = []
-                        if _pts_file_er.exists():
-                            try:
-                                _existing_pts_er = json.loads(_pts_file_er.read_text())
-                            except Exception:
-                                pass
-                        with _c1_er:
-                            _dot_size_er = st.slider(
-                                "Point display size", 1, 15, 3,
-                                key=f"er_dot_size_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}",
-                            )
-                            if _existing_pts_er:
-                                st.caption(f"Currently saved: **{len(_existing_pts_er)} point(s)**. Placing new points replaces them.")
-                            else:
-                                st.caption("Click on the figure to place data points.")
-                            _point_canvas_er = st_canvas(
-                                background_image=_composite_disp_er,
-                                drawing_mode="point", point_display_radius=_dot_size_er,
-                                stroke_color=_stroke_rgba_er, fill_color=_stroke_rgba_er,
-                                update_streamlit=True, height=_disp_h_er, width=_disp_w_er,
-                                key=f"er_point_canvas_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}",
-                            )
-                        if _legend_lines_er:
-                            st.markdown(" &nbsp; ".join(_legend_lines_er), unsafe_allow_html=True)
-
-                        _new_pts_er: list = []
-                        if _point_canvas_er.json_data and "objects" in _point_canvas_er.json_data:
-                            for _obj2_er in _point_canvas_er.json_data["objects"]:
-                                if _obj2_er.get("type") == "circle":
-                                    _r2_er = float(_obj2_er.get("radius", _dot_size_er))
-                                    _cxd_er = float(_obj2_er.get("left", 0)) + _r2_er
-                                    _cyd_er = float(_obj2_er.get("top", 0)) + _r2_er
-                                    _new_pts_er.append({"x": _cxd_er * _scale_x_s_er, "y": _cyd_er * _scale_y_s_er})
-                        _new_pts_er.sort(key=lambda p: p["x"])
-
-                        if _new_pts_er:
-                            st.caption(f"Placed **{len(_new_pts_er)} new point(s)** — click Save to apply.")
-                            _colA2_er, _colB2_er = st.columns(2)
-                            with _colA2_er:
-                                _save_label2_er = "Create new series" if _is_creating_er else "Save points"
-                                if st.button(_save_label2_er, type="primary", key=f"er_save_pts_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}"):
-                                    _lf_ov_dir_er.mkdir(parents=True, exist_ok=True)
-                                    _pts_file_er.write_text(json.dumps(_new_pts_er, indent=2))
-                                    _dot_r_er = max(3, int(5 * _scale_x_s_er))
-                                    _mask_arr_er = np.zeros((_h_er, _w_er), dtype=np.uint8)
-                                    for _pt_er in _new_pts_er:
-                                        cv2.circle(_mask_arr_er, (int(round(_pt_er["x"])), int(round(_pt_er["y"]))), _dot_r_er, 255, -1)
-                                    _mask_pil_er = Image.fromarray(_mask_arr_er).convert("L")
-                                    _outp2_er = save_mask_override(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _selected_idx_er, _mask_pil_er)
-                                    if _is_creating_er:
-                                        _map_upd2_er = load_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                                        if "series_names" not in _map_upd2_er:
-                                            _map_upd2_er["series_names"] = {}
-                                        _map_upd2_er["series_names"][str(_selected_idx_er)] = _series_name_er
-                                        save_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _map_upd2_er)
-                                        from intervention import SeriesItem as _SI4_er
-                                        _cx4_er = float(np.mean([p["x"] for p in _new_pts_er]))
-                                        _cy4_er = float(np.mean([p["y"] for p in _new_pts_er]))
-                                        _sm_series_items_er.append(_SI4_er(series_index=_selected_idx_er, mask_path=_outp2_er, centroid=(_cx4_er, _cy4_er)))
-                                        st.success(f"Created new series '{_series_name_er}' with {len(_new_pts_er)} points")
-                                    else:
-                                        st.success(f"Saved {len(_new_pts_er)} points for {_series_name_er}")
-                                    _om_upd2_er = list_override_masks(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                                    write_series_catalog_override(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _sm_series_items_er, _om_upd2_er)
-                                    st.rerun()
-                            with _colB2_er:
-                                if st.button("Reset", key=f"er_reset_pts_{_safe_doi_er}_{_sm_fig_id_er}_{_selected_idx_er}_{_mode_er}"):
-                                    st.rerun()
-
-                    with _c2_er:
-                        if _cur_mask_img_er is not None:
-                            st.write("Current mask")
-                            st_image_auto(_cur_mask_img_er, full_width=True, use_container_width=True)
-                        else:
-                            st.info("Drawing new series")
-
-                # Rename / delete section
-                st.write("**Rename or delete** each series below.")
-                _new_names_er = {}
-                _new_deleted_er = set(_sm_deleted_er)
-                for _s2_er in sorted(_sm_series_items_er, key=lambda x: x.series_index):
-                    _i2_er = _s2_er.series_index
-                    if _i2_er in _sm_deleted_er:
-                        continue
-                    _color2_er = _SERIES_COLORS_ER[_i2_er % len(_SERIES_COLORS_ER)]
-                    _hex2_er = "#{:02x}{:02x}{:02x}".format(*_color2_er)
-                    _cols_er = st.columns([0.5, 3, 1])
-                    with _cols_er[0]:
-                        st.markdown(f'<span style="color:{_hex2_er}; font-size:1.4em; font-weight:bold;">&#9632;</span>', unsafe_allow_html=True)
-                    with _cols_er[1]:
-                        _new_names_er[str(_i2_er)] = st.text_input(
-                            f"Name for series {_i2_er}", value=_display_name_er(_i2_er),
-                            key=f"er_series_name_{_safe_doi_er}_{_sm_fig_id_er}_{_i2_er}",
-                            label_visibility="collapsed",
-                        )
-                    with _cols_er[2]:
-                        _del_flag_er = st.checkbox("Delete", value=False, key=f"er_series_del_{_safe_doi_er}_{_sm_fig_id_er}_{_i2_er}")
-                        if _del_flag_er:
-                            _new_deleted_er.add(_i2_er)
-
-                if st.button("Save series mapping", type="primary", key=f"er_save_mapping_{_safe_doi_er}_{_sm_fig_id_er}"):
-                    _map2_er = {"series_names": _new_names_er, "deleted": sorted(list(_new_deleted_er))}
-                    _p_er = save_mapping(rr.run_dir, _safe_doi_er, _sm_fig_id_er, _map2_er)
-                    st.success(f"Saved mapping: {_p_er}")
-                    st.rerun()
+        _sm_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
+        _sm_fig_dir_er = _plextract_fig_dir_er
+        _sm_fig_id_er = _fig_id_er
+        _sm_source_img_er = _source_img_er
+        _sm_workdirs_to_search_er = [
+            _sm_int_wd_er,
+            rr.run_dir / "interventions" / "interventions_plextract",
+            rr.run_dir / "plextract",
+        ]
+        _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
+        _sm_lf_override_dir_er = override_lineformer_dir(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
+        render_series_management_dropdown(
+            run_dir=rr.run_dir,
+            safe_doi=_safe_doi_er,
+            fig_id=_sm_fig_id_er,
+            fig_dir=_sm_fig_dir_er,
+            lf_dir=_sm_lf_dir_er,
+            lf_override_dir=_sm_lf_override_dir_er,
+            source_img=_sm_source_img_er,
+            key_prefix=f"er_{_safe_doi_er}_{_sm_fig_id_er}",
+        )
 
 
         # ========================
@@ -2599,133 +2557,53 @@ with tab_figs:
 
                 for subfig_dir in subfig_dirs:
                     st.markdown(f"### {subfig_dir.name}")
-                    _subfig_img_found = False
+                    # Resolve source image before expander so it's available for rerun buttons
                     _subfig_source_img = None
-                    with section_dropdown(subfig_dir.name):
-                        # Show original cropped image instead of recreated image.
-                        # subfig_dir.name already includes the extension (e.g.
-                        # "Figure_5_subfig_0.png"), so do NOT append ".png" again.
-                        if latest_manual:
-                            input_dir = latest_manual / "input" / safe_doi
-                            original_img = input_dir / subfig_dir.name
-                            if original_img.exists():
-                                st_resizable_image(original_img, caption="Original cropped image", key=f"subfig_orig_{safe_doi}_{subfig_dir.name}")
-                                _subfig_source_img = original_img
-                                _subfig_img_found = True
-                        if not _subfig_img_found:
-                            # Fallback: check interventions crop directory
-                            _crops_dir = rr.run_dir / "interventions" / safe_doi
-                            for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
-                                _candidate = _fig_d / subfig_dir.name
-                                if _candidate.exists():
-                                    st_resizable_image(_candidate, caption="Original cropped image", key=f"subfig_crop_{safe_doi}_{subfig_dir.name}")
-                                    _subfig_source_img = _candidate
-                                    _subfig_img_found = True
-                                    break
-                        if not _subfig_img_found:
-                            # Fallback to recreated image
-                            final_dir = subfig_dir / "final"
-                            if final_dir.exists():
-                                final_img = final_dir / "final_image.png"
-                                if final_img.exists():
-                                    st_resizable_image(final_img, caption="Recreated image (original not found)", key=f"subfig_final_{safe_doi}_{subfig_dir.name}")
-
-                    with axis_configuration_dropdown(expanded=False):
-                        _subfig_chartdete_dir = subfig_dir / "chartdete"
-                        _subfig_chartdete_dir.mkdir(parents=True, exist_ok=True)
-                        _subfig_titles_path = _subfig_chartdete_dir / "axis_title_override.json"
-                        _subfig_axis_type_path = _subfig_chartdete_dir / "axis_type_override.json"
-
-                        _subfig_x_title_default = ""
-                        _subfig_y_title_default = ""
-                        if _subfig_titles_path.exists():
-                            try:
-                                _subfig_titles_data = json.loads(_subfig_titles_path.read_text())
-                                _subfig_x_title_default = _subfig_titles_data.get("x_title", "") or ""
-                                _subfig_y_title_default = _subfig_titles_data.get("y_title", "") or ""
-                            except Exception:
-                                pass
-
-                        _subfig_axis_type_default = {"x_axis_type": "linear", "y_axis_type": "linear"}
-                        if _subfig_axis_type_path.exists():
-                            try:
-                                _subfig_axis_type_data = json.loads(_subfig_axis_type_path.read_text())
-                                _subfig_axis_type_default["x_axis_type"] = _subfig_axis_type_data.get("x_axis_type", "linear")
-                                _subfig_axis_type_default["y_axis_type"] = _subfig_axis_type_data.get("y_axis_type", "linear")
-                            except Exception:
-                                pass
-
-                        _subfig_x_title = st.text_input(
-                            "X axis title",
-                            value=_subfig_x_title_default,
-                            key=f"subfig_x_title_{safe_doi}_{subfig_dir.name}",
-                        )
-                        _subfig_y_title = st.text_input(
-                            "Y axis title",
-                            value=_subfig_y_title_default,
-                            key=f"subfig_y_title_{safe_doi}_{subfig_dir.name}",
-                        )
-                        _subfig_x_type = st.selectbox(
-                            "X axis type",
-                            ["linear", "log10"],
-                            index=0 if _subfig_axis_type_default["x_axis_type"] == "linear" else 1,
-                            key=f"subfig_x_type_{safe_doi}_{subfig_dir.name}",
-                        )
-                        _subfig_y_type = st.selectbox(
-                            "Y axis type",
-                            ["linear", "log10"],
-                            index=0 if _subfig_axis_type_default["y_axis_type"] == "linear" else 1,
-                            key=f"subfig_y_type_{safe_doi}_{subfig_dir.name}",
-                        )
-
-                        if st.button("Save axis configuration", key=f"subfig_save_axis_{safe_doi}_{subfig_dir.name}"):
-                            _subfig_titles_path.write_text(json.dumps({"x_title": _subfig_x_title, "y_title": _subfig_y_title}, indent=2))
-                            _subfig_axis_type_path.write_text(json.dumps({"x_axis_type": _subfig_x_type, "y_axis_type": _subfig_y_type}, indent=2))
-                            st.success("Saved axis configuration for subfigure.")
-
-                    with series_management_dropdown(expanded=False):
-                        _subfig_lf_dir = get_lineformer_dir(subfig_dir)
-                        _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
-                        if _subfig_lf_dir is None or not _subfig_lf_dir.exists():
-                            _subfig_override_lf.mkdir(parents=True, exist_ok=True)
-                            _subfig_catalog = _subfig_override_lf / "series_catalog.json"
-                            if not _subfig_catalog.exists():
-                                _subfig_catalog.write_text("[]")
-                            _subfig_lf_dir = _subfig_override_lf
-
-                        _subfig_series_items = load_series_catalog(_subfig_lf_dir)
-                        _subfig_mapping = load_mapping(rr.run_dir, safe_doi, subfig_dir.name)
-                        _subfig_names = _subfig_mapping.get("series_names", {})
-                        _subfig_deleted = set(int(x) for x in _subfig_mapping.get("deleted", []))
-
-                        if not _subfig_series_items:
-                            st.info("No detected series found for this subfigure yet.")
-                        else:
-                            _subfig_new_names = {}
-                            _subfig_new_deleted = set(_subfig_deleted)
-                            for _subfig_series_item in sorted(_subfig_series_items, key=lambda _s: _s.series_index):
-                                _subfig_idx = _subfig_series_item.series_index
-                                _subfig_cols = st.columns([4, 1])
-                                with _subfig_cols[0]:
-                                    _subfig_new_names[str(_subfig_idx)] = st.text_input(
-                                        f"Series {_subfig_idx} name",
-                                        value=_subfig_names.get(str(_subfig_idx), f"Series {_subfig_idx}"),
-                                        key=f"subfig_series_name_{safe_doi}_{subfig_dir.name}_{_subfig_idx}",
-                                    )
-                                with _subfig_cols[1]:
-                                    if st.checkbox("Delete", value=_subfig_idx in _subfig_deleted, key=f"subfig_series_del_{safe_doi}_{subfig_dir.name}_{_subfig_idx}"):
-                                        _subfig_new_deleted.add(_subfig_idx)
-                                    elif _subfig_idx in _subfig_new_deleted:
-                                        _subfig_new_deleted.remove(_subfig_idx)
-
-                            if st.button("Save series mapping", key=f"subfig_save_series_{safe_doi}_{subfig_dir.name}"):
-                                save_mapping(
-                                    rr.run_dir,
-                                    safe_doi,
-                                    subfig_dir.name,
-                                    {"series_names": _subfig_new_names, "deleted": sorted(list(_subfig_new_deleted))},
-                                )
-                                st.success("Saved series mapping for subfigure.")
+                    _subfig_image_caption = None
+                    if latest_manual:
+                        input_dir = latest_manual / "input" / safe_doi
+                        original_img = input_dir / subfig_dir.name
+                        if original_img.exists():
+                            _subfig_source_img = original_img
+                            _subfig_image_caption = "Original cropped image"
+                    if _subfig_source_img is None:
+                        _crops_dir = rr.run_dir / "interventions" / safe_doi
+                        for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
+                            _candidate = _fig_d / subfig_dir.name
+                            if _candidate.exists():
+                                _subfig_source_img = _candidate
+                                _subfig_image_caption = "Original cropped image"
+                                break
+                    if _subfig_source_img is None:
+                        _subfig_final_dir = subfig_dir / "final"
+                        if _subfig_final_dir.exists():
+                            _subfig_final_img = _subfig_final_dir / "final_image.png"
+                            if _subfig_final_img.exists():
+                                _subfig_source_img = _subfig_final_img
+                                _subfig_image_caption = "Recreated image (original not found)"
+                    render_figure_image_dropdown(
+                        image=_subfig_source_img,
+                        image_caption=_subfig_image_caption,
+                        title=subfig_dir.name,
+                        key=f"subfig_{safe_doi}_{subfig_dir.name}_img",
+                    )
+                    _subfig_lf_dir = get_lineformer_dir(subfig_dir)
+                    _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                    render_axis_configuration_dropdown(
+                        chartdete_dir=subfig_dir / "chartdete",
+                        source_img=_subfig_source_img,
+                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                    )
+                    render_series_management_dropdown(
+                        run_dir=rr.run_dir,
+                        safe_doi=safe_doi,
+                        fig_id=subfig_dir.name,
+                        fig_dir=subfig_dir,
+                        lf_dir=_subfig_lf_dir,
+                        lf_override_dir=_subfig_override_lf,
+                        source_img=_subfig_source_img,
+                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                    )
 
                     # Shared dropdowns for subfigure OCR/LLM/metadata
                     final_dir = subfig_dir / "final"
@@ -2932,7 +2810,6 @@ with tab_figs:
                                 mime="text/csv",
                                 key=f"int_llm_dl_{safe_doi}_{f.id}_{_iname}",
                             )
-        
         # ========================
         # SECTION: Display metadata
         # ========================
