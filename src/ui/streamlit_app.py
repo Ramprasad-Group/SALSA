@@ -323,9 +323,9 @@ def section_dropdown(title: str, *, expanded: bool = False):
     return st.expander(title, expanded=expanded)
 
 
-def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None):
+def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None, title: str = "OCR-Extracted Data"):
     """Render OCR-extracted data using the shared dropdown structure."""
-    with section_dropdown("OCR-Extracted Data", expanded=False):
+    with section_dropdown(title, expanded=False):
         if not (csv_path and csv_path.exists()):
             st.info("No extracted dataset found.")
             return
@@ -339,9 +339,9 @@ def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_overr
             st.warning(f"Failed to load extracted dataset:\n`{csv_path}`\n\n{e}")
 
 
-def render_llm_dropdown(*, run_dir: Path, emit_rows_path: Optional[Path], key_prefix: str, file_name_prefix: str):
+def render_llm_dropdown(*, run_dir: Path, emit_rows_path: Optional[Path], key_prefix: str, file_name_prefix: str, title: str = "LLM-Generated Dataset"):
     """Render LLM-generated dataset using the shared dropdown structure."""
-    with section_dropdown("LLM-Generated Dataset", expanded=False):
+    with section_dropdown(title, expanded=False):
         if not emit_rows_path:
             st.info("No LLM-generated rows found.")
             return
@@ -2480,12 +2480,254 @@ with tab_figs:
             key_prefix=f"fig_{selected_doi}_{f.id}",
             file_name_prefix=f.id,
         )
+        safe_doi = selected_doi.replace("/", "@").strip()
+        # ========================
+        # SECTION: Rerun Data Extraction
+        # ========================
+        st.markdown("---")
+        _is_subfig_sel_er = _sm_fig_id_er != _fig_id_er
+        _int_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+        if _is_subfig_sel_er:
+            st.caption(f"Will run on selected subfigure: **{_sm_fig_id_er}**")
+        elif _int_crops_er:
+            st.caption(f"Will run on **{len(_int_crops_er)} cropped image(s)**.")
+        elif _source_img_er and _source_img_er.exists():
+            st.caption("Will run on the original figure image.")
+
+        if st.button("Rerun OCR data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
+            try:
+                _rerun_images_er: list = []
+                _rerun_lf_er: dict = {}
+
+                with st.spinner("Applying mask overrides..."):
+                    # Writes prepared masks + catalog + overrides into the
+                    # intervention dir only; the original plextract output
+                    # is never modified (item_figure_dir is read-only).
+                    apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
+                # Always source lineformer from the intervention override dir
+                # so the original plextract results remain untouched.
+                _lf_dir_rerun_er = _sm_lf_override_dir_er
+
+                if _is_subfig_sel_er:
+                    _rerun_images_er = [_sm_source_img_er]
+                    if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
+                        _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
+                elif _int_crops_er:
+                    _rerun_images_er = list(_int_crops_er)
+                    for _crop_er in _int_crops_er:
+                        _crop_lf_er = None
+                        # Search all workdirs for this crop's lineformer dir
+                        for _sm_wd_r_er in _sm_workdirs_to_search_er:
+                            if not _sm_wd_r_er.exists():
+                                continue
+                            _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
+                            if _lat2_er:
+                                _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
+                                if _cand_lf_er.exists():
+                                    _crop_lf_er = _cand_lf_er
+                                    break
+                        _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er and _lf_dir_rerun_er.exists() else None)
+                        if _lf_to_use_er:
+                            _rerun_lf_er[_crop_er.name] = _lf_to_use_er
+                else:
+                    if _source_img_er and _source_img_er.exists():
+                        _rerun_images_er = [_source_img_er]
+                        if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
+                            _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
+                with st.spinner("Re-running data extraction..."):
+                    run_plextract_intervention_on_crops(
+                        scripts_root=scripts_root, run_dir=rr.run_dir,
+                        safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
+                        override_lineformer_dirs=_rerun_lf_er,
+                        figure_id=_fig_id_er,
+                    )
+                st.success("Data extraction complete!")
+                st.rerun()
+            except Exception as _e2_er:
+                st.error(f"Failed: {_e2_er}")
+
+        # ========================
+        # SECTION: Rerun LLM Dataset Generation
+        # ========================
+
+        # Find available figures/subfigures for LLM rerun
+        _llm_fig_options_er: list = []
+        _llm_fig_dirs_er: list = []
+        for _llm_wd_er in [
+            rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
+            # rr.run_dir / "interventions" / "interventions_plextract",
+            # rr.run_dir / "plextract",
+        ]:
+            if not _llm_wd_er.exists():
+                continue
+            _llm_lat_er = latest_plextract_run_dir(_llm_wd_er)
+            if not _llm_lat_er:
+                continue
+            _llm_out_base_er = _llm_lat_er / "output" / _safe_doi_er
+            if not _llm_out_base_er.exists():
+                continue
+            for _llm_d_er in sorted(_llm_out_base_er.iterdir()):
+                if _llm_d_er.is_dir() and (
+                    _fig_stem_er == _fig_id_er or
+                    _llm_d_er.name.startswith(_fig_stem_er + "_subfig_") #SUBFIG TEST HERE
+                ):
+                    if _llm_d_er.name not in _llm_fig_options_er:
+                        _llm_fig_options_er.append(_llm_d_er.name)
+                        _llm_fig_dirs_er.append(_llm_d_er)
+
+        if not _llm_fig_dirs_er:
+            st.info("No plextract output found. Run plextract extraction first.")
+        else:
+            if len(_llm_fig_dirs_er) > 1:
+                _llm_sel_er = st.selectbox(
+                    "Select figure/subfigure for LLM rerun",
+                    _llm_fig_options_er,
+                    key=f"er_llm_sel_{_safe_doi_er}_{_fig_id_er}"
+                )
+                _llm_sel_dir_er = _llm_fig_dirs_er[_llm_fig_options_er.index(_llm_sel_er)]
+            else:
+                _llm_sel_er = _llm_fig_options_er[0]
+                _llm_sel_dir_er = _llm_fig_dirs_er[0]
+
+            if st.button("Rerun LLM dataset generation", type="primary", key=f"er_rerun_llm_{_safe_doi_er}_{_fig_id_er}"):
+                _reparsed_dir_er = rr.run_dir / "reparsed"
+                _index_csv_er = _reparsed_dir_er / "index.csv"
+                if not _index_csv_er.exists():
+                    _err_msg_er = f"**Required file not found:** `{_index_csv_er.relative_to(rr.run_dir)}`\n\n"
+                    if not _reparsed_dir_er.exists():
+                        _err_msg_er += "The `reparsed/` directory doesn't exist. "
+                    else:
+                        _err_msg_er += "The `reparsed/` directory exists but `index.csv` is missing. "
+                    _err_msg_er += "This file is created during the 'Download DOIs' stage."
+                    st.error(_err_msg_er)
+                else:
+                    try:
+                        # Delete any existing cache files for this figure so the
+                        # LLM is always re-called (avoids stale cache on re-run).
+                        _row_cache_dir_er = rr.run_dir / "complete_dataset" / "row_cache"
+                        if _row_cache_dir_er.exists():
+                            import re as _re_er
+                            _safe_fn_er = lambda s: _re_er.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                            _cache_pfx_er = _safe_fn_er(f"emit_rows::figure::{selected_doi}::{_llm_sel_er}::")
+                            for _cf_er in list(_row_cache_dir_er.iterdir()):
+                                if _cf_er.suffix == ".json" and (
+                                    _cf_er.stem.startswith(_cache_pfx_er) or
+                                    _cf_er.name.startswith(_cache_pfx_er)
+                                ):
+                                    _cf_er.unlink(missing_ok=True)
+
+                        import tempfile as _tmpmod_er
+                        with _tmpmod_er.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_er:
+                            _tmp_er.write(f"DOI\n{selected_doi}\n")
+                            _tmp_path_er = _tmp_er.name
+
+                        _complete_script_er = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+                        _efr_er = _llm_sel_dir_er.parent.parent  # .../output
+                        _cmd_er = [
+                            "python", str(_complete_script_er),
+                            "--file_path", _tmp_path_er,
+                            "--output_dir", str(rr.run_dir / "complete_dataset"),
+                            "--index_csv_path", str(_index_csv_er),
+                            "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
+                            "--extracted_figures_root", str(_efr_er),
+                            "--target_figure", _llm_sel_er,
+                        ]
+
+                        _env_er = os.environ.copy()
+                        _provider_er = st.session_state.get("llm_provider", "Ollama")
+                        _model_er = st.session_state.get("llm_model", "")
+                        if _provider_er == "Ollama":
+                            _env_er["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                            _env_er["AEM_OCR_LLM_MODEL"] = _model_er
+                            _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                            _om_dir_er = st.session_state.get("ollama_models_dir", "")
+                            if _om_dir_er:
+                                _env_er["OLLAMA_MODELS"] = _om_dir_er
+                        else:
+                            _env_er["AEM_OCR_LLM_PROVIDER"] = "openai"
+                            _env_er["AEM_OCR_LLM_MODEL"] = _model_er
+                            _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                            if st.session_state.get("openai_api_key"):
+                                _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+                        if st.session_state.get("use_separate_processing_llm"):
+                            _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
+                            _pm_er = st.session_state.get("processing_llm_model", "")
+                            if _pp_er == "Ollama":
+                                _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
+                                _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
+                            else:
+                                _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
+                                _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
+                                _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
+                                _pk_er = st.session_state.get("processing_openai_api_key", "")
+                                if _pb_er:
+                                    _env_er["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = _pb_er
+                                if _pk_er:
+                                    _env_er["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = _pk_er
+                        else:
+                            for _k_er in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
+                                            "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
+                                _env_er.pop(_k_er, None)
+
+                        if not _model_er and not st.session_state.get("processing_llm_model"):
+                            st.error("No LLM model configured. Configure LLM settings in the sidebar first.")
+                            Path(_tmp_path_er).unlink(missing_ok=True)
+                        else:
+                            _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
+                            if _ci_path_er.exists():
+                                _env_er["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
+                            _env_er["AEM_OCR_RUN_ID"] = rr.run_id
+                            _env_er["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+
+                            with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
+                                _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
+                            Path(_tmp_path_er).unlink(missing_ok=True)
+                            if _result_er.returncode == 0:
+                                st.success(f"LLM dataset generation complete for {_llm_sel_er}!")
+                                st.rerun()
+                            else:
+                                st.error(f"LLM dataset generation failed:\n```\n{_result_er.stderr}\n```")
+                    except subprocess.TimeoutExpired:
+                        st.error("LLM dataset generation timed out (>5 minutes)")
+                    except Exception as _e4_er:
+                        st.error(f"Error: {_e4_er}")
+
+        # ========================
+        # SECTION: Intervention Results
+        # Show new OCR and LLM data once a per-figure plextract_interventions
+        # run exists (i.e. the user has clicked "Rerun data extraction").
+        # ========================
+        if _per_fig_plextract and _per_fig_plextract.exists():
+            _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
+            _int_out_base = (
+                (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
+            )
+            if _int_out_base and _int_out_base.exists():
+                for _idir in sorted(_int_out_base.iterdir()):
+                    if _idir.is_dir():
+                        render_ocr_dropdown(
+                            csv_path=_idir / "final" / "final_dataset.csv",
+                            key_prefix=f"int_ocr_{safe_doi}_{f.id}_{_idir.name}",
+                            axis_override_dir=_idir,
+                            title=f"New OCR-Extracted Data: {_idir.name}",
+                        )
+                        _int_emit_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _idir.name)
+                        render_llm_dropdown(
+                            run_dir=rr.run_dir,
+                            emit_rows_path=_int_emit_path,
+                            key_prefix=f"int_llm_{safe_doi}_{f.id}_{_idir.name}",
+                            file_name_prefix=_idir.name,
+                            title=f"New LLM-Generated Dataset: {_idir.name}",
+                        )
+        # ========================
+        # SECTION: Display metadata
+        # ========================
+        render_metadata_dropdown(metadata_path=f.metadata_path)
 
         # --- Display cropped subfigures from plextract and interventions ---
         # Collect subfigure dirs from all relevant workdirs, deduplicating by name.
         # Per-figure plextract_interventions takes highest priority (most up-to-date),
         # then the legacy shared interventions_plextract, then original plextract.
-        safe_doi = selected_doi.replace("/", "@").strip()
         fig_stem = Path(f.id).stem
         _subfig_map: dict[str, Path] = {}  # name -> dir (first match wins)
 
@@ -2725,306 +2967,6 @@ with tab_figs:
                     # Add separator between subfigures if there are multiple
                     if subfig_dir != subfig_dirs[-1]:
                         st.markdown("---")
-
-        # ========================
-        # SECTION: Intervention Results
-        # Show new OCR and LLM data once a per-figure plextract_interventions
-        # run exists (i.e. the user has clicked "Rerun data extraction").
-        # ========================
-        if _per_fig_plextract and _per_fig_plextract.exists():
-            _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
-            _int_out_base = (
-                (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
-            )
-
-            # --- New OCR-Extracted Data ---
-            _int_csv_paths: list[Path] = []
-            if _int_out_base and _int_out_base.exists():
-                for _idir in sorted(_int_out_base.iterdir()):
-                    if _idir.is_dir():
-                        _icsvp = _idir / "final" / "final_dataset.csv"
-                        if _icsvp.exists():
-                            _int_csv_paths.append(_icsvp)
-
-            if _int_csv_paths:
-                with st.expander("New OCR-Extracted Data", expanded=False):
-                    st.markdown(
-                        "*Extracted after intervention — re-run with edited masks / series / axis changes*"
-                    )
-                    for _icsvp in _int_csv_paths:
-                        try:
-                            _idf = pd.read_csv(_icsvp)
-                            st.caption(
-                                f"**{_icsvp.parent.parent.name}** — "
-                                f"`{_icsvp.relative_to(rr.run_dir)}`"
-                            )
-                            st.data_editor(
-                                _idf,
-                                use_container_width=True,
-                                hide_index=True,
-                                key=f"int_ocr_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
-                            )
-                            st.download_button(
-                                label="Download CSV",
-                                data=_idf.to_csv(index=False),
-                                file_name=f"{_icsvp.parent.parent.name}_intervention.csv",
-                                mime="text/csv",
-                                key=f"int_ocr_dl_{safe_doi}_{f.id}_{_icsvp.parent.parent.name}",
-                            )
-                        except Exception as _ie:
-                            st.warning(f"Failed to load {_icsvp.name}: {_ie}")
-
-            # --- New LLM-Generated Dataset Rows ---
-            # Collect figure names from the intervention output dir plus the
-            # top-level figure id, then look up the most-recently cached rows.
-            _int_names_to_check: set[str] = {f.id}
-            if _int_out_base and _int_out_base.exists():
-                for _idir in sorted(_int_out_base.iterdir()):
-                    if _idir.is_dir():
-                        _int_names_to_check.add(_idir.name)
-
-            _int_emit_items: list[tuple[str, Path]] = []
-            for _iname in sorted(_int_names_to_check):
-                _iep = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _iname)
-                if _iep:
-                    _int_emit_items.append((_iname, _iep))
-
-            if _int_emit_items:
-                with st.expander("New LLM-Generated Dataset", expanded=False):
-                    for _iname, _iep in _int_emit_items:
-                        _idf_emit = load_emit_rows(_iep)
-                        if _idf_emit is not None and not _idf_emit.empty:
-                            st.caption(
-                                f"**{_iname}** — `{_iep.relative_to(rr.run_dir)}`"
-                            )
-                            st.data_editor(
-                                _idf_emit,
-                                use_container_width=True,
-                                hide_index=True,
-                                key=f"int_llm_{safe_doi}_{f.id}_{_iname}",
-                            )
-                            st.download_button(
-                                label="Download emit_rows CSV",
-                                data=_idf_emit.to_csv(index=False),
-                                file_name=f"{_iname}_intervention_emit_rows.csv",
-                                mime="text/csv",
-                                key=f"int_llm_dl_{safe_doi}_{f.id}_{_iname}",
-                            )
-        # ========================
-        # SECTION: Display metadata
-        # ========================
-        render_metadata_dropdown(metadata_path=f.metadata_path)
-                
-        # ========================
-        # SECTION: Rerun Data Extraction
-        # ========================
-        st.markdown("---")
-        _is_subfig_sel_er = _sm_fig_id_er != _fig_id_er
-        _int_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
-        if _is_subfig_sel_er:
-            st.caption(f"Will run on selected subfigure: **{_sm_fig_id_er}**")
-        elif _int_crops_er:
-            st.caption(f"Will run on **{len(_int_crops_er)} cropped image(s)**.")
-        elif _source_img_er and _source_img_er.exists():
-            st.caption("Will run on the original figure image.")
-
-        if st.button("Rerun OCR data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
-            try:
-                _rerun_images_er: list = []
-                _rerun_lf_er: dict = {}
-
-                with st.spinner("Applying mask overrides..."):
-                    # Writes prepared masks + catalog + overrides into the
-                    # intervention dir only; the original plextract output
-                    # is never modified (item_figure_dir is read-only).
-                    apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                # Always source lineformer from the intervention override dir
-                # so the original plextract results remain untouched.
-                _lf_dir_rerun_er = _sm_lf_override_dir_er
-
-                if _is_subfig_sel_er:
-                    _rerun_images_er = [_sm_source_img_er]
-                    if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
-                        _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
-                elif _int_crops_er:
-                    _rerun_images_er = list(_int_crops_er)
-                    for _crop_er in _int_crops_er:
-                        _crop_lf_er = None
-                        # Search all workdirs for this crop's lineformer dir
-                        for _sm_wd_r_er in _sm_workdirs_to_search_er:
-                            if not _sm_wd_r_er.exists():
-                                continue
-                            _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
-                            if _lat2_er:
-                                _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
-                                if _cand_lf_er.exists():
-                                    _crop_lf_er = _cand_lf_er
-                                    break
-                        _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er and _lf_dir_rerun_er.exists() else None)
-                        if _lf_to_use_er:
-                            _rerun_lf_er[_crop_er.name] = _lf_to_use_er
-                else:
-                    if _source_img_er and _source_img_er.exists():
-                        _rerun_images_er = [_source_img_er]
-                        if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
-                            _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
-                with st.spinner("Re-running data extraction..."):
-                    run_plextract_intervention_on_crops(
-                        scripts_root=scripts_root, run_dir=rr.run_dir,
-                        safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
-                        override_lineformer_dirs=_rerun_lf_er,
-                        figure_id=_fig_id_er,
-                    )
-                st.success("Data extraction complete!")
-                st.rerun()
-            except Exception as _e2_er:
-                st.error(f"Failed: {_e2_er}")
-
-        # ========================
-        # SECTION: Rerun LLM Dataset Generation
-        # ========================
-
-        # Find available figures/subfigures for LLM rerun
-        _llm_fig_options_er: list = []
-        _llm_fig_dirs_er: list = []
-        for _llm_wd_er in [
-            rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
-            # rr.run_dir / "interventions" / "interventions_plextract",
-            # rr.run_dir / "plextract",
-        ]:
-            if not _llm_wd_er.exists():
-                continue
-            _llm_lat_er = latest_plextract_run_dir(_llm_wd_er)
-            if not _llm_lat_er:
-                continue
-            _llm_out_base_er = _llm_lat_er / "output" / _safe_doi_er
-            if not _llm_out_base_er.exists():
-                continue
-            for _llm_d_er in sorted(_llm_out_base_er.iterdir()):
-                if _llm_d_er.is_dir() and (
-                    _fig_stem_er == _fig_id_er or
-                    _llm_d_er.name.startswith(_fig_stem_er + "_subfig_") #SUBFIG TEST HERE
-                ):
-                    if _llm_d_er.name not in _llm_fig_options_er:
-                        _llm_fig_options_er.append(_llm_d_er.name)
-                        _llm_fig_dirs_er.append(_llm_d_er)
-
-        if not _llm_fig_dirs_er:
-            st.info("No plextract output found. Run plextract extraction first.")
-        else:
-            if len(_llm_fig_dirs_er) > 1:
-                _llm_sel_er = st.selectbox(
-                    "Select figure/subfigure for LLM rerun",
-                    _llm_fig_options_er,
-                    key=f"er_llm_sel_{_safe_doi_er}_{_fig_id_er}"
-                )
-                _llm_sel_dir_er = _llm_fig_dirs_er[_llm_fig_options_er.index(_llm_sel_er)]
-            else:
-                _llm_sel_er = _llm_fig_options_er[0]
-                _llm_sel_dir_er = _llm_fig_dirs_er[0]
-
-            if st.button("Rerun LLM dataset generation", type="primary", key=f"er_rerun_llm_{_safe_doi_er}_{_fig_id_er}"):
-                _reparsed_dir_er = rr.run_dir / "reparsed"
-                _index_csv_er = _reparsed_dir_er / "index.csv"
-                if not _index_csv_er.exists():
-                    _err_msg_er = f"**Required file not found:** `{_index_csv_er.relative_to(rr.run_dir)}`\n\n"
-                    if not _reparsed_dir_er.exists():
-                        _err_msg_er += "The `reparsed/` directory doesn't exist. "
-                    else:
-                        _err_msg_er += "The `reparsed/` directory exists but `index.csv` is missing. "
-                    _err_msg_er += "This file is created during the 'Download DOIs' stage."
-                    st.error(_err_msg_er)
-                else:
-                    try:
-                        # Delete any existing cache files for this figure so the
-                        # LLM is always re-called (avoids stale cache on re-run).
-                        _row_cache_dir_er = rr.run_dir / "complete_dataset" / "row_cache"
-                        if _row_cache_dir_er.exists():
-                            import re as _re_er
-                            _safe_fn_er = lambda s: _re_er.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
-                            _cache_pfx_er = _safe_fn_er(f"emit_rows::figure::{selected_doi}::{_llm_sel_er}::")
-                            for _cf_er in list(_row_cache_dir_er.iterdir()):
-                                if _cf_er.suffix == ".json" and (
-                                    _cf_er.stem.startswith(_cache_pfx_er) or
-                                    _cf_er.name.startswith(_cache_pfx_er)
-                                ):
-                                    _cf_er.unlink(missing_ok=True)
-
-                        import tempfile as _tmpmod_er
-                        with _tmpmod_er.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_er:
-                            _tmp_er.write(f"DOI\n{selected_doi}\n")
-                            _tmp_path_er = _tmp_er.name
-
-                        _complete_script_er = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-                        _efr_er = _llm_sel_dir_er.parent.parent  # .../output
-                        _cmd_er = [
-                            "python", str(_complete_script_er),
-                            "--file_path", _tmp_path_er,
-                            "--output_dir", str(rr.run_dir / "complete_dataset"),
-                            "--index_csv_path", str(_index_csv_er),
-                            "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
-                            "--extracted_figures_root", str(_efr_er),
-                            "--target_figure", _llm_sel_er,
-                        ]
-
-                        _env_er = os.environ.copy()
-                        _provider_er = st.session_state.get("llm_provider", "Ollama")
-                        _model_er = st.session_state.get("llm_model", "")
-                        if _provider_er == "Ollama":
-                            _env_er["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                            _env_er["AEM_OCR_LLM_MODEL"] = _model_er
-                            _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                            _om_dir_er = st.session_state.get("ollama_models_dir", "")
-                            if _om_dir_er:
-                                _env_er["OLLAMA_MODELS"] = _om_dir_er
-                        else:
-                            _env_er["AEM_OCR_LLM_PROVIDER"] = "openai"
-                            _env_er["AEM_OCR_LLM_MODEL"] = _model_er
-                            _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                            if st.session_state.get("openai_api_key"):
-                                _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-                        if st.session_state.get("use_separate_processing_llm"):
-                            _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
-                            _pm_er = st.session_state.get("processing_llm_model", "")
-                            if _pp_er == "Ollama":
-                                _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
-                            else:
-                                _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
-                                _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                _pk_er = st.session_state.get("processing_openai_api_key", "")
-                                if _pb_er:
-                                    _env_er["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = _pb_er
-                                if _pk_er:
-                                    _env_er["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = _pk_er
-                        else:
-                            for _k_er in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                            "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                                _env_er.pop(_k_er, None)
-
-                        if not _model_er and not st.session_state.get("processing_llm_model"):
-                            st.error("No LLM model configured. Configure LLM settings in the sidebar first.")
-                            Path(_tmp_path_er).unlink(missing_ok=True)
-                        else:
-                            _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
-                            if _ci_path_er.exists():
-                                _env_er["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
-                            _env_er["AEM_OCR_RUN_ID"] = rr.run_id
-                            _env_er["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
-
-                            with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
-                                _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
-                            Path(_tmp_path_er).unlink(missing_ok=True)
-                            if _result_er.returncode == 0:
-                                st.success(f"LLM dataset generation complete for {_llm_sel_er}!")
-                                st.rerun()
-                            else:
-                                st.error(f"LLM dataset generation failed:\n```\n{_result_er.stderr}\n```")
-                    except subprocess.TimeoutExpired:
-                        st.error("LLM dataset generation timed out (>5 minutes)")
-                    except Exception as _e4_er:
-                        st.error(f"Error: {_e4_er}")
 
 with tab_tables:
     if not doi_item.tables:
