@@ -322,7 +322,6 @@ def section_dropdown(title: str, *, expanded: bool = False):
     """
     return st.expander(title, expanded=expanded)
 
-
 def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None):
     """Render OCR-extracted data using the shared dropdown structure."""
     with section_dropdown("OCR-Extracted Data", expanded=False):
@@ -337,7 +336,6 @@ def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_overr
             st.caption(str(csv_path))
         except Exception as e:
             st.warning(f"Failed to load extracted dataset:\n`{csv_path}`\n\n{e}")
-
 
 def render_llm_dropdown(*, run_dir: Path, emit_rows_path: Optional[Path], key_prefix: str, file_name_prefix: str):
     """Render LLM-generated dataset using the shared dropdown structure."""
@@ -360,7 +358,6 @@ def render_llm_dropdown(*, run_dir: Path, emit_rows_path: Optional[Path], key_pr
             key=f"{key_prefix}_llm_download",
         )
 
-
 def render_metadata_dropdown(*, metadata_path: Optional[Path], empty_message: str = "No metadata found."):
     """Render metadata using the shared dropdown structure."""
     with section_dropdown("Metadata", expanded=False):
@@ -369,12 +366,9 @@ def render_metadata_dropdown(*, metadata_path: Optional[Path], empty_message: st
         else:
             st.info(empty_message)
 
-
-
 def axis_configuration_dropdown(*, expanded: bool = False):
     """Shared helper for the Axis Configuration dropdown."""
     return section_dropdown("Axis Configuration", expanded=expanded)
-
 
 def series_management_dropdown(*, expanded: bool = False):
     """Shared helper for the Series Management dropdown."""
@@ -414,7 +408,6 @@ def st_resizable_image(image_path: Path, *, caption: Optional[str] = None, key: 
         st.warning(f"Failed to render resizable image: {_img_ex}")
         st_image_auto(str(image_path), full_width=True)
 
-
 def _parse_axis_title_for_override(text: str):
     if not text:
         return None, None
@@ -425,7 +418,6 @@ def _parse_axis_title_for_override(text: str):
         _unit = m.group(2).strip() or None
         return _name, _unit
     return text or None, None
-
 
 def _apply_axis_title_override_df(df: pd.DataFrame, figure_dir: Path) -> pd.DataFrame:
     _override_path = figure_dir / "chartdete" / "axis_title_override.json"
@@ -506,7 +498,6 @@ def completed_dataset_json_path(run_dir: Path, doi: str) -> Path:
     modified = doi_to_safe(doi)
     return run_dir / "complete_dataset" / f"{modified}_complete.json"
 
-
 def find_emit_rows_for_source(
     run_dir: Path,
     doi: str,
@@ -558,7 +549,6 @@ def find_emit_rows_for_source(
 
     return None
 
-
 def load_emit_rows(cache_path: Path | None) -> pd.DataFrame | None:
     """
     Load emit_rows from cache file and return as DataFrame.
@@ -588,7 +578,6 @@ def load_emit_rows(cache_path: Path | None) -> pd.DataFrame | None:
     except Exception as e:
         st.error(f"Failed to load emit_rows: {e}")
         return None
-
 
 def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
     """
@@ -651,7 +640,6 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
 
     return combined
 
-
 def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: list[str] | None = None) -> pd.DataFrame:
     rows = []
     flagged = []
@@ -695,9 +683,6 @@ default_ollama_dir = _default_ollama_models_dir()
 default_ollama_host = _default_ollama_host()
 
 _openai_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
-
-
-
 st.set_page_config(page_title="AEM_OCR UI", layout="wide")
 st.title("AEM_OCR")
 
@@ -716,7 +701,6 @@ div[data-testid="stExpanderDetails"] {
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
-
     # Set workspace variables – resolve relative to this file, not cwd
     scripts_root = (Path(__file__).resolve().parent / "..").resolve()
     workspaces_root = Path(str(scripts_root / "ui_runs"))
@@ -2117,6 +2101,7 @@ with tab_figs:
                             st.code(_pix2val_orig_er.read_text(), language="json")
                         else:
                             st.info("No pix2val JSON exists yet. Save calibration from clicks first.")
+        
         # ========================
         # SECTION: Series Management
         # ========================
@@ -2516,7 +2501,7 @@ with tab_figs:
                     st.rerun()
 
 
-                # ========================
+        # ========================
         # SECTION: OCR + LLM Data
         # ========================
         final_csv = None
@@ -2947,6 +2932,7 @@ with tab_figs:
                                 mime="text/csv",
                                 key=f"int_llm_dl_{safe_doi}_{f.id}_{_iname}",
                             )
+        
         # ========================
         # SECTION: Display metadata
         # ========================
