@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import re
 import shutil
 import subprocess
@@ -6,6 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Optional
 
+_LOG = logging.getLogger(__name__)
 
 # Pattern that matches crop filenames produced by cropping.save_crops():
 #   <prefix>_subfig_<n>.png  (e.g. Figure_1_subfig_0.png)
@@ -54,6 +56,19 @@ def _find_chartdete_dir_for_image(
             return cand
 
     return None
+
+
+
+
+def _has_required_chartdete_output(chartdete_dir: Optional[Path]) -> bool:
+    """Return True when the minimum ChartDete files needed by intervention exist."""
+    if not chartdete_dir or not chartdete_dir.exists():
+        return False
+    required = [
+        "bounding_boxes.json",
+        "pix2val.json",
+    ]
+    return all((chartdete_dir / name).exists() for name in required)
 
 
 def run_plextract_on_crops(
@@ -295,8 +310,34 @@ def run_plextract_intervention_on_crops(
                     img_name=img_name,
                     figure_id=figure_id,
                 )
-            if not cd_src_dir or not cd_src_dir.exists():
+            if not _has_required_chartdete_output(cd_src_dir):
+                _LOG.warning(
+                    "[intervention] Missing required ChartDete output for %s; running full plextract fallback.",
+                    img_name,
+                )
+                # Generate ChartDete outputs by running the full pipeline for this image once.
+                run_plextract_on_crops(
+                    scripts_root=scripts_root,
+                    run_dir=run_dir,
+                    safe_doi=safe_doi,
+                    image_paths=[next((p for p in image_paths if p.name == img_name), image_paths[0])],
+                    override_lineformer_dirs=None,
+                    figure_id=figure_id,
+                )
+                cd_src_dir = _find_chartdete_dir_for_image(
+                    run_dir=run_dir,
+                    safe_doi=safe_doi,
+                    img_name=img_name,
+                    figure_id=figure_id,
+                )
+
+            if not _has_required_chartdete_output(cd_src_dir):
+                _LOG.warning(
+                    "[intervention] Missing required ChartDete output (full fallback also unavailable): %s",
+                    (cd_src_dir / "bounding_boxes.json") if cd_src_dir else f"<none for {img_name}>",
+                )
                 continue
+
             out_cd_dir = (
                 results_root / next_id / "output" / safe_doi
                 / img_name / "chartdete"
