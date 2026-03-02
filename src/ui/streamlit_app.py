@@ -2269,7 +2269,23 @@ with tab_figs:
         # ========================
         # SECTION: Cropping
         # ========================
-        with st.expander("Crop Figure", expanded=False):
+        # NOTE: We deliberately avoid st.expander here. streamlit-drawable-canvas mounts its
+        # Fabric.js canvas immediately when the page renders — even inside a *collapsed* expander.
+        # Fabric.js needs a visible, non-zero-size container to load the background image correctly.
+        # When mounted hidden it silently fails, producing a blank canvas that only "fixes" itself
+        # after the user clicks "Clear drawn rectangles" (which changes the canvas key, forcing a
+        # remount while the expander is open). The session_state toggle below ensures the canvas
+        # is only ever mounted when it is actually visible.
+        _show_crop_key = f"er_show_crop_{_safe_doi_er}_{_fig_id_er}"
+        if _show_crop_key not in st.session_state:
+            st.session_state[_show_crop_key] = False
+
+        _crop_label = "▼ Crop Figure" if st.session_state[_show_crop_key] else "▶ Crop Figure"
+        if st.button(_crop_label, key=f"er_crop_toggle_{_safe_doi_er}_{_fig_id_er}"):
+            st.session_state[_show_crop_key] = not st.session_state[_show_crop_key]
+            st.rerun()
+
+        if st.session_state[_show_crop_key]:
             if not (_source_img_er and _source_img_er.exists()):
                 st.warning("No source image found for this figure.")
             else:
@@ -2307,25 +2323,13 @@ with tab_figs:
                 with _btn_cols_er[1]:
                     _show_json = st.checkbox("Show raw canvas JSON", value=False, key=f"er_show_canvas_json_{_safe_doi_er}_{_fig_id_er}")
 
-                # ---- Clear canvas (must change canvas key OR use session_state for the canvas component) ----
-                # streamlit-drawable-canvas stores state by key; to truly clear, we bump a version suffix.
+                # ---- Canvas version tracking (used to force remount on "Clear drawn rectangles") ----
+                # streamlit-drawable-canvas stores state by key; bumping the version suffix forces remount.
                 _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
                 if _cv_ver_key not in st.session_state:
                     st.session_state[_cv_ver_key] = 0
                 if _clear_canvas_clicked:
                     st.session_state[_cv_ver_key] += 1
-                    st.rerun()
-
-                # ---- Clear canvas (must change canvas key OR use session_state for the canvas component) ----
-                _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
-                if _cv_ver_key not in st.session_state:
-                    st.session_state[_cv_ver_key] = 0
-
-                # Force a one-time remount the first time this crop UI is rendered (fixes blank background until click)
-                _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
-                if _cv_boot_key not in st.session_state:
-                    st.session_state[_cv_boot_key] = True         # set flag first to avoid rerun loop
-                    st.session_state[_cv_ver_key] += 1            # bump version -> new key -> remount
                     st.rerun()
 
                 _canvas_key_er = f"{_canvas_key_er}_v{st.session_state[_cv_ver_key]}"
