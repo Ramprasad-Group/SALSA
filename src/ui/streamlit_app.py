@@ -2327,7 +2327,23 @@ with tab_figs:
                 # ========================
                 # SECTION: Cropping
                 # ========================
-                with st.expander("Crop Figure", expanded=False):
+                # ---- Canvas state keys (must be outside the expander) ----
+                _cv_ver_key  = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
+                _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
+                if _cv_ver_key not in st.session_state:
+                    st.session_state[_cv_ver_key] = 0
+                # Open the expander on the very first render so the canvas mounts
+                # in a visible state.  streamlit-drawable-canvas calls drawImage()
+                # in componentDidMount; if the expander is collapsed at that point
+                # the canvas has zero dimensions and the background image is lost.
+                # ensure_canvas_remount() tried to work around this by forcing a
+                # rerun, but that rerun still happened while the expander was closed,
+                # so the problem persisted.  Starting expanded=True on first show
+                # is the correct fix.
+                _crop_start_expanded = _cv_boot_key not in st.session_state
+                if _crop_start_expanded:
+                    st.session_state[_cv_boot_key] = True  # mark as initialised
+                with st.expander("Crop Figure", expanded=_crop_start_expanded):
                     if not (_source_img_er and _source_img_er.exists()):
                         st.warning("No source image found for this figure.")
                     else:
@@ -2339,12 +2355,8 @@ with tab_figs:
 
                         _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
                             str(_source_img_er),
-                            min(_orig_w_er, 1100)  # or compute disp_w first; see note below
+                            min(_orig_w_er, 1100)
                         )
-                        # ---- Canvas state keys (stable) ----
-                        _cv_ver_key  = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
-                        _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
-                        ensure_canvas_remount(boot_key=_cv_boot_key, version_key=_cv_ver_key)
                         
                         _draw_mode_er = st.radio(
                             "Mode",
