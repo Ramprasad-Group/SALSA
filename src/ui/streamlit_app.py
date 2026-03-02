@@ -323,6 +323,27 @@ def section_dropdown(title: str, *, expanded: bool = False):
     """
     return st.expander(title, expanded=expanded)
 
+
+def ensure_canvas_remount(*, boot_key: str, version_key: str):
+    """
+    Force a one-time rerun for canvas-heavy sections.
+
+    Why this exists:
+    `streamlit-drawable-canvas` can occasionally mount while an expander is
+    collapsed, leaving the background image blank until *any* widget triggers
+    a rerun. We trigger that rerun automatically once so users don't need to
+    click an unrelated button just to make the image appear.
+    """
+    if version_key not in st.session_state:
+        st.session_state[version_key] = 0
+    if boot_key not in st.session_state:
+        st.session_state[boot_key] = True
+
+    if st.session_state[boot_key]:
+        st.session_state[boot_key] = False
+        st.session_state[version_key] += 1
+        st.rerun()
+
 def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None, title: str = "OCR-Extracted Data"):
     """Render OCR-extracted data using the shared dropdown structure."""
     with section_dropdown(title, expanded=False):
@@ -503,8 +524,10 @@ def render_axis_configuration_dropdown(
         endpoint = st.radio("Click target", ["Xmin", "Xmax", "Ymin", "Ymax"], key=endpoint_key, horizontal=True)
 
         cv_ver_key = f"{key_prefix}_ax_calib_ver"
-        if cv_ver_key not in st.session_state:
-            st.session_state[cv_ver_key] = 0
+        ensure_canvas_remount(
+            boot_key=f"{key_prefix}_ax_calib_boot",
+            version_key=cv_ver_key,
+        )
 
         c1_ax, _c2_ax = st.columns([1, 3])
         with c1_ax:
@@ -821,6 +844,11 @@ def render_series_management_dropdown(
         existing_indices = [s.series_index for s in series_items]
         next_idx = max(existing_indices) + 1 if existing_indices else 0
 
+        ensure_canvas_remount(
+            boot_key=f"{key_prefix}_series_canvas_boot",
+            version_key=f"{key_prefix}_series_canvas_ver",
+        )
+
         mode_options = ["Edit existing series", "Create new series"]
         mode = st.radio("Mode", mode_options, key=f"{key_prefix}_series_mode", horizontal=True)
         is_creating = (mode == "Create new series")
@@ -881,7 +909,10 @@ def render_series_management_dropdown(
                         stroke_width=brush, stroke_color=stroke_rgba,
                         fill_color=stroke_rgba, update_streamlit=True,
                         height=disp_h, width=disp_w,
-                        key=f"{key_prefix}_mask_canvas_{selected_idx}_{mode}",
+                        key=(
+                            f"{key_prefix}_mask_canvas_{selected_idx}_{mode}_"
+                            f"v{st.session_state[f'{key_prefix}_series_canvas_ver']}"
+                        ),
                     )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
@@ -949,7 +980,10 @@ def render_series_management_dropdown(
                         drawing_mode="point", point_display_radius=dot_size,
                         stroke_color=stroke_rgba, fill_color=stroke_rgba,
                         update_streamlit=True, height=disp_h, width=disp_w,
-                        key=f"{key_prefix}_point_canvas_{selected_idx}_{mode}",
+                        key=(
+                            f"{key_prefix}_point_canvas_{selected_idx}_{mode}_"
+                            f"v{st.session_state[f'{key_prefix}_series_canvas_ver']}"
+                        ),
                     )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
@@ -2288,16 +2322,7 @@ with tab_figs:
                 # ---- Canvas state keys (stable) ----
                 _cv_ver_key  = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
                 _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
-
-                st.session_state.setdefault(_cv_ver_key, 0)
-                st.session_state.setdefault(_cv_boot_key, True)
-
-                # Force a one-time remount the first time this crop UI is rendered
-                # IMPORTANT: do this BEFORE creating any widgets that depend on the canvas key
-                if st.session_state[_cv_boot_key]:
-                    st.session_state[_cv_boot_key] = False
-                    st.session_state[_cv_ver_key] += 1
-                    st.rerun()
+                ensure_canvas_remount(boot_key=_cv_boot_key, version_key=_cv_ver_key)
                 
                 _draw_mode_er = st.radio(
                     "Mode",
