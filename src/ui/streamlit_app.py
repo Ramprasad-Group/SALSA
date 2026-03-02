@@ -323,36 +323,6 @@ def section_dropdown(title: str, *, expanded: bool = False):
     """
     return st.expander(title, expanded=expanded)
 
-
-def ensure_canvas_remount(*, boot_key: str, version_key: str):
-    """
-    Force a one-time rerun for canvas-heavy sections.
-
-    Why this exists:
-    `streamlit-drawable-canvas` can occasionally mount while an expander is
-    collapsed, leaving the background image blank until a rerun occurs.
-
-    Important implementation detail:
-    We cap this to *one global rerun* for the entire app session render cycle
-    (`_canvas_global_boot_done`) instead of rerunning once per section. This
-    avoids excessive remount churn and reduces Streamlit media-cache warnings
-    like `MediaFileHandler: Missing file ...` that can appear when multiple
-    back-to-back reruns invalidate old media URLs.
-    """
-    global_boot_key = "_canvas_global_boot_done"
-
-    if version_key not in st.session_state:
-        st.session_state[version_key] = 0
-    if boot_key not in st.session_state:
-        st.session_state[boot_key] = True
-
-    if st.session_state[boot_key]:
-        st.session_state[boot_key] = False
-        st.session_state[version_key] += 1
-        if not st.session_state.get(global_boot_key, False):
-            st.session_state[global_boot_key] = True
-            st.rerun()
-
 def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None, title: str = "OCR-Extracted Data"):
     """Render OCR-extracted data using the shared dropdown structure."""
     with section_dropdown(title, expanded=False):
@@ -533,10 +503,8 @@ def render_axis_configuration_dropdown(
         endpoint = st.radio("Click target", ["Xmin", "Xmax", "Ymin", "Ymax"], key=endpoint_key, horizontal=True)
 
         cv_ver_key = f"{key_prefix}_ax_calib_ver"
-        ensure_canvas_remount(
-            boot_key=f"{key_prefix}_ax_calib_boot",
-            version_key=cv_ver_key,
-        )
+        if cv_ver_key not in st.session_state:
+            st.session_state[cv_ver_key] = 0
 
         c1_ax, _c2_ax = st.columns([1, 3])
         with c1_ax:
@@ -734,6 +702,15 @@ def render_axis_configuration_dropdown(
                 st.success("Cleared calibration override.")
                 st.rerun()
 
+        with bcols[2]:
+            show_json = st.checkbox("Show current calibration JSON", value=False, key=f"{key_prefix}_ax_show_json")
+            if show_json:
+                if pix2val_override_path.exists():
+                    st.code(pix2val_override_path.read_text(), language="json")
+                elif pix2val_orig_path.exists():
+                    st.code(pix2val_orig_path.read_text(), language="json")
+                else:
+                    st.info("No pix2val JSON exists yet. Save calibration from clicks first.")
 
 def render_series_management_dropdown(
     *,
@@ -853,11 +830,6 @@ def render_series_management_dropdown(
         existing_indices = [s.series_index for s in series_items]
         next_idx = max(existing_indices) + 1 if existing_indices else 0
 
-        ensure_canvas_remount(
-            boot_key=f"{key_prefix}_series_canvas_boot",
-            version_key=f"{key_prefix}_series_canvas_ver",
-        )
-
         mode_options = ["Edit existing series", "Create new series"]
         mode = st.radio("Mode", mode_options, key=f"{key_prefix}_series_mode", horizontal=True)
         is_creating = (mode == "Create new series")
@@ -918,10 +890,7 @@ def render_series_management_dropdown(
                         stroke_width=brush, stroke_color=stroke_rgba,
                         fill_color=stroke_rgba, update_streamlit=True,
                         height=disp_h, width=disp_w,
-                        key=(
-                            f"{key_prefix}_mask_canvas_{selected_idx}_{mode}_"
-                            f"v{st.session_state[f'{key_prefix}_series_canvas_ver']}"
-                        ),
+                        key=f"{key_prefix}_mask_canvas_{selected_idx}_{mode}",
                     )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
@@ -989,10 +958,7 @@ def render_series_management_dropdown(
                         drawing_mode="point", point_display_radius=dot_size,
                         stroke_color=stroke_rgba, fill_color=stroke_rgba,
                         update_streamlit=True, height=disp_h, width=disp_w,
-                        key=(
-                            f"{key_prefix}_point_canvas_{selected_idx}_{mode}_"
-                            f"v{st.session_state[f'{key_prefix}_series_canvas_ver']}"
-                        ),
+                        key=f"{key_prefix}_point_canvas_{selected_idx}_{mode}",
                     )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
@@ -2303,7 +2269,23 @@ with tab_figs:
         # ========================
         # SECTION: Cropping
         # ========================
-        with st.expander("Crop Figure", expanded=False):
+        # NOTE: We deliberately avoid st.expander here. streamlit-drawable-canvas mounts its
+        # Fabric.js canvas immediately when the page renders — even inside a *collapsed* expander.
+        # Fabric.js needs a visible, non-zero-size container to load the background image correctly.
+        # When mounted hidden it silently fails, producing a blank canvas that only "fixes" itself
+        # after the user clicks "Clear drawn rectangles" (which changes the canvas key, forcing a
+        # remount while the expander is open). The session_state toggle below ensures the canvas
+        # is only ever mounted when it is actually visible.
+        _show_interventions_key = f"er_show_interventions_{_safe_doi_er}_{_fig_id_er}"
+        if _show_interventions_key not in st.session_state:
+            st.session_state[_show_interventions_key] = False
+
+        intervene_button = "Load Interventions" if st.session_state[_show_interventions_key] else "▶ Crop Figure"
+        if st.button(intervene_button, key=f"er_intervene_toggle_{_safe_doi_er}_{_fig_id_er}"):
+            st.session_state[_show_interventions_key] = not st.session_state[_show_interventions_key]
+            st.rerun()
+
+        if st.session_state[_show_interventions_key]:
             if not (_source_img_er and _source_img_er.exists()):
                 st.warning("No source image found for this figure.")
             else:
@@ -2312,27 +2294,21 @@ with tab_figs:
                 _orig_w_er, _orig_h_er = _pil_img_er.size
 
                 # # ---- Display sizing ----
-                # _max_display_w_er = 1100
-                # _disp_w_er = min(_orig_w_er, _max_display_w_er)
-                # _disp_h_er = int(round(_orig_h_er * (_disp_w_er / _orig_w_er)))
+                _max_display_w_er = 1100
+                _disp_w_er = min(_orig_w_er, _max_display_w_er)
+                _disp_h_er = int(round(_orig_h_er * (_disp_w_er / _orig_w_er)))
                 
                 # IMPORTANT: streamlit-drawable-canvas draws correctly when the background image
                 # is a *PIL Image* (RGB/RGBA) that matches the canvas width/height exactly.
                 
-                # _bg_img_er = _pil_img_er.resize((_disp_w_er, _disp_h_er), Image.Resampling.LANCZOS).convert("RGBA")
+                _bg_img_er = _pil_img_er.resize((_disp_w_er, _disp_h_er), Image.Resampling.LANCZOS).convert("RGBA")
 
+                # ---- Controls ----
+                st.write("**Draw crop rectangles directly on top of the image.**")
 
                 _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
+                _canvas_key_er = f"er_canvas_{_safe_doi_er}_{_fig_id_er}_{_disp_w_er}x{_disp_h_er}"
 
-                _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
-                    str(_source_img_er),
-                    min(_orig_w_er, 1100)  # or compute disp_w first; see note below
-                )
-                # ---- Canvas state keys (stable) ----
-                _cv_ver_key  = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
-                _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
-                ensure_canvas_remount(boot_key=_cv_boot_key, version_key=_cv_ver_key)
-                
                 _draw_mode_er = st.radio(
                     "Mode",
                     ["rect", "transform"],
@@ -2341,17 +2317,22 @@ with tab_figs:
                     horizontal=True,
                 )
 
-                # ---- Controls ----
-                _clear_canvas_clicked = st.button(
-                    "Clear drawn rectangles",
-                    key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}",
-                )
+                _btn_cols_er = st.columns([1, 1, 2])
+                with _btn_cols_er[0]:
+                    _clear_canvas_clicked = st.button("Clear drawn rectangles", key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}")
+                with _btn_cols_er[1]:
+                    _show_json = st.checkbox("Show raw canvas JSON", value=False, key=f"er_show_canvas_json_{_safe_doi_er}_{_fig_id_er}")
 
+                # ---- Canvas version tracking (used to force remount on "Clear drawn rectangles") ----
+                # streamlit-drawable-canvas stores state by key; bumping the version suffix forces remount.
+                _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
+                if _cv_ver_key not in st.session_state:
+                    st.session_state[_cv_ver_key] = 0
                 if _clear_canvas_clicked:
                     st.session_state[_cv_ver_key] += 1
+                    st.rerun()
 
-                # ---- Build a stable canvas key ----
-                _canvas_key_er = f"er_canvas_{_safe_doi_er}_{_fig_id_er}_v{st.session_state[_cv_ver_key]}"
+                _canvas_key_er = f"{_canvas_key_er}_v{st.session_state[_cv_ver_key]}"
 
                 # ---- Canvas ----
                 # NOTE: The most common reason you "can't crop anything" is the canvas is in a mode
@@ -2368,6 +2349,9 @@ with tab_figs:
                     fill_color="rgba(255, 0, 0, 0.20)",
                     key=_canvas_key_er,
                 )
+
+                if _show_json and _canvas_er.json_data is not None:
+                    st.code(json.dumps(_canvas_er.json_data, indent=2), language="json")
 
                 # ---- Extract rectangles from canvas JSON ----
                 # Fabric.js rect coords are in canvas space; need to account for:
