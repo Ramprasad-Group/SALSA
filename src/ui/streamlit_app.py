@@ -2269,23 +2269,27 @@ with tab_figs:
         # ========================
         # SECTION: Cropping
         # ========================
-        # NOTE: We deliberately avoid st.expander here. streamlit-drawable-canvas mounts its
-        # Fabric.js canvas immediately when the page renders — even inside a *collapsed* expander.
-        # Fabric.js needs a visible, non-zero-size container to load the background image correctly.
-        # When mounted hidden it silently fails, producing a blank canvas that only "fixes" itself
-        # after the user clicks "Clear drawn rectangles" (which changes the canvas key, forcing a
-        # remount while the expander is open). The session_state toggle below ensures the canvas
-        # is only ever mounted when it is actually visible.
-        _show_crop_key = f"er_show_crop_{_safe_doi_er}_{_fig_id_er}"
-        if _show_crop_key not in st.session_state:
-            st.session_state[_show_crop_key] = False
+        # streamlit-drawable-canvas mounts its Fabric.js canvas on every page run — even inside a
+        # *collapsed* expander. Fabric.js needs a visible, non-zero-size container to load the
+        # background image. To ensure that, we force the expander open exactly once (on the very
+        # first script run for this figure) via `expanded=_initializing`, then immediately rerun.
+        # Streamlit respects the user's manual toggle between reruns, so after that single boot
+        # render the expander behaves normally: collapsed by default, and stays open once the user
+        # opens it (even while canvas-drawing reruns are firing).
+        _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
+        _cv_init_key = f"er_canvas_init_{_safe_doi_er}_{_fig_id_er}"
+        if _cv_ver_key not in st.session_state:
+            st.session_state[_cv_ver_key] = 0
+        _initializing = _cv_init_key not in st.session_state
+        if _initializing:
+            st.session_state[_cv_init_key] = True
+            st.session_state[_cv_ver_key] += 1   # canvas starts at v1, never v0
 
-        _crop_label = "▼ Crop Figure" if st.session_state[_show_crop_key] else "▶ Crop Figure"
-        if st.button(_crop_label, key=f"er_crop_toggle_{_safe_doi_er}_{_fig_id_er}"):
-            st.session_state[_show_crop_key] = not st.session_state[_show_crop_key]
-            st.rerun()
+        with st.expander("Crop Figure", expanded=_initializing):
+            if _initializing:
+                # Expander is currently forced open; rerun so the canvas mounts while visible.
+                st.rerun()
 
-        if st.session_state[_show_crop_key]:
             if not (_source_img_er and _source_img_er.exists()):
                 st.warning("No source image found for this figure.")
             else:
@@ -2297,10 +2301,10 @@ with tab_figs:
                 _max_display_w_er = 1100
                 _disp_w_er = min(_orig_w_er, _max_display_w_er)
                 _disp_h_er = int(round(_orig_h_er * (_disp_w_er / _orig_w_er)))
-                
+
                 # IMPORTANT: streamlit-drawable-canvas draws correctly when the background image
                 # is a *PIL Image* (RGB/RGBA) that matches the canvas width/height exactly.
-                
+
                 _bg_img_er = _pil_img_er.resize((_disp_w_er, _disp_h_er), Image.Resampling.LANCZOS).convert("RGBA")
 
                 # ---- Controls ----
@@ -2325,9 +2329,6 @@ with tab_figs:
 
                 # ---- Canvas version tracking (used to force remount on "Clear drawn rectangles") ----
                 # streamlit-drawable-canvas stores state by key; bumping the version suffix forces remount.
-                _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
-                if _cv_ver_key not in st.session_state:
-                    st.session_state[_cv_ver_key] = 0
                 if _clear_canvas_clicked:
                     st.session_state[_cv_ver_key] += 1
                     st.rerun()
