@@ -62,11 +62,11 @@ def _find_chartdete_dir_for_image(
 
 def _has_required_chartdete_output(chartdete_dir: Optional[Path]) -> bool:
     """Return True when the minimum ChartDete files needed by intervention exist."""
+    print('=======CHARTDETE_DIR=====', chartdete_dir)
     if not chartdete_dir or not chartdete_dir.exists():
         return False
     required = [
         "bounding_boxes.json",
-        "pix2val.json",
     ]
     return all((chartdete_dir / name).exists() for name in required)
 
