@@ -1,0 +1,29 @@
+2026-02-23 18:51:49,504 Loaded CSV file: /tmp/tmpdn2rmnge.csv
+2026-02-23 18:51:49,504 Original DataFrame size: 1 rows
+2026-02-23 18:51:49,506 After removing empty DOI strings: 1 rows
+2026-02-23 18:51:49,521 Wrote combined record for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.electacta.2015.12.181_complete.json
+2026-02-23 18:51:50,351 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-23 18:51:50,353 Dataset completion failed for DOI 10.1016/j.electacta.2015.12.181: Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+Traceback (most recent call last):
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/complete_dataset.py", line 899, in main
+    dataset_df = complete_dataset_llm(complete_record, client)
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/complete_dataset.py", line 797, in complete_dataset_llm
+    df_figs = complete_dataset_from_figures_llm(complete_record, client)
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/complete_dataset.py", line 577, in complete_dataset_from_figures_llm
+    df_rows, meta = infer_rows_for_figure_dataset(
+  File "/home/wschertzer3/AEM_OCR/src/complete_dataset/row_emitter.py", line 618, in infer_rows_for_figure_dataset
+    text, meta = client.chat(
+  File "/home/wschertzer3/AEM_OCR/src/llm_client.py", line 126, in chat
+    resp = self._client.chat.completions.create(**kwargs)
+  File "/home/wschertzer3/miniconda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_utils/_utils.py", line 274, in wrapper
+    return func(*args, **kwargs)
+  File "/home/wschertzer3/miniconda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/resources/chat/completions.py", line 815, in create
+    return self._post(
+  File "/home/wschertzer3/miniconda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_base_client.py", line 1277, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+  File "/home/wschertzer3/miniconda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_base_client.py", line 954, in request
+    return self._request(
+  File "/home/wschertzer3/miniconda3/envs/AEM_OCR/lib/python3.8/site-packages/openai/_base_client.py", line 1058, in _request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2026-02-23 18:51:50,358 types: tables=<class 'list'>, figures=<class 'list'>, extracted_figure_data=<class 'dict'>

@@ -644,6 +644,4 @@ def infer_rows_for_figure_dataset(
 
     df_out = _coerce_rows_schema(rows, doi=doi, source_kind="figure", source_name=dataset_name)
 
-    print('===DF_OUT===', df_out)
-
     return df_out, meta

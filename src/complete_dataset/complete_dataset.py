@@ -148,6 +148,17 @@ def find_matching_files(doi: str, csv_path: str) -> Optional[str]:
     except Exception:
         return None
 
+def _latest_result_run_dir(plextract_workdir: Path) -> Optional[Path]:
+    """Return latest numeric results run dir for a plextract workdir."""
+    results_root = plextract_workdir / "results"
+    if not results_root.exists():
+        return None
+    run_dirs = [d for d in results_root.iterdir() if d.is_dir() and d.name.isdigit()]
+    if not run_dirs:
+        return None
+    run_dirs.sort(key=lambda d: int(d.name), reverse=True)
+    return run_dirs[0]
+
 # ----------------------------
 # Agglomeration: Tables
 # ----------------------------
@@ -351,6 +362,7 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
     """
     root = (args.extracted_figures_root or "").strip()
 
+
     keep = ['series_label','x_name','x_unit','x_value','y_name','y_unit','y_value']
     out: List[FigurePointDataset] = []
     # Track which figure names have intervention results so we can skip them in plextract
@@ -358,34 +370,52 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
 
     # Priority 1: Check interventions_plextract if run_dir is provided
     if run_dir:
-        int_workdir = Path(run_dir) / "interventions" / "interventions_plextract"
+        int_workdir = Path(run_dir) / "interventions" / modified_doi
         if int_workdir.is_dir():
-            # Structure: interventions_plextract/results/{n}/output/{doi}/{figure}/final/final_dataset.csv
-            for fp in int_workdir.glob(f"results/*/output/{modified_doi}/*/final/final_dataset.csv"):
+            # Glob all final_dataset.csv files under interventions plextract results
+            pattern = f"*/plextract_interventions/results/*/output/{modified_doi}/*/final/final_dataset.csv"
+
+            for fp in int_workdir.glob(pattern):
                 try:
-                    # figure name is the parent of final/
+                    # Optional: filter by target figure
                     figure_name = fp.parent.parent.name
                     if args.target_figure and figure_name != args.target_figure:
                         continue
 
+                    # Find the most recent run dir for THIS figure's plextract_interventions folder
+                    # prefix = .../<Figure_X>/plextract_interventions
+                    idx = fp.parts.index("results")
+                    prefix = Path(*fp.parts[:idx])  # up to plextract_interventions
+                    most_recent_run = _latest_result_run_dir(prefix)  # should be .../results/<run_id>
+
+                    # Only process files that belong to that most recent run
+                    fp_run_dir = Path(*fp.parts[:idx + 2])  # .../results/<run_id>
+                    if fp_run_dir != most_recent_run:
+                        continue
+                
                     df = pd.read_csv(fp)
                     if not all(c in df.columns for c in keep):
                         continue
+
                     df = df[keep].copy()
                     if df.empty:
                         continue
-                    # Apply any user-edited axis title overrides so the LLM gets
-                    # the corrected x_name/x_unit/y_name/y_unit values.
+
+                    # Apply any user-edited axis title overrides so the LLM gets corrected labels/units
                     df = _apply_axis_title_overrides(df, fp.parent.parent)
-                    out.append(FigurePointDataset(
-                        name=_stable_name_from_path(fp),
-                        path=str(fp),
-                        df=df
-                    ))
+
+                    out.append(
+                        FigurePointDataset(
+                            name=_stable_name_from_path(fp),
+                            path=str(fp),
+                            df=df,
+                        )
+                    )
                     intervention_figure_names.add(figure_name)
+
                 except Exception:
                     continue
-
+    
     # Priority 2: Check plextract (fall back for figures without intervention results)
     if not root:
         return out
@@ -597,13 +627,12 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
 
 def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
 
-    # print('=====COMPLETE_RECORD=====', complete_record)
-
     doi = complete_record.get("doi", "")
     full_text_raw = complete_record.get("full_text", {}) if not args.exclude_full_text else {}
     full_text = _filter_full_text_sections(full_text_raw) if full_text_raw else {}
 
     ef = complete_record.get("extracted_figure_data", {})
+    print('===test ef===', ef)
     datasets = (ef or {}).get("datasets", [])
     if not isinstance(datasets, list) or not datasets:
         return pd.DataFrame(columns=DATASET_COLUMNS)
@@ -963,7 +992,6 @@ def main():
             log.error(f"Failed to write combined record for DOI {doi} to {combined_json_path}: {e}")
 
         # Build dataset per DOI
-        print('===complete_record===', complete_record)
         try:
             # dataset_df = complete_dataset_with_plans(complete_record, client)
             dataset_df = complete_dataset_llm(complete_record, client)

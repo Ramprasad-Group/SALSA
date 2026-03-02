@@ -1,0 +1,6 @@
+2026-02-23 21:51:19,199 Loaded CSV file: /tmp/tmpcn876g0k.csv
+2026-02-23 21:51:19,199 Original DataFrame size: 1 rows
+2026-02-23 21:51:19,201 After removing empty DOI strings: 1 rows
+2026-02-23 21:51:19,218 Wrote combined record for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.electacta.2015.12.181_complete.json
+2026-02-23 21:51:23,097 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-23 21:51:23,127 Wrote completed dataset CSV for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.electacta.2015.12.181_dataset.csv (8 rows)

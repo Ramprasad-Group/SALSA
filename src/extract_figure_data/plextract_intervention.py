@@ -107,6 +107,7 @@ def _validate_chartdete_outputs(base_output: str, img: str) -> bool:
         os.path.join(base_output, img, "chartdete", "axis_label_texts.json"),
     ]
     all_ok = True
+    print("===required===", required)
     for p in required:
         if not os.path.exists(p):
             logger.warning(
