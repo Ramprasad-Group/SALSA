@@ -330,10 +330,17 @@ def ensure_canvas_remount(*, boot_key: str, version_key: str):
 
     Why this exists:
     `streamlit-drawable-canvas` can occasionally mount while an expander is
-    collapsed, leaving the background image blank until *any* widget triggers
-    a rerun. We trigger that rerun automatically once so users don't need to
-    click an unrelated button just to make the image appear.
+    collapsed, leaving the background image blank until a rerun occurs.
+
+    Important implementation detail:
+    We cap this to *one global rerun* for the entire app session render cycle
+    (`_canvas_global_boot_done`) instead of rerunning once per section. This
+    avoids excessive remount churn and reduces Streamlit media-cache warnings
+    like `MediaFileHandler: Missing file ...` that can appear when multiple
+    back-to-back reruns invalidate old media URLs.
     """
+    global_boot_key = "_canvas_global_boot_done"
+
     if version_key not in st.session_state:
         st.session_state[version_key] = 0
     if boot_key not in st.session_state:
@@ -342,7 +349,9 @@ def ensure_canvas_remount(*, boot_key: str, version_key: str):
     if st.session_state[boot_key]:
         st.session_state[boot_key] = False
         st.session_state[version_key] += 1
-        st.rerun()
+        if not st.session_state.get(global_boot_key, False):
+            st.session_state[global_boot_key] = True
+            st.rerun()
 
 def render_ocr_dropdown(*, csv_path: Optional[Path], key_prefix: str, axis_override_dir: Optional[Path] = None, title: str = "OCR-Extracted Data"):
     """Render OCR-extracted data using the shared dropdown structure."""
