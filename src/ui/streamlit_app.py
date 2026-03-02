@@ -1452,6 +1452,26 @@ def load_and_resize_rgba(path: str, disp_w: int):
     bg = img.resize((disp_w, dh), Image.Resampling.LANCZOS).convert("RGBA")
     return ow, oh, disp_w, dh, bg
 
+def ensure_canvas_remount(*, boot_key: str, version_key: str):
+    """
+    Force a one-time rerun for canvas-heavy sections.
+
+    Why this exists:
+    `streamlit-drawable-canvas` can occasionally mount while an expander is
+    collapsed, leaving the background image blank until *any* widget triggers
+    a rerun. We trigger that rerun automatically once so users don't need to
+    click an unrelated button just to make the image appear.
+    """
+    if version_key not in st.session_state:
+        st.session_state[version_key] = 0
+    if boot_key not in st.session_state:
+        st.session_state[boot_key] = True
+
+    if st.session_state[boot_key]:
+        st.session_state[boot_key] = False
+        st.session_state[version_key] += 1
+        st.rerun()
+
 # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
 default_ollama_dir = _default_ollama_models_dir()
 default_ollama_host = _default_ollama_host()
@@ -2264,289 +2284,7 @@ with tab_figs:
             key=f"fig_{_safe_doi_er}_{_fig_id_er}_img",
             expanded=True,
         )
-
-
-        # ========================
-        # SECTION: Cropping
-        # ========================
-        # NOTE: We deliberately avoid st.expander here. streamlit-drawable-canvas mounts its
-        # Fabric.js canvas immediately when the page renders — even inside a *collapsed* expander.
-        # Fabric.js needs a visible, non-zero-size container to load the background image correctly.
-        # When mounted hidden it silently fails, producing a blank canvas that only "fixes" itself
-        # after the user clicks "Clear drawn rectangles" (which changes the canvas key, forcing a
-        # remount while the expander is open). The session_state toggle below ensures the canvas
-        # is only ever mounted when it is actually visible.
-        _show_interventions_key = f"er_show_interventions_{_safe_doi_er}_{_fig_id_er}"
-        if _show_interventions_key not in st.session_state:
-            st.session_state[_show_interventions_key] = False
-
-        intervene_button = "Load Interventions" if st.session_state[_show_interventions_key] else "▶ Crop Figure"
-        if st.button(intervene_button, key=f"er_intervene_toggle_{_safe_doi_er}_{_fig_id_er}"):
-            st.session_state[_show_interventions_key] = not st.session_state[_show_interventions_key]
-            st.rerun()
-
-        if st.session_state[_show_interventions_key]:
-            if not (_source_img_er and _source_img_er.exists()):
-                st.warning("No source image found for this figure.")
-            else:
-                # ---- Load image ----
-                _pil_img_er = Image.open(_source_img_er).convert("RGB")
-                _orig_w_er, _orig_h_er = _pil_img_er.size
-
-                # # ---- Display sizing ----
-                _max_display_w_er = 1100
-                _disp_w_er = min(_orig_w_er, _max_display_w_er)
-                _disp_h_er = int(round(_orig_h_er * (_disp_w_er / _orig_w_er)))
-                
-                # IMPORTANT: streamlit-drawable-canvas draws correctly when the background image
-                # is a *PIL Image* (RGB/RGBA) that matches the canvas width/height exactly.
-                
-                _bg_img_er = _pil_img_er.resize((_disp_w_er, _disp_h_er), Image.Resampling.LANCZOS).convert("RGBA")
-
-                # ---- Controls ----
-                st.write("**Draw crop rectangles directly on top of the image.**")
-
-                _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
-                _canvas_key_er = f"er_canvas_{_safe_doi_er}_{_fig_id_er}_{_disp_w_er}x{_disp_h_er}"
-
-                _draw_mode_er = st.radio(
-                    "Mode",
-                    ["rect", "transform"],
-                    format_func=lambda x: "Draw rectangles" if x == "rect" else "Move/resize rectangles",
-                    key=_mode_key_er,
-                    horizontal=True,
-                )
-
-                _btn_cols_er = st.columns([1, 1, 2])
-                with _btn_cols_er[0]:
-                    _clear_canvas_clicked = st.button("Clear drawn rectangles", key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}")
-                with _btn_cols_er[1]:
-                    _show_json = st.checkbox("Show raw canvas JSON", value=False, key=f"er_show_canvas_json_{_safe_doi_er}_{_fig_id_er}")
-
-                # ---- Canvas version tracking (used to force remount on "Clear drawn rectangles") ----
-                # streamlit-drawable-canvas stores state by key; bumping the version suffix forces remount.
-                _cv_ver_key = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
-                if _cv_ver_key not in st.session_state:
-                    st.session_state[_cv_ver_key] = 0
-                if _clear_canvas_clicked:
-                    st.session_state[_cv_ver_key] += 1
-                    st.rerun()
-
-                _canvas_key_er = f"{_canvas_key_er}_v{st.session_state[_cv_ver_key]}"
-
-                # ---- Canvas ----
-                # NOTE: The most common reason you "can't crop anything" is the canvas is in a mode
-                # that doesn't create rectangles, or the object parsing ignores transforms.
-                # We set drawing_mode to rect/transform and parse *all* rect transforms properly.
-                _canvas_er = st_canvas(
-                    background_image=_bg_img_er,
-                    drawing_mode=_draw_mode_er,          # "rect" draws; "transform" edits
-                    update_streamlit=True,
-                    height=_disp_h_er,
-                    width=_disp_w_er,
-                    stroke_width=3,
-                    stroke_color="#ff0000",
-                    fill_color="rgba(255, 0, 0, 0.20)",
-                    key=_canvas_key_er,
-                )
-
-                if _show_json and _canvas_er.json_data is not None:
-                    st.code(json.dumps(_canvas_er.json_data, indent=2), language="json")
-
-                # ---- Extract rectangles from canvas JSON ----
-                # Fabric.js rect coords are in canvas space; need to account for:
-                # - left/top
-                # - width/height
-                # - scaleX/scaleY
-                # - (optional) angle: we will convert rotated rects to an axis-aligned bounding box
-                def _rect_to_bbox_canvas(obj: dict):
-                    # base dims
-                    left = float(obj.get("left", 0.0))
-                    top = float(obj.get("top", 0.0))
-                    w = float(obj.get("width", 0.0))
-                    h = float(obj.get("height", 0.0))
-                    sx = float(obj.get("scaleX", 1.0))
-                    sy = float(obj.get("scaleY", 1.0))
-                    angle = float(obj.get("angle", 0.0))
-
-                    # If not rotated, easy:
-                    if abs(angle) < 1e-6:
-                        w2 = w * sx
-                        h2 = h * sy
-                        x1 = left
-                        y1 = top
-                        x2 = left + w2
-                        y2 = top + h2
-                        return x1, y1, x2, y2
-
-                    # Rotated: compute axis-aligned bbox of the rotated rectangle
-                    import math
-                    w2 = w * sx
-                    h2 = h * sy
-
-                    # Fabric rect is defined with origin at top-left by default in this canvas,
-                    # and rotation happens around its center.
-                    cx = left + w2 / 2.0
-                    cy = top + h2 / 2.0
-
-                    theta = math.radians(angle)
-                    cos_t = math.cos(theta)
-                    sin_t = math.sin(theta)
-
-                    # corners relative to center
-                    dx = w2 / 2.0
-                    dy = h2 / 2.0
-                    corners = [(-dx, -dy), (dx, -dy), (dx, dy), (-dx, dy)]
-
-                    xs, ys = [], []
-                    for (px, py) in corners:
-                        rx = cos_t * px - sin_t * py
-                        ry = sin_t * px + cos_t * py
-                        xs.append(cx + rx)
-                        ys.append(cy + ry)
-
-                    return min(xs), min(ys), max(xs), max(ys)
-
-                _scale_x_er = _orig_w_er / _disp_w_er
-                _scale_y_er = _orig_h_er / _disp_h_er
-
-                _rects_er = []
-                _objs = (_canvas_er.json_data or {}).get("objects", []) if _canvas_er is not None else []
-                for _obj_er in _objs:
-                    if _obj_er.get("type") != "rect":
-                        continue
-                    x1c, y1c, x2c, y2c = _rect_to_bbox_canvas(_obj_er)
-
-                    # clamp to canvas bounds
-                    x1c = max(0.0, min(float(_disp_w_er), x1c))
-                    x2c = max(0.0, min(float(_disp_w_er), x2c))
-                    y1c = max(0.0, min(float(_disp_h_er), y1c))
-                    y2c = max(0.0, min(float(_disp_h_er), y2c))
-
-                    # ensure ordering
-                    if x2c <= x1c or y2c <= y1c:
-                        continue
-
-                    # scale back to original image coords
-                    x1 = int(round(x1c * _scale_x_er))
-                    y1 = int(round(y1c * _scale_y_er))
-                    x2 = int(round(x2c * _scale_x_er))
-                    y2 = int(round(y2c * _scale_y_er))
-
-                    # clamp to original bounds
-                    x1 = max(0, min(_orig_w_er - 1, x1))
-                    x2 = max(1, min(_orig_w_er, x2))
-                    y1 = max(0, min(_orig_h_er - 1, y1))
-                    y2 = max(1, min(_orig_h_er, y2))
-
-                    if x2 > x1 and y2 > y1:
-                        _rects_er.append((x1, y1, x2, y2))
-
-                # de-duplicate exact duplicates (can happen when editing)
-                _rects_er = list(dict.fromkeys(_rects_er))
-
-                st.write(f"Rectangles detected: **{len(_rects_er)}**")
-
-                # ---- Save crops ----
-                _cc1_er, _cc2_er = st.columns(2)
-                with _cc1_er:
-                    if st.button(
-                        "Save crops",
-                        disabled=len(_rects_er) == 0,
-                        key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}",
-                    ):
-                        _saved_er = save_crops(_source_img_er, _rects_er, _crops_out_dir_er, prefix=_fig_stem_er)
-                        st.success(f"Saved {len(_saved_er)} crops to `{_crops_out_dir_er}`")
-
-                        if _saved_er:
-                            _sc = st.columns(min(len(_saved_er), 4))
-                            for _si, _p in enumerate(_saved_er):
-                                with _sc[_si % len(_sc)]:
-                                    st.image(str(_p), width=200)
-                                    st.caption(_p.name)
-
-                # ---- Existing crops ----
-                _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
-                if _existing_crops_er:
-                    st.write(f"**Existing crops:** {len(_existing_crops_er)}")
-                    _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
-                    for _ci, _cp in enumerate(_existing_crops_er):
-                        with _crop_cols_er[_ci % len(_crop_cols_er)]:
-                            st.image(str(_cp), width=150)
-                            st.caption(_cp.name)
-
-                    _cl1_er, _cl2_er = st.columns(2)
-                    with _cl1_er:
-                        if st.button("Clear all crops", key=f"er_clear_crops_{_safe_doi_er}_{_fig_id_er}"):
-                            for _cp in _existing_crops_er:
-                                _cp.unlink(missing_ok=True)
-                            st.success("Cleared existing crops.")
-                            st.rerun()
-                else:
-                    st.info("No crops saved yet. Draw rectangles above to create crops.")
-
-        # ========================
-        # SECTION: Axis Configuration
-        # ========================
-        # Determine chartdete dir and source image for calibration
-        _ax_chartdete_er: Path | None = None
-        _ax_sel_name_er = "figure"
-        if _ax_subfig_dirs_er:
-            _ax_sel_dir_er = _ax_subfig_dirs_er[0]
-            _ax_sel_name_er = _ax_subfig_options_er[0] if _ax_subfig_options_er else "figure"
-            _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
-        _calib_img_path_er: Path | None = None
-        if _source_img_er and Path(_source_img_er).exists():
-            _calib_img_path_er = Path(_source_img_er)
-        if _calib_img_path_er is None:
-            _base_input = os.environ.get("PLEXTRACT_BASE_INPUT", "")
-            if _base_input:
-                _base_input_p = Path(_base_input)
-                _tokens = [str(_fig_id_er).lower(), str(_fig_stem_er).lower(), str(_img_name_er).lower()]
-                _tokens = [t for t in _tokens if t]
-                def _score(p: Path) -> int:
-                    s = p.as_posix().lower()
-                    score = sum(10 for t in _tokens if t in s)
-                    score -= len(p.parts)
-                    return score
-                _all_imgs: list[Path] = []
-                for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
-                    _all_imgs.extend(_base_input_p.rglob(ext))
-                _all_imgs = sorted(set(_all_imgs), key=_score, reverse=True)
-                if _all_imgs:
-                    _calib_img_path_er = _all_imgs[0]
-        render_axis_configuration_dropdown(
-            chartdete_dir=_ax_chartdete_er,
-            source_img=_calib_img_path_er,
-            key_prefix=f"er_{_safe_doi_er}_{_ax_sel_name_er}",
-        )
-
-        # ========================
-        # SECTION: Series Management
-        # ========================
-        _sm_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
-        _sm_fig_dir_er = _plextract_fig_dir_er
-        _sm_fig_id_er = _fig_id_er
-        _sm_source_img_er = _source_img_er
-        _sm_workdirs_to_search_er = [
-            _sm_int_wd_er,
-            rr.run_dir / "interventions" / "interventions_plextract",
-            rr.run_dir / "plextract",
-        ]
-        _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
-        _sm_lf_override_dir_er = override_lineformer_dir(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-        render_series_management_dropdown(
-            run_dir=rr.run_dir,
-            safe_doi=_safe_doi_er,
-            fig_id=_sm_fig_id_er,
-            fig_dir=_sm_fig_dir_er,
-            lf_dir=_sm_lf_dir_er,
-            lf_override_dir=_sm_lf_override_dir_er,
-            source_img=_sm_source_img_er,
-            key_prefix=f"er_{_safe_doi_er}_{_sm_fig_id_er}",
-        )
-
-
+        
         # ========================
         # SECTION: OCR + LLM Data
         # ========================
@@ -2569,504 +2307,773 @@ with tab_figs:
             file_name_prefix=f.id,
         )
         safe_doi = doi_to_safe(selected_doi)
-        # ========================
-        # SECTION: Rerun Data Extraction
-        # ========================
-        _is_subfig_sel_er = _sm_fig_id_er != _fig_id_er
-        _int_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
-        # if _is_subfig_sel_er:
-        #     st.caption(f"Will run on selected subfigure: **{_sm_fig_id_er}**")
-        if _int_crops_er:
-            st.caption(f"Will run on **{len(_int_crops_er)} cropped image(s)**.")
-        elif _source_img_er and _source_img_er.exists():
-            st.caption("Will run on the original figure image.")
-
-        if st.button("Rerun OCR data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
-            try:
-                _rerun_images_er: list = []
-                _rerun_lf_er: dict = {}
-
-                with st.spinner("Applying mask overrides..."):
-                    # Writes prepared masks + catalog + overrides into the
-                    # intervention dir only; the original plextract output
-                    # is never modified (item_figure_dir is read-only).
-                    apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
-                # Always source lineformer from the intervention override dir
-                # so the original plextract results remain untouched.
-                _lf_dir_rerun_er = _sm_lf_override_dir_er
-
-                if _is_subfig_sel_er:
-                    _rerun_images_er = [_sm_source_img_er]
-                    if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
-                        _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
-                elif _int_crops_er:
-                    _rerun_images_er = list(_int_crops_er)
-                    for _crop_er in _int_crops_er:
-                        _crop_lf_er = None
-                        # Search all workdirs for this crop's lineformer dir
-                        for _sm_wd_r_er in _sm_workdirs_to_search_er:
-                            if not _sm_wd_r_er.exists():
-                                continue
-                            _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
-                            if _lat2_er:
-                                _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
-                                if _cand_lf_er.exists():
-                                    _crop_lf_er = _cand_lf_er
-                                    break
-                        _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er and _lf_dir_rerun_er.exists() else None)
-                        if _lf_to_use_er:
-                            _rerun_lf_er[_crop_er.name] = _lf_to_use_er
-                else:
-                    if _source_img_er and _source_img_er.exists():
-                        _rerun_images_er = [_source_img_er]
-                        if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
-                            _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
-                with st.spinner("Re-running data extraction..."):
-                    run_plextract_intervention_on_crops(
-                        scripts_root=scripts_root, run_dir=rr.run_dir,
-                        safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
-                        override_lineformer_dirs=_rerun_lf_er,
-                        figure_id=_fig_id_er,
-                    )
-                st.success("Data extraction complete!")
-                st.rerun()
-            except Exception as _e2_er:
-                st.error(f"Failed: {_e2_er}")
 
         # ========================
-        # SECTION: Rerun LLM Dataset Generation
+        # SECTION: Interventions
         # ========================
+        _show_interventions_key = f"er_show_interventions_{_safe_doi_er}_{_fig_id_er}"
+        if _show_interventions_key not in st.session_state:
+            st.session_state[_show_interventions_key] = False
 
-        # Find available figures/subfigures for LLM rerun
-        _llm_fig_options_er: list = []
-        _llm_fig_dirs_er: list = []
-        for _llm_wd_er in [
-            # rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
-            # rr.run_dir / "interventions" / "interventions_plextract",
-            Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.jpg"),
-            Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.png")
-        ]:
-            if not _llm_wd_er.exists():
-                continue
-            if _llm_wd_er.is_dir() and (_fig_stem_er == _fig_id_er or
-                _llm_wd_er.name.startswith(_fig_stem_er + "_subfig_")):
-                    if _llm_wd_er.name not in _llm_fig_options_er:
-                        _llm_fig_options_er.append(_llm_wd_er.name)
-                        _llm_fig_dirs_er.append(_llm_wd_er)
+        intervene_button = "Load Interventions" if st.session_state[_show_interventions_key] else "Load Interventions"
+        if st.button(intervene_button, type="primary", key=f"er_intervene_toggle_{_safe_doi_er}_{_fig_id_er}"):
+            st.session_state[_show_interventions_key] = not st.session_state[_show_interventions_key]
+            st.rerun()
 
-        if not _llm_fig_dirs_er:
-            st.info("No plextract output found. Run plextract extraction first.")
-        else:
-            if len(_llm_fig_dirs_er) > 1:
-                _llm_sel_er = st.selectbox(
-                    "Select figure/subfigure for LLM rerun",
-                    _llm_fig_options_er,
-                    key=f"er_llm_sel_{_safe_doi_er}_{_fig_id_er}"
-                )
-                _llm_sel_dir_er = _llm_fig_dirs_er[_llm_fig_options_er.index(_llm_sel_er)]
+        if st.session_state[_show_interventions_key]:
+            if not (_source_img_er and _source_img_er.exists()):
+                st.warning("No source image found for this figure.")
             else:
-                _llm_sel_er = _llm_fig_options_er[0]
-                _llm_sel_dir_er = _llm_fig_dirs_er[0]
-
-            if st.button("Rerun LLM dataset generation", type="primary", key=f"er_rerun_llm_{_safe_doi_er}_{_fig_id_er}"):
-                _reparsed_dir_er = rr.run_dir / "reparsed"
-                _index_csv_er = _reparsed_dir_er / "index.csv"
-                if not _index_csv_er.exists():
-                    _err_msg_er = f"**Required file not found:** `{_index_csv_er.relative_to(rr.run_dir)}`\n\n"
-                    if not _reparsed_dir_er.exists():
-                        _err_msg_er += "The `reparsed/` directory doesn't exist. "
+                # ========================
+                # SECTION: Cropping
+                # ========================
+                with st.expander("Crop Figure", expanded=False):
+                    if not (_source_img_er and _source_img_er.exists()):
+                        st.warning("No source image found for this figure.")
                     else:
-                        _err_msg_er += "The `reparsed/` directory exists but `index.csv` is missing. "
-                    _err_msg_er += "This file is created during the 'Download DOIs' stage."
-                    st.error(_err_msg_er)
-                else:
+                        # ---- Load image ----
+                        _pil_img_er = Image.open(_source_img_er).convert("RGB")
+                        _orig_w_er, _orig_h_er = _pil_img_er.size
+
+                        _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
+
+                        _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
+                            str(_source_img_er),
+                            min(_orig_w_er, 1100)  # or compute disp_w first; see note below
+                        )
+                        # ---- Canvas state keys (stable) ----
+                        _cv_ver_key  = f"er_canvas_ver_{_safe_doi_er}_{_fig_id_er}"
+                        _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
+                        ensure_canvas_remount(boot_key=_cv_boot_key, version_key=_cv_ver_key)
+                        
+                        _draw_mode_er = st.radio(
+                            "Mode",
+                            ["rect", "transform"],
+                            format_func=lambda x: "Draw rectangles" if x == "rect" else "Move/resize rectangles",
+                            key=_mode_key_er,
+                            horizontal=True,
+                        )
+
+                        # ---- Controls ----
+                        _clear_canvas_clicked = st.button(
+                            "Clear drawn rectangles",
+                            key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}",
+                        )
+
+                        if _clear_canvas_clicked:
+                            st.session_state[_cv_ver_key] += 1
+
+                        # ---- Build a stable canvas key ----
+                        _canvas_key_er = f"er_canvas_{_safe_doi_er}_{_fig_id_er}_v{st.session_state[_cv_ver_key]}"
+
+                        # ---- Canvas ----
+                        # NOTE: The most common reason you "can't crop anything" is the canvas is in a mode
+                        # that doesn't create rectangles, or the object parsing ignores transforms.
+                        # We set drawing_mode to rect/transform and parse *all* rect transforms properly.
+                        _canvas_er = st_canvas(
+                            background_image=_bg_img_er,
+                            drawing_mode=_draw_mode_er,          # "rect" draws; "transform" edits
+                            update_streamlit=True,
+                            height=_disp_h_er,
+                            width=_disp_w_er,
+                            stroke_width=3,
+                            stroke_color="#ff0000",
+                            fill_color="rgba(255, 0, 0, 0.20)",
+                            key=_canvas_key_er,
+                        )
+
+                        # ---- Extract rectangles from canvas JSON ----
+                        # Fabric.js rect coords are in canvas space; need to account for:
+                        # - left/top
+                        # - width/height
+                        # - scaleX/scaleY
+                        # - (optional) angle: we will convert rotated rects to an axis-aligned bounding box
+                        def _rect_to_bbox_canvas(obj: dict):
+                            # base dims
+                            left = float(obj.get("left", 0.0))
+                            top = float(obj.get("top", 0.0))
+                            w = float(obj.get("width", 0.0))
+                            h = float(obj.get("height", 0.0))
+                            sx = float(obj.get("scaleX", 1.0))
+                            sy = float(obj.get("scaleY", 1.0))
+                            angle = float(obj.get("angle", 0.0))
+
+                            # If not rotated, easy:
+                            if abs(angle) < 1e-6:
+                                w2 = w * sx
+                                h2 = h * sy
+                                x1 = left
+                                y1 = top
+                                x2 = left + w2
+                                y2 = top + h2
+                                return x1, y1, x2, y2
+
+                            # Rotated: compute axis-aligned bbox of the rotated rectangle
+                            import math
+                            w2 = w * sx
+                            h2 = h * sy
+
+                            # Fabric rect is defined with origin at top-left by default in this canvas,
+                            # and rotation happens around its center.
+                            cx = left + w2 / 2.0
+                            cy = top + h2 / 2.0
+
+                            theta = math.radians(angle)
+                            cos_t = math.cos(theta)
+                            sin_t = math.sin(theta)
+
+                            # corners relative to center
+                            dx = w2 / 2.0
+                            dy = h2 / 2.0
+                            corners = [(-dx, -dy), (dx, -dy), (dx, dy), (-dx, dy)]
+
+                            xs, ys = [], []
+                            for (px, py) in corners:
+                                rx = cos_t * px - sin_t * py
+                                ry = sin_t * px + cos_t * py
+                                xs.append(cx + rx)
+                                ys.append(cy + ry)
+
+                            return min(xs), min(ys), max(xs), max(ys)
+
+                        _scale_x_er = _orig_w_er / _disp_w_er
+                        _scale_y_er = _orig_h_er / _disp_h_er
+
+                        _rects_er = []
+                        _objs = (_canvas_er.json_data or {}).get("objects", []) if _canvas_er is not None else []
+                        for _obj_er in _objs:
+                            if _obj_er.get("type") != "rect":
+                                continue
+                            x1c, y1c, x2c, y2c = _rect_to_bbox_canvas(_obj_er)
+
+                            # clamp to canvas bounds
+                            x1c = max(0.0, min(float(_disp_w_er), x1c))
+                            x2c = max(0.0, min(float(_disp_w_er), x2c))
+                            y1c = max(0.0, min(float(_disp_h_er), y1c))
+                            y2c = max(0.0, min(float(_disp_h_er), y2c))
+
+                            # ensure ordering
+                            if x2c <= x1c or y2c <= y1c:
+                                continue
+
+                            # scale back to original image coords
+                            x1 = int(round(x1c * _scale_x_er))
+                            y1 = int(round(y1c * _scale_y_er))
+                            x2 = int(round(x2c * _scale_x_er))
+                            y2 = int(round(y2c * _scale_y_er))
+
+                            # clamp to original bounds
+                            x1 = max(0, min(_orig_w_er - 1, x1))
+                            x2 = max(1, min(_orig_w_er, x2))
+                            y1 = max(0, min(_orig_h_er - 1, y1))
+                            y2 = max(1, min(_orig_h_er, y2))
+
+                            if x2 > x1 and y2 > y1:
+                                _rects_er.append((x1, y1, x2, y2))
+
+                        # de-duplicate exact duplicates (can happen when editing)
+                        _rects_er = list(dict.fromkeys(_rects_er))
+
+                        st.write(f"Rectangles detected: **{len(_rects_er)}**")
+
+                        # ---- Save crops ----
+                        _cc1_er, _cc2_er = st.columns(2)
+                        with _cc1_er:
+                            if st.button(
+                                "Save crops",
+                                disabled=len(_rects_er) == 0,
+                                key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}",
+                            ):
+                                _saved_er = save_crops(_source_img_er, _rects_er, _crops_out_dir_er, prefix=_fig_stem_er)
+                                st.success(f"Saved {len(_saved_er)} crops to `{_crops_out_dir_er}`")
+
+                                if _saved_er:
+                                    _sc = st.columns(min(len(_saved_er), 4))
+                                    for _si, _p in enumerate(_saved_er):
+                                        with _sc[_si % len(_sc)]:
+                                            st.image(str(_p), width=200)
+                                            st.caption(_p.name)
+
+                        # ---- Existing crops ----
+                        _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+                        if _existing_crops_er:
+                            st.write(f"**Existing crops:** {len(_existing_crops_er)}")
+                            _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
+                            for _ci, _cp in enumerate(_existing_crops_er):
+                                with _crop_cols_er[_ci % len(_crop_cols_er)]:
+                                    st.image(str(_cp), width=150)
+                                    st.caption(_cp.name)
+
+                            _cl1_er, _cl2_er = st.columns(2)
+                            with _cl1_er:
+                                if st.button("Clear all crops", key=f"er_clear_crops_{_safe_doi_er}_{_fig_id_er}"):
+                                    for _cp in _existing_crops_er:
+                                        _cp.unlink(missing_ok=True)
+                                    st.success("Cleared existing crops.")
+                                    st.rerun()
+                        else:
+                            st.info("No crops saved yet. Draw rectangles above to create crops.")
+
+                
+                # ========================
+                # SECTION: Axis Configuration
+                # ========================
+                # Determine chartdete dir and source image for calibration
+                _ax_chartdete_er: Path | None = None
+                _ax_sel_name_er = "figure"
+                if _ax_subfig_dirs_er:
+                    _ax_sel_dir_er = _ax_subfig_dirs_er[0]
+                    _ax_sel_name_er = _ax_subfig_options_er[0] if _ax_subfig_options_er else "figure"
+                    _ax_chartdete_er = _ax_sel_dir_er / "chartdete"
+                _calib_img_path_er: Path | None = None
+                if _source_img_er and Path(_source_img_er).exists():
+                    _calib_img_path_er = Path(_source_img_er)
+                if _calib_img_path_er is None:
+                    _base_input = os.environ.get("PLEXTRACT_BASE_INPUT", "")
+                    if _base_input:
+                        _base_input_p = Path(_base_input)
+                        _tokens = [str(_fig_id_er).lower(), str(_fig_stem_er).lower(), str(_img_name_er).lower()]
+                        _tokens = [t for t in _tokens if t]
+                        def _score(p: Path) -> int:
+                            s = p.as_posix().lower()
+                            score = sum(10 for t in _tokens if t in s)
+                            score -= len(p.parts)
+                            return score
+                        _all_imgs: list[Path] = []
+                        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+                            _all_imgs.extend(_base_input_p.rglob(ext))
+                        _all_imgs = sorted(set(_all_imgs), key=_score, reverse=True)
+                        if _all_imgs:
+                            _calib_img_path_er = _all_imgs[0]
+                render_axis_configuration_dropdown(
+                    chartdete_dir=_ax_chartdete_er,
+                    source_img=_calib_img_path_er,
+                    key_prefix=f"er_{_safe_doi_er}_{_ax_sel_name_er}",
+                )
+
+                # ========================
+                # SECTION: Series Management
+                # ========================
+                _sm_int_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions"
+                _sm_fig_dir_er = _plextract_fig_dir_er
+                _sm_fig_id_er = _fig_id_er
+                _sm_source_img_er = _source_img_er
+                _sm_workdirs_to_search_er = [
+                    _sm_int_wd_er,
+                    rr.run_dir / "interventions" / "interventions_plextract",
+                    rr.run_dir / "plextract",
+                ]
+                _sm_lf_dir_er = get_lineformer_dir(_sm_fig_dir_er) if _sm_fig_dir_er else None
+                _sm_lf_override_dir_er = override_lineformer_dir(rr.run_dir, _safe_doi_er, _sm_fig_id_er)
+                render_series_management_dropdown(
+                    run_dir=rr.run_dir,
+                    safe_doi=_safe_doi_er,
+                    fig_id=_sm_fig_id_er,
+                    fig_dir=_sm_fig_dir_er,
+                    lf_dir=_sm_lf_dir_er,
+                    lf_override_dir=_sm_lf_override_dir_er,
+                    source_img=_sm_source_img_er,
+                    key_prefix=f"er_{_safe_doi_er}_{_sm_fig_id_er}",
+                )
+
+                # ========================
+                # SECTION: Rerun Data Extraction
+                # ========================
+                _is_subfig_sel_er = _sm_fig_id_er != _fig_id_er
+                _int_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+                # if _is_subfig_sel_er:
+                #     st.caption(f"Will run on selected subfigure: **{_sm_fig_id_er}**")
+                if _int_crops_er:
+                    st.caption(f"Will run on **{len(_int_crops_er)} cropped image(s)**.")
+                elif _source_img_er and _source_img_er.exists():
+                    st.caption("Will run on the original figure image.")
+
+                if st.button("Rerun OCR data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
                     try:
-                        # Delete any existing cache files for this figure so the
-                        # LLM is always re-called (avoids stale cache on re-run).
-                        _row_cache_dir_er = rr.run_dir / "complete_dataset" / "row_cache"
-                        if _row_cache_dir_er.exists():
-                            import re as _re_er
-                            _safe_fn_er = lambda s: _re_er.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
-                            _cache_pfx_er = _safe_fn_er(f"emit_rows::figure::{selected_doi}::{_llm_sel_er}::")
-                            for _cf_er in list(_row_cache_dir_er.iterdir()):
-                                if _cf_er.suffix == ".json" and (
-                                    _cf_er.stem.startswith(_cache_pfx_er) or
-                                    _cf_er.name.startswith(_cache_pfx_er)
-                                ):
-                                    _cf_er.unlink(missing_ok=True)
+                        _rerun_images_er: list = []
+                        _rerun_lf_er: dict = {}
 
-                        import tempfile as _tmpmod_er
-                        with _tmpmod_er.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_er:
-                            _tmp_er.write(f"DOI\n{selected_doi}\n")
-                            _tmp_path_er = _tmp_er.name
+                        with st.spinner("Applying mask overrides..."):
+                            # Writes prepared masks + catalog + overrides into the
+                            # intervention dir only; the original plextract output
+                            # is never modified (item_figure_dir is read-only).
+                            apply_overrides_to_plextract(_sm_fig_dir_er, rr.run_dir, _safe_doi_er, _sm_fig_id_er)
+                        # Always source lineformer from the intervention override dir
+                        # so the original plextract results remain untouched.
+                        _lf_dir_rerun_er = _sm_lf_override_dir_er
 
-                        _complete_script_er = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-                        _efr_er = _llm_sel_dir_er.parent.parent  # .../output
-                        _cmd_er = [
-                            "python", str(_complete_script_er),
-                            "--file_path", _tmp_path_er,
-                            "--output_dir", str(rr.run_dir / "complete_dataset"),
-                            "--index_csv_path", str(_index_csv_er),
-                            "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
-                            "--extracted_figures_root", str(_efr_er),
-                            "--target_figure", _llm_sel_er,
-                        ]
-
-                        _env_er = os.environ.copy()
-                        _provider_er = st.session_state.get("llm_provider", "Ollama")
-                        _model_er = st.session_state.get("llm_model", "")
-                        if _provider_er == "Ollama":
-                            _env_er["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                            _env_er["AEM_OCR_LLM_MODEL"] = _model_er
-                            _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                            _om_dir_er = st.session_state.get("ollama_models_dir", "")
-                            if _om_dir_er:
-                                _env_er["OLLAMA_MODELS"] = _om_dir_er
+                        if _is_subfig_sel_er:
+                            _rerun_images_er = [_sm_source_img_er]
+                            if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
+                                _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
+                        elif _int_crops_er:
+                            _rerun_images_er = list(_int_crops_er)
+                            for _crop_er in _int_crops_er:
+                                _crop_lf_er = None
+                                # Search all workdirs for this crop's lineformer dir
+                                for _sm_wd_r_er in _sm_workdirs_to_search_er:
+                                    if not _sm_wd_r_er.exists():
+                                        continue
+                                    _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
+                                    if _lat2_er:
+                                        _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
+                                        if _cand_lf_er.exists():
+                                            _crop_lf_er = _cand_lf_er
+                                            break
+                                _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er and _lf_dir_rerun_er.exists() else None)
+                                if _lf_to_use_er:
+                                    _rerun_lf_er[_crop_er.name] = _lf_to_use_er
                         else:
-                            _env_er["AEM_OCR_LLM_PROVIDER"] = "openai"
-                            _env_er["AEM_OCR_LLM_MODEL"] = _model_er
-                            _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                            if st.session_state.get("openai_api_key"):
-                                _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-                        if st.session_state.get("use_separate_processing_llm"):
-                            _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
-                            _pm_er = st.session_state.get("processing_llm_model", "")
-                            if _pp_er == "Ollama":
-                                _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
-                            else:
-                                _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
-                                _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                _pk_er = st.session_state.get("processing_openai_api_key", "")
-                                if _pb_er:
-                                    _env_er["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = _pb_er
-                                if _pk_er:
-                                    _env_er["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = _pk_er
-                        else:
-                            for _k_er in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                            "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                                _env_er.pop(_k_er, None)
+                            if _source_img_er and _source_img_er.exists():
+                                _rerun_images_er = [_source_img_er]
+                                if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
+                                    _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
+                        with st.spinner("Re-running data extraction..."):
+                            run_plextract_intervention_on_crops(
+                                scripts_root=scripts_root, run_dir=rr.run_dir,
+                                safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
+                                override_lineformer_dirs=_rerun_lf_er,
+                                figure_id=_fig_id_er,
+                            )
+                        st.success("Data extraction complete!")
+                        st.rerun()
+                    except Exception as _e2_er:
+                        st.error(f"Failed: {_e2_er}")
 
-                        if not _model_er and not st.session_state.get("processing_llm_model"):
-                            st.error("No LLM model configured. Configure LLM settings in the sidebar first.")
-                            Path(_tmp_path_er).unlink(missing_ok=True)
-                        else:
-                            _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
-                            if _ci_path_er.exists():
-                                _env_er["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
-                            _env_er["AEM_OCR_RUN_ID"] = rr.run_id
-                            _env_er["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+                # ========================
+                # SECTION: Rerun LLM Dataset Generation
+                # ========================
 
-                            with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
-                                _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
-                            Path(_tmp_path_er).unlink(missing_ok=True)
-                            if _result_er.returncode == 0:
-                                st.success(f"LLM dataset generation complete for {_llm_sel_er}!")
-                                st.rerun()
-                            else:
-                                st.error(f"LLM dataset generation failed:\n```\n{_result_er.stderr}\n```")
-                    except subprocess.TimeoutExpired:
-                        st.error("LLM dataset generation timed out (>5 minutes)")
-                    except Exception as _e4_er:
-                        st.error(f"Error: {_e4_er}")
-
-        # ========================
-        # SECTION: Intervention Results
-        # Show new OCR and LLM data once a per-figure plextract_interventions
-        # run exists (i.e. the user has clicked "Rerun data extraction").
-        # ========================
-        fig_stem = Path(f.id).stem
-        _int_doi_dir = rr.run_dir / "interventions" / safe_doi
-        _per_fig_plextract: Path | None = None
-        if _int_doi_dir.exists():
-            for _int_fig_d in _int_doi_dir.iterdir():
-                if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
-                    _candidate = _int_fig_d / "plextract_interventions"
-                    if _candidate.exists():
-                        _per_fig_plextract = _candidate
-                    break
-
-        if _per_fig_plextract and _per_fig_plextract.exists():
-            _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
-            _int_out_base = (
-                (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
-            )
-            def _stem(s: str) -> str:
-                return Path(s).stem
-            if _int_out_base and _int_out_base.exists():
-                for _idir in sorted(_int_out_base.iterdir()):
-                    if not _idir.is_dir():
+                # Find available figures/subfigures for LLM rerun
+                _llm_fig_options_er: list = []
+                _llm_fig_dirs_er: list = []
+                for _llm_wd_er in [
+                    # rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
+                    # rr.run_dir / "interventions" / "interventions_plextract",
+                    Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.jpg"),
+                    Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.png")
+                ]:
+                    if not _llm_wd_er.exists():
                         continue
-                    # show only the parent figure output (exclude *_subfig_*)
-                    if _idir.name.startswith(_stem(_fig_id_er) + "_subfig_"):
-                        continue
-                    if _stem(_idir.name) != _stem(_fig_id_er):
-                        continue                    
-                    if _idir.is_dir():
-                        render_ocr_dropdown(
-                            csv_path=_idir / "final" / "final_dataset.csv",
-                            key_prefix=f"int_ocr_{safe_doi}_{f.id}_{_idir.name}",
-                            axis_override_dir=_idir,
-                            title=f"New OCR-Extracted Data: {_idir.name}",
+                    if _llm_wd_er.is_dir() and (_fig_stem_er == _fig_id_er or
+                        _llm_wd_er.name.startswith(_fig_stem_er + "_subfig_")):
+                            if _llm_wd_er.name not in _llm_fig_options_er:
+                                _llm_fig_options_er.append(_llm_wd_er.name)
+                                _llm_fig_dirs_er.append(_llm_wd_er)
+
+                if not _llm_fig_dirs_er:
+                    st.info("No plextract output found. Run plextract extraction first.")
+                else:
+                    if len(_llm_fig_dirs_er) > 1:
+                        _llm_sel_er = st.selectbox(
+                            "Select figure/subfigure for LLM rerun",
+                            _llm_fig_options_er,
+                            key=f"er_llm_sel_{_safe_doi_er}_{_fig_id_er}"
                         )
-                        _int_emit_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _idir.name)
-                        render_llm_dropdown(
-                            run_dir=rr.run_dir,
-                            emit_rows_path=_int_emit_path,
-                            key_prefix=f"int_llm_{safe_doi}_{f.id}_{_idir.name}",
-                            file_name_prefix=_idir.name,
-                            title=f"New LLM-Generated Dataset: {_idir.name}",
-                        )
-        # ========================
-        # SECTION: Display metadata
-        # ========================
-        render_metadata_dropdown(metadata_path=f.metadata_path)
-        _subfig_map: dict[str, Path] = {} 
-        _workdirs_priority: list[Path] = []
+                        _llm_sel_dir_er = _llm_fig_dirs_er[_llm_fig_options_er.index(_llm_sel_er)]
+                    else:
+                        _llm_sel_er = _llm_fig_options_er[0]
+                        _llm_sel_dir_er = _llm_fig_dirs_er[0]
 
-
-        if _per_fig_plextract is not None:
-            _workdirs_priority.append(_per_fig_plextract)
-
-        # 2. Legacy shared interventions_plextract (backward compatibility).
-        _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
-
-        # 3. Original plextract output.
-        _workdirs_priority.append(rr.run_dir / "plextract")
-
-        for _wd in _workdirs_priority:
-            if not _wd or not _wd.exists():
-                continue
-            subfigs_here = collect_subfig_dirs_across_runs(_wd, safe_doi, fig_stem)
-            # priority order: only fill missing names so higher-priority workdir wins
-            for name, path in subfigs_here.items():
-                if name not in _subfig_map:
-                    _subfig_map[name] = path
-
-        subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
-
-        # Set latest_manual / out_base for use by the data completion button and
-        # the original-image lookup below.  Prefer the per-figure workdir, then
-        # fall back to the shared interventions_plextract, then plain plextract.
-        # latest_manual = None
-        # out_base = None
-        # for _wd in [
-        #     _per_fig_plextract,
-        #     rr.run_dir / "interventions" / "interventions_plextract",
-        #     rr.run_dir / "plextract",
-        # ]:
-        #     if _wd is None or not _wd.exists():
-        #         continue
-        #     _lat = latest_plextract_run_dir(_wd)
-        #     if _lat:
-        #         _ob = _lat / "output" / safe_doi
-        #         if _ob.exists():
-        #             latest_manual = _lat
-        #             out_base = _ob
-        #             break
-
-        #### SUBFIGURE SECTION #####
-        if subfig_dirs:
-                # Header for subfigures section
-                st.markdown("**Cropped Subfigures**")
-                for subfig_dir in subfig_dirs:
-                    st.markdown(f"### {subfig_dir.name}")
-                    # Resolve source image before expander so it's available for rerun buttons
-                    # _subfig_source_img = None
-                    # _subfig_image_caption = None
-                    _subfig_source_img, _subfig_image_caption = resolve_source_img_for_subfig_dir(subfig_dir, safe_doi)
-                    # if latest_manual:
-                    #     input_dir = latest_manual / "input" / safe_doi
-                    #     original_img = input_dir / subfig_dir.name
-                    #     if original_img.exists():
-                    #         _subfig_source_img = original_img
-                    #         _subfig_image_caption = "Cropped image"
-                    # if _subfig_source_img is None:
-                    #     _crops_dir = rr.run_dir / "interventions" / safe_doi
-                    #     for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
-                    #         _candidate = _fig_d / subfig_dir.name
-                    #         if _candidate.exists():
-                    #             _subfig_source_img = _candidate
-                    #             _subfig_image_caption = "Cropped image"
-                    #             break
-                    if _subfig_source_img is None:
-                        _subfig_final_dir = subfig_dir / "final"
-                        if _subfig_final_dir.exists():
-                            _subfig_final_img = _subfig_final_dir / "final_image.png"
-                            if _subfig_final_img.exists():
-                                _subfig_source_img = _subfig_final_img
-                                _subfig_image_caption = "Recreated image (crop not found)"
-                    render_figure_image_dropdown(
-                        image=_subfig_source_img,
-                        image_caption=_subfig_image_caption,
-                        title=subfig_dir.name,
-                        key=f"subfig_{safe_doi}_{subfig_dir.name}_img",
-                        expanded=True,
-                    )
-                    _subfig_lf_dir = get_lineformer_dir(subfig_dir)
-                    _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
-                    render_axis_configuration_dropdown(
-                        chartdete_dir=subfig_dir / "chartdete",
-                        source_img=_subfig_source_img,
-                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
-                    )
-                    render_series_management_dropdown(
-                        run_dir=rr.run_dir,
-                        safe_doi=safe_doi,
-                        fig_id=subfig_dir.name,
-                        fig_dir=subfig_dir,
-                        lf_dir=_subfig_lf_dir,
-                        lf_override_dir=_subfig_override_lf,
-                        source_img=_subfig_source_img,
-                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
-                    )
-
-                    final_dir = subfig_dir / "final"
-                    final_csv = final_dir / "final_dataset.csv"
-                    render_ocr_dropdown(
-                        csv_path=final_csv if final_csv.exists() else None,
-                        key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
-                        axis_override_dir=subfig_dir,
-                    )
-
-                    emit_rows_path_subfig = find_emit_rows_for_source(
-                        rr.run_dir, selected_doi, "figure", subfig_dir.name
-                    )
-                    render_llm_dropdown(
-                        run_dir=rr.run_dir,
-                        emit_rows_path=emit_rows_path_subfig,
-                        key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
-                        file_name_prefix=subfig_dir.name,
-                    )
-
-                    _subfig_metadata = final_dir / "final_metadata.json"
-                    render_metadata_dropdown(
-                        metadata_path=_subfig_metadata if _subfig_metadata.exists() else None,
-                    )
-
-                    # ========================
-                    # SECTION: Rerun buttons (at subfigure level, matching figure structure)
-                    # ========================
-                    if st.button("Rerun OCR data extraction", type="primary", key=f"subfig_rerun_ocr_{safe_doi}_{subfig_dir.name}"):
-                        try:
-                            with st.spinner("Applying mask overrides..."):
-                                apply_overrides_to_plextract(subfig_dir, rr.run_dir, safe_doi, subfig_dir.name)
-
-                            if not (_subfig_source_img and _subfig_source_img.exists()):
-                                st.error("Could not locate subfigure source image for rerun.")
+                    if st.button("Rerun LLM dataset generation", type="primary", key=f"er_rerun_llm_{_safe_doi_er}_{_fig_id_er}"):
+                        _reparsed_dir_er = rr.run_dir / "reparsed"
+                        _index_csv_er = _reparsed_dir_er / "index.csv"
+                        if not _index_csv_er.exists():
+                            _err_msg_er = f"**Required file not found:** `{_index_csv_er.relative_to(rr.run_dir)}`\n\n"
+                            if not _reparsed_dir_er.exists():
+                                _err_msg_er += "The `reparsed/` directory doesn't exist. "
                             else:
-                                _subfig_lf_override = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
-                                _lf_map = {}
-                                if _subfig_lf_override.exists():
-                                    _lf_map[_subfig_source_img.name] = _subfig_lf_override
-                                _cd_map = {}
-                                _subfig_cd_dir = subfig_dir / "chartdete"
-                                if _subfig_cd_dir.exists():
-                                    _cd_map[_subfig_source_img.name] = _subfig_cd_dir
-                                target_id = subfig_dir.name
-                                with st.spinner("Re-running data extraction..."):
-                                    run_plextract_intervention_on_crops(
-                                        scripts_root=scripts_root,
-                                        run_dir=rr.run_dir,
-                                        safe_doi=safe_doi,
-                                        image_paths=[_subfig_source_img],
-                                        override_lineformer_dirs=_lf_map,
-                                        figure_id=target_id,
-                                        override_chartdete_dirs=_cd_map,
-                                    )
-                                st.success(f"Data extraction complete for {subfig_dir.name}!")
-                                st.rerun()
-                        except Exception as _subfig_ocr_e:
-                            st.error(f"Failed: {_subfig_ocr_e}")
-
-                    if st.button("Rerun LLM dataset generation", type="primary", key=f"subfig_rerun_llm_{safe_doi}_{subfig_dir.name}"):
-                        _reparsed_dir_sf = rr.run_dir / "reparsed"
-                        _index_csv_sf = _reparsed_dir_sf / "index.csv"
-                        if not _index_csv_sf.exists():
-                            st.error(f"Required file not found: `{_index_csv_sf.relative_to(rr.run_dir)}`")
+                                _err_msg_er += "The `reparsed/` directory exists but `index.csv` is missing. "
+                            _err_msg_er += "This file is created during the 'Download DOIs' stage."
+                            st.error(_err_msg_er)
                         else:
                             try:
-                                _row_cache_dir_sf = rr.run_dir / "complete_dataset" / "row_cache"
-                                if _row_cache_dir_sf.exists():
-                                    import re as _re_sf
-                                    _safe_fn_sf = lambda s: _re_sf.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
-                                    _cache_pfx_sf = _safe_fn_sf(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
-                                    for _cf_sf in list(_row_cache_dir_sf.iterdir()):
-                                        if _cf_sf.suffix == ".json" and (_cf_sf.stem.startswith(_cache_pfx_sf) or _cf_sf.name.startswith(_cache_pfx_sf)):
-                                            _cf_sf.unlink(missing_ok=True)
+                                # Delete any existing cache files for this figure so the
+                                # LLM is always re-called (avoids stale cache on re-run).
+                                _row_cache_dir_er = rr.run_dir / "complete_dataset" / "row_cache"
+                                if _row_cache_dir_er.exists():
+                                    import re as _re_er
+                                    _safe_fn_er = lambda s: _re_er.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                                    _cache_pfx_er = _safe_fn_er(f"emit_rows::figure::{selected_doi}::{_llm_sel_er}::")
+                                    for _cf_er in list(_row_cache_dir_er.iterdir()):
+                                        if _cf_er.suffix == ".json" and (
+                                            _cf_er.stem.startswith(_cache_pfx_er) or
+                                            _cf_er.name.startswith(_cache_pfx_er)
+                                        ):
+                                            _cf_er.unlink(missing_ok=True)
 
-                                import tempfile as _tmpmod_sf
-                                with _tmpmod_sf.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_sf:
-                                    _tmp_sf.write(f"DOI\n{selected_doi}\n")
-                                    _tmp_path_sf = _tmp_sf.name
+                                import tempfile as _tmpmod_er
+                                with _tmpmod_er.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_er:
+                                    _tmp_er.write(f"DOI\n{selected_doi}\n")
+                                    _tmp_path_er = _tmp_er.name
 
-                                _complete_script_sf = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-                                _cmd_sf = [
-                                    "python", str(_complete_script_sf),
-                                    "--file_path", _tmp_path_sf,
+                                _complete_script_er = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+                                _efr_er = _llm_sel_dir_er.parent.parent  # .../output
+                                _cmd_er = [
+                                    "python", str(_complete_script_er),
+                                    "--file_path", _tmp_path_er,
                                     "--output_dir", str(rr.run_dir / "complete_dataset"),
-                                    "--index_csv_path", str(_index_csv_sf),
+                                    "--index_csv_path", str(_index_csv_er),
                                     "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
-                                    "--extracted_figures_root", str(subfig_dir.parent.parent),
-                                    "--target_figure", subfig_dir.name,
+                                    "--extracted_figures_root", str(_efr_er),
+                                    "--target_figure", _llm_sel_er,
                                 ]
 
-                                _env_sf = os.environ.copy()
-                                _provider_sf = st.session_state.get("llm_provider", "Ollama")
-                                _model_sf = st.session_state.get("llm_model", "")
-                                if _provider_sf == "Ollama":
-                                    _env_sf["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                    _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
-                                    _env_sf["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                _env_er = os.environ.copy()
+                                _provider_er = st.session_state.get("llm_provider", "Ollama")
+                                _model_er = st.session_state.get("llm_model", "")
+                                if _provider_er == "Ollama":
+                                    _env_er["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                                    _env_er["AEM_OCR_LLM_MODEL"] = _model_er
+                                    _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                    _om_dir_er = st.session_state.get("ollama_models_dir", "")
+                                    if _om_dir_er:
+                                        _env_er["OLLAMA_MODELS"] = _om_dir_er
                                 else:
-                                    _env_sf["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                    _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
-                                    _env_sf["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                                    _env_er["AEM_OCR_LLM_PROVIDER"] = "openai"
+                                    _env_er["AEM_OCR_LLM_MODEL"] = _model_er
+                                    _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
                                     if st.session_state.get("openai_api_key"):
-                                        _env_sf["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-
-                                _env_sf["AEM_OCR_RUN_ID"] = rr.run_id
-                                _env_sf["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
-
-                                with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
-                                    _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)
-                                Path(_tmp_path_sf).unlink(missing_ok=True)
-                                if _result_sf.returncode == 0:
-                                    st.success(f"LLM dataset generation complete for {subfig_dir.name}!")
-                                    st.rerun()
+                                        _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+                                if st.session_state.get("use_separate_processing_llm"):
+                                    _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
+                                    _pm_er = st.session_state.get("processing_llm_model", "")
+                                    if _pp_er == "Ollama":
+                                        _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
+                                        _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
+                                    else:
+                                        _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
+                                        _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
+                                        _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
+                                        _pk_er = st.session_state.get("processing_openai_api_key", "")
+                                        if _pb_er:
+                                            _env_er["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = _pb_er
+                                        if _pk_er:
+                                            _env_er["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = _pk_er
                                 else:
-                                    st.error(f"LLM dataset generation failed:\n```\n{_result_sf.stderr}\n```")
+                                    for _k_er in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
+                                                    "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
+                                        _env_er.pop(_k_er, None)
+
+                                if not _model_er and not st.session_state.get("processing_llm_model"):
+                                    st.error("No LLM model configured. Configure LLM settings in the sidebar first.")
+                                    Path(_tmp_path_er).unlink(missing_ok=True)
+                                else:
+                                    _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
+                                    if _ci_path_er.exists():
+                                        _env_er["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
+                                    _env_er["AEM_OCR_RUN_ID"] = rr.run_id
+                                    _env_er["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+
+                                    with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
+                                        _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
+                                    Path(_tmp_path_er).unlink(missing_ok=True)
+                                    if _result_er.returncode == 0:
+                                        st.success(f"LLM dataset generation complete for {_llm_sel_er}!")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"LLM dataset generation failed:\n```\n{_result_er.stderr}\n```")
                             except subprocess.TimeoutExpired:
                                 st.error("LLM dataset generation timed out (>5 minutes)")
-                            except Exception as _subfig_llm_e:
-                                st.error(f"Error: {_subfig_llm_e}")
+                            except Exception as _e4_er:
+                                st.error(f"Error: {_e4_er}")
 
-                    # subfigure-specific intervention workdir
-                    _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
-                    if _subfig_int_wd.exists():
-                        _lat = latest_plextract_run_dir(_subfig_int_wd)
-                        if _lat:
-                            _out = _lat / "output" / safe_doi / subfig_dir.name
-                            if _out.exists():
+                # ========================
+                # SECTION: Intervention Results
+                # Show new OCR and LLM data once a per-figure plextract_interventions
+                # run exists (i.e. the user has clicked "Rerun data extraction").
+                # ========================
+                fig_stem = Path(f.id).stem
+                _int_doi_dir = rr.run_dir / "interventions" / safe_doi
+                _per_fig_plextract: Path | None = None
+                if _int_doi_dir.exists():
+                    for _int_fig_d in _int_doi_dir.iterdir():
+                        if _int_fig_d.is_dir() and Path(_int_fig_d.name).stem == fig_stem:
+                            _candidate = _int_fig_d / "plextract_interventions"
+                            if _candidate.exists():
+                                _per_fig_plextract = _candidate
+                            break
+
+                if _per_fig_plextract and _per_fig_plextract.exists():
+                    _int_latest_run = latest_plextract_run_dir(_per_fig_plextract)
+                    _int_out_base = (
+                        (_int_latest_run / "output" / safe_doi) if _int_latest_run else None
+                    )
+                    def _stem(s: str) -> str:
+                        return Path(s).stem
+                    if _int_out_base and _int_out_base.exists():
+                        for _idir in sorted(_int_out_base.iterdir()):
+                            if not _idir.is_dir():
+                                continue
+                            # show only the parent figure output (exclude *_subfig_*)
+                            if _idir.name.startswith(_stem(_fig_id_er) + "_subfig_"):
+                                continue
+                            if _stem(_idir.name) != _stem(_fig_id_er):
+                                continue                    
+                            if _idir.is_dir():
                                 render_ocr_dropdown(
-                                    csv_path=_out / "final" / "final_dataset.csv",
-                                    key_prefix=f"subfig_int_ocr_{safe_doi}_{subfig_dir.name}",
-                                    axis_override_dir=_out,
-                                    title=f"New OCR-Extracted Data: {subfig_dir.name}",
+                                    csv_path=_idir / "final" / "final_dataset.csv",
+                                    key_prefix=f"int_ocr_{safe_doi}_{f.id}_{_idir.name}",
+                                    axis_override_dir=_idir,
+                                    title=f"New OCR-Extracted Data: {_idir.name}",
                                 )
-                                _emit = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", subfig_dir.name)
+                                _int_emit_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", _idir.name)
                                 render_llm_dropdown(
                                     run_dir=rr.run_dir,
-                                    emit_rows_path=_emit,
-                                    key_prefix=f"subfig_int_llm_{safe_doi}_{subfig_dir.name}",
-                                    file_name_prefix=subfig_dir.name,
-                                    title=f"New LLM-Generated Dataset: {subfig_dir.name}",
+                                    emit_rows_path=_int_emit_path,
+                                    key_prefix=f"int_llm_{safe_doi}_{f.id}_{_idir.name}",
+                                    file_name_prefix=_idir.name,
+                                    title=f"New LLM-Generated Dataset: {_idir.name}",
                                 )
+                # ========================
+                # SECTION: Display metadata
+                # ========================
+                render_metadata_dropdown(metadata_path=f.metadata_path)
+                _subfig_map: dict[str, Path] = {} 
+                _workdirs_priority: list[Path] = []
 
-                    # Add separator between subfigures if there are multiple
-                    if subfig_dir != subfig_dirs[-1]:
-                        st.markdown("---")
+
+                if _per_fig_plextract is not None:
+                    _workdirs_priority.append(_per_fig_plextract)
+
+                # 2. Legacy shared interventions_plextract (backward compatibility).
+                _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
+
+                # 3. Original plextract output.
+                _workdirs_priority.append(rr.run_dir / "plextract")
+
+                for _wd in _workdirs_priority:
+                    if not _wd or not _wd.exists():
+                        continue
+                    subfigs_here = collect_subfig_dirs_across_runs(_wd, safe_doi, fig_stem)
+                    # priority order: only fill missing names so higher-priority workdir wins
+                    for name, path in subfigs_here.items():
+                        if name not in _subfig_map:
+                            _subfig_map[name] = path
+
+                subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
+
+                # Set latest_manual / out_base for use by the data completion button and
+                # the original-image lookup below.  Prefer the per-figure workdir, then
+                # fall back to the shared interventions_plextract, then plain plextract.
+                # latest_manual = None
+                # out_base = None
+                # for _wd in [
+                #     _per_fig_plextract,
+                #     rr.run_dir / "interventions" / "interventions_plextract",
+                #     rr.run_dir / "plextract",
+                # ]:
+                #     if _wd is None or not _wd.exists():
+                #         continue
+                #     _lat = latest_plextract_run_dir(_wd)
+                #     if _lat:
+                #         _ob = _lat / "output" / safe_doi
+                #         if _ob.exists():
+                #             latest_manual = _lat
+                #             out_base = _ob
+                #             break
+
+                #### SUBFIGURE SECTION #####
+                if subfig_dirs:
+                        # Header for subfigures section
+                        st.markdown("**Cropped Subfigures**")
+                        for subfig_dir in subfig_dirs:
+                            st.markdown(f"### {subfig_dir.name}")
+                            # Resolve source image before expander so it's available for rerun buttons
+                            # _subfig_source_img = None
+                            # _subfig_image_caption = None
+                            _subfig_source_img, _subfig_image_caption = resolve_source_img_for_subfig_dir(subfig_dir, safe_doi)
+                            # if latest_manual:
+                            #     input_dir = latest_manual / "input" / safe_doi
+                            #     original_img = input_dir / subfig_dir.name
+                            #     if original_img.exists():
+                            #         _subfig_source_img = original_img
+                            #         _subfig_image_caption = "Cropped image"
+                            # if _subfig_source_img is None:
+                            #     _crops_dir = rr.run_dir / "interventions" / safe_doi
+                            #     for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
+                            #         _candidate = _fig_d / subfig_dir.name
+                            #         if _candidate.exists():
+                            #             _subfig_source_img = _candidate
+                            #             _subfig_image_caption = "Cropped image"
+                            #             break
+                            if _subfig_source_img is None:
+                                _subfig_final_dir = subfig_dir / "final"
+                                if _subfig_final_dir.exists():
+                                    _subfig_final_img = _subfig_final_dir / "final_image.png"
+                                    if _subfig_final_img.exists():
+                                        _subfig_source_img = _subfig_final_img
+                                        _subfig_image_caption = "Recreated image (crop not found)"
+                            render_figure_image_dropdown(
+                                image=_subfig_source_img,
+                                image_caption=_subfig_image_caption,
+                                title=subfig_dir.name,
+                                key=f"subfig_{safe_doi}_{subfig_dir.name}_img",
+                                expanded=True,
+                            )
+                            _subfig_lf_dir = get_lineformer_dir(subfig_dir)
+                            _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                            render_axis_configuration_dropdown(
+                                chartdete_dir=subfig_dir / "chartdete",
+                                source_img=_subfig_source_img,
+                                key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                            )
+                            render_series_management_dropdown(
+                                run_dir=rr.run_dir,
+                                safe_doi=safe_doi,
+                                fig_id=subfig_dir.name,
+                                fig_dir=subfig_dir,
+                                lf_dir=_subfig_lf_dir,
+                                lf_override_dir=_subfig_override_lf,
+                                source_img=_subfig_source_img,
+                                key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                            )
+
+                            final_dir = subfig_dir / "final"
+                            final_csv = final_dir / "final_dataset.csv"
+                            render_ocr_dropdown(
+                                csv_path=final_csv if final_csv.exists() else None,
+                                key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
+                                axis_override_dir=subfig_dir,
+                            )
+
+                            emit_rows_path_subfig = find_emit_rows_for_source(
+                                rr.run_dir, selected_doi, "figure", subfig_dir.name
+                            )
+                            render_llm_dropdown(
+                                run_dir=rr.run_dir,
+                                emit_rows_path=emit_rows_path_subfig,
+                                key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
+                                file_name_prefix=subfig_dir.name,
+                            )
+
+                            _subfig_metadata = final_dir / "final_metadata.json"
+                            render_metadata_dropdown(
+                                metadata_path=_subfig_metadata if _subfig_metadata.exists() else None,
+                            )
+
+                            # ========================
+                            # SECTION: Rerun buttons (at subfigure level, matching figure structure)
+                            # ========================
+                            if st.button("Rerun OCR data extraction", type="primary", key=f"subfig_rerun_ocr_{safe_doi}_{subfig_dir.name}"):
+                                try:
+                                    with st.spinner("Applying mask overrides..."):
+                                        apply_overrides_to_plextract(subfig_dir, rr.run_dir, safe_doi, subfig_dir.name)
+
+                                    if not (_subfig_source_img and _subfig_source_img.exists()):
+                                        st.error("Could not locate subfigure source image for rerun.")
+                                    else:
+                                        _subfig_lf_override = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                                        _lf_map = {}
+                                        if _subfig_lf_override.exists():
+                                            _lf_map[_subfig_source_img.name] = _subfig_lf_override
+                                        _cd_map = {}
+                                        _subfig_cd_dir = subfig_dir / "chartdete"
+                                        if _subfig_cd_dir.exists():
+                                            _cd_map[_subfig_source_img.name] = _subfig_cd_dir
+                                        target_id = subfig_dir.name
+                                        with st.spinner("Re-running data extraction..."):
+                                            run_plextract_intervention_on_crops(
+                                                scripts_root=scripts_root,
+                                                run_dir=rr.run_dir,
+                                                safe_doi=safe_doi,
+                                                image_paths=[_subfig_source_img],
+                                                override_lineformer_dirs=_lf_map,
+                                                figure_id=target_id,
+                                                override_chartdete_dirs=_cd_map,
+                                            )
+                                        st.success(f"Data extraction complete for {subfig_dir.name}!")
+                                        st.rerun()
+                                except Exception as _subfig_ocr_e:
+                                    st.error(f"Failed: {_subfig_ocr_e}")
+
+                            if st.button("Rerun LLM dataset generation", type="primary", key=f"subfig_rerun_llm_{safe_doi}_{subfig_dir.name}"):
+                                _reparsed_dir_sf = rr.run_dir / "reparsed"
+                                _index_csv_sf = _reparsed_dir_sf / "index.csv"
+                                if not _index_csv_sf.exists():
+                                    st.error(f"Required file not found: `{_index_csv_sf.relative_to(rr.run_dir)}`")
+                                else:
+                                    try:
+                                        _row_cache_dir_sf = rr.run_dir / "complete_dataset" / "row_cache"
+                                        if _row_cache_dir_sf.exists():
+                                            import re as _re_sf
+                                            _safe_fn_sf = lambda s: _re_sf.sub(r"[^a-zA-Z0-9._-]+", "_", s)[:180]
+                                            _cache_pfx_sf = _safe_fn_sf(f"emit_rows::figure::{selected_doi}::{subfig_dir.name}::")
+                                            for _cf_sf in list(_row_cache_dir_sf.iterdir()):
+                                                if _cf_sf.suffix == ".json" and (_cf_sf.stem.startswith(_cache_pfx_sf) or _cf_sf.name.startswith(_cache_pfx_sf)):
+                                                    _cf_sf.unlink(missing_ok=True)
+
+                                        import tempfile as _tmpmod_sf
+                                        with _tmpmod_sf.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as _tmp_sf:
+                                            _tmp_sf.write(f"DOI\n{selected_doi}\n")
+                                            _tmp_path_sf = _tmp_sf.name
+
+                                        _complete_script_sf = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
+                                        _cmd_sf = [
+                                            "python", str(_complete_script_sf),
+                                            "--file_path", _tmp_path_sf,
+                                            "--output_dir", str(rr.run_dir / "complete_dataset"),
+                                            "--index_csv_path", str(_index_csv_sf),
+                                            "--figures_tables_dir", str(rr.run_dir / "figures_tables"),
+                                            "--extracted_figures_root", str(subfig_dir.parent.parent),
+                                            "--target_figure", subfig_dir.name,
+                                        ]
+
+                                        _env_sf = os.environ.copy()
+                                        _provider_sf = st.session_state.get("llm_provider", "Ollama")
+                                        _model_sf = st.session_state.get("llm_model", "")
+                                        if _provider_sf == "Ollama":
+                                            _env_sf["AEM_OCR_LLM_PROVIDER"] = "ollama"
+                                            _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
+                                            _env_sf["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
+                                        else:
+                                            _env_sf["AEM_OCR_LLM_PROVIDER"] = "openai"
+                                            _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
+                                            _env_sf["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+                                            if st.session_state.get("openai_api_key"):
+                                                _env_sf["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+                                        _env_sf["AEM_OCR_RUN_ID"] = rr.run_id
+                                        _env_sf["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+
+                                        with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
+                                            _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)
+                                        Path(_tmp_path_sf).unlink(missing_ok=True)
+                                        if _result_sf.returncode == 0:
+                                            st.success(f"LLM dataset generation complete for {subfig_dir.name}!")
+                                            st.rerun()
+                                        else:
+                                            st.error(f"LLM dataset generation failed:\n```\n{_result_sf.stderr}\n```")
+                                    except subprocess.TimeoutExpired:
+                                        st.error("LLM dataset generation timed out (>5 minutes)")
+                                    except Exception as _subfig_llm_e:
+                                        st.error(f"Error: {_subfig_llm_e}")
+
+                            # subfigure-specific intervention workdir
+                            _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
+                            if _subfig_int_wd.exists():
+                                _lat = latest_plextract_run_dir(_subfig_int_wd)
+                                if _lat:
+                                    _out = _lat / "output" / safe_doi / subfig_dir.name
+                                    if _out.exists():
+                                        render_ocr_dropdown(
+                                            csv_path=_out / "final" / "final_dataset.csv",
+                                            key_prefix=f"subfig_int_ocr_{safe_doi}_{subfig_dir.name}",
+                                            axis_override_dir=_out,
+                                            title=f"New OCR-Extracted Data: {subfig_dir.name}",
+                                        )
+                                        _emit = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", subfig_dir.name)
+                                        render_llm_dropdown(
+                                            run_dir=rr.run_dir,
+                                            emit_rows_path=_emit,
+                                            key_prefix=f"subfig_int_llm_{safe_doi}_{subfig_dir.name}",
+                                            file_name_prefix=subfig_dir.name,
+                                            title=f"New LLM-Generated Dataset: {subfig_dir.name}",
+                                        )
+
+                            # Add separator between subfigures if there are multiple
+                            if subfig_dir != subfig_dirs[-1]:
+                                st.markdown("---")
 
 with tab_tables:
     if not doi_item.tables:
