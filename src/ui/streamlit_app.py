@@ -456,12 +456,6 @@ def render_axis_configuration_dropdown(
             st.info("No source image available for axis calibration.")
             return
 
-        st.caption(
-            "Click the image to set Xmin/Xmax/Ymin/Ymax pixel locations, then enter the numeric values. "
-            "This writes `chartdete/pix2val_override.json` for this figure."
-        )
-        st.caption(f"Calibrating on image: `{source_img}`")
-
         pix2val_override_path = chartdete_dir / "pix2val_override.json"
         pix2val_orig_path = chartdete_dir / "pix2val.json"
         axis_type_path = chartdete_dir / "axis_type_override.json"
@@ -572,7 +566,6 @@ def render_axis_configuration_dropdown(
             st.write("Ymin:", pt_ymin)
             st.write("Ymax:", pt_ymax)
 
-        st.markdown("**Endpoint values** (enter the numeric value for each clicked point)")
         vxmin_key = f"{key_prefix}_ax_val_xmin"
         vxmax_key = f"{key_prefix}_ax_val_xmax"
         vymin_key = f"{key_prefix}_ax_val_ymin"
@@ -795,8 +788,36 @@ def render_series_management_dropdown(
             base_img = None
             w, h = 600, 400
 
-        disp_w = min(w, 900)
-        disp_h = int(h * (disp_w / w))
+        cv_ver_key_sm = f"{key_prefix}_series_canvas_ver"
+        if cv_ver_key_sm not in st.session_state:
+            st.session_state[cv_ver_key_sm] = 0
+
+        # --- Display width slider ---
+        width_key_sm = f"{key_prefix}_series_view_w"
+        if width_key_sm not in st.session_state:
+            # default to something reasonable for the figure, capped like before
+            st.session_state[width_key_sm] = min(900, w)
+
+        disp_w = st.slider(
+            "Series view width (px)",
+            min_value=400,
+            max_value=1800,
+            value=int(st.session_state[width_key_sm]),
+            step=50,
+            key=width_key_sm,
+        )
+
+        last_w_key = f"{key_prefix}_series_last_w"
+        last_w = st.session_state.get(last_w_key)
+
+        if last_w is None:
+            st.session_state[last_w_key] = disp_w
+        elif last_w != disp_w:
+            st.session_state[last_w_key] = disp_w
+            st.session_state[cv_ver_key_sm] += 1
+
+        # disp_w = min(disp_w, w)  # don't exceed native width
+        disp_h = int(round(h * (disp_w / w)))
 
         # Build overlay
         overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -878,19 +899,34 @@ def render_series_management_dropdown(
                 horizontal=True,
                 key=f"{key_prefix}_input_mode_{selected_idx}_{mode}",
             )
-            c1_sm, c2_sm = st.columns([3, 1])
+            c1_sm, c2_sm = st.columns([2.2, 1.5])
 
             if input_mode == "Freehand drawing":
                 with c1_sm:
                     st.write("Draw on the colored series image below")
-                    brush = st.slider("Brush width", 1, 40, 10, key=f"{key_prefix}_brush_{selected_idx}")
+                    # mask_canvas = st_canvas(
+                    #     background_image=composite_disp,
+                    #     drawing_mode="freedraw",
+                    #     stroke_width=5, stroke_color=stroke_rgba,
+                    #     fill_color=stroke_rgba, update_streamlit=True,
+                    #     height=disp_h, width=disp_w,
+                    #     key=f"{key_prefix}_mask_canvas_{selected_idx}_{mode}",
+                    # )
+                    canvas_key_freehand = (
+                        f"{key_prefix}_mask_canvas_{selected_idx}_{mode}"
+                        f"_{disp_w}x{disp_h}_v{st.session_state[cv_ver_key_sm]}"
+                    )
+
                     mask_canvas = st_canvas(
                         background_image=composite_disp,
                         drawing_mode="freedraw",
-                        stroke_width=brush, stroke_color=stroke_rgba,
-                        fill_color=stroke_rgba, update_streamlit=True,
-                        height=disp_h, width=disp_w,
-                        key=f"{key_prefix}_mask_canvas_{selected_idx}_{mode}",
+                        stroke_width=5,
+                        stroke_color=stroke_rgba,
+                        fill_color=stroke_rgba,
+                        update_streamlit=True,
+                        height=disp_h,
+                        width=disp_w,
+                        key=canvas_key_freehand,
                     )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
@@ -945,20 +981,26 @@ def render_series_management_dropdown(
                     except Exception:
                         pass
                 with c1_sm:
-                    dot_size = st.slider(
-                        "Point display size", 1, 5, 1,
-                        key=f"{key_prefix}_dot_size_{selected_idx}_{mode}",
-                    )
+                    dot_size = 1
                     if existing_pts:
                         st.caption(f"Currently saved: **{len(existing_pts)} point(s)**. Placing new points replaces them.")
                     else:
                         st.caption("Click on the figure to place data points.")
+                    canvas_key_points = (
+                        f"{key_prefix}_point_canvas_{selected_idx}_{mode}"
+                        f"_{disp_w}x{disp_h}_v{st.session_state[cv_ver_key_sm]}"
+                    )
+
                     point_canvas = st_canvas(
                         background_image=composite_disp,
-                        drawing_mode="point", point_display_radius=dot_size,
-                        stroke_color=stroke_rgba, fill_color=stroke_rgba,
-                        update_streamlit=True, height=disp_h, width=disp_w,
-                        key=f"{key_prefix}_point_canvas_{selected_idx}_{mode}",
+                        drawing_mode="point",
+                        point_display_radius=dot_size,
+                        stroke_color=stroke_rgba,
+                        fill_color=stroke_rgba,
+                        update_streamlit=True,
+                        height=disp_h,
+                        width=disp_w,
+                        key=canvas_key_points,
                     )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
@@ -2280,7 +2322,7 @@ with tab_figs:
             image=_fig_display_img,
             image_caption=_fig_display_img_caption,
             figure_caption=f.caption,
-            title=f"Figure: {f.id}",
+            title=f"{f.id}",
             key=f"fig_{_safe_doi_er}_{_fig_id_er}_img",
             expanded=True,
         )
@@ -2332,15 +2374,8 @@ with tab_figs:
                 _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
                 if _cv_ver_key not in st.session_state:
                     st.session_state[_cv_ver_key] = 0
-                # Open the expander on the very first render so the canvas mounts
-                # in a visible state.  streamlit-drawable-canvas calls drawImage()
-                # in componentDidMount; if the expander is collapsed at that point
-                # the canvas has zero dimensions and the background image is lost.
-                # ensure_canvas_remount() tried to work around this by forcing a
-                # rerun, but that rerun still happened while the expander was closed,
-                # so the problem persisted.  Starting expanded=True on first show
-                # is the correct fix.
                 _crop_start_expanded = _cv_boot_key not in st.session_state
+                _crop_start_expanded = False ## HERE
                 if _crop_start_expanded:
                     st.session_state[_cv_boot_key] = True  # mark as initialised
                 with st.expander("Crop Figure", expanded=_crop_start_expanded):
@@ -2351,11 +2386,25 @@ with tab_figs:
                         _pil_img_er = Image.open(_source_img_er).convert("RGB")
                         _orig_w_er, _orig_h_er = _pil_img_er.size
 
+                        # ---- Display width slider (Crop view) ----
+                        _width_key_er = f"er_crop_view_w_{_safe_doi_er}_{_fig_id_er}"
+                        if _width_key_er not in st.session_state:
+                            st.session_state[_width_key_er] = min(1100, _orig_w_er)
+
+                        _disp_w_target_er = st.slider(
+                            "Crop view width (px)",
+                            min_value=400,
+                            max_value=1800,
+                            value=int(st.session_state[_width_key_er]),
+                            step=50,
+                            key=_width_key_er,
+                        )
+
                         _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
 
                         _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
                             str(_source_img_er),
-                            min(_orig_w_er, 1100)
+                            int(_disp_w_target_er),
                         )
                         
                         _draw_mode_er = st.radio(
@@ -2376,12 +2425,13 @@ with tab_figs:
                             st.session_state[_cv_ver_key] += 1
 
                         # ---- Build a stable canvas key ----
-                        _canvas_key_er = f"er_canvas_{_safe_doi_er}_{_fig_id_er}_v{st.session_state[_cv_ver_key]}"
+                        _canvas_key_er = (
+                            f"er_canvas_{_safe_doi_er}_{_fig_id_er}"
+                            f"_{_disp_w_er}x{_disp_h_er}"
+                            f"_v{st.session_state[_cv_ver_key]}"
+                        )
 
                         # ---- Canvas ----
-                        # NOTE: The most common reason you "can't crop anything" is the canvas is in a mode
-                        # that doesn't create rectangles, or the object parsing ignores transforms.
-                        # We set drawing_mode to rect/transform and parse *all* rect transforms properly.
                         _canvas_er = st_canvas(
                             background_image=_bg_img_er,
                             drawing_mode=_draw_mode_er,          # "rect" draws; "transform" edits
@@ -2395,11 +2445,6 @@ with tab_figs:
                         )
 
                         # ---- Extract rectangles from canvas JSON ----
-                        # Fabric.js rect coords are in canvas space; need to account for:
-                        # - left/top
-                        # - width/height
-                        # - scaleX/scaleY
-                        # - (optional) angle: we will convert rotated rects to an axis-aligned bounding box
                         def _rect_to_bbox_canvas(obj: dict):
                             # base dims
                             left = float(obj.get("left", 0.0))
@@ -2424,12 +2469,8 @@ with tab_figs:
                             import math
                             w2 = w * sx
                             h2 = h * sy
-
-                            # Fabric rect is defined with origin at top-left by default in this canvas,
-                            # and rotation happens around its center.
                             cx = left + w2 / 2.0
                             cy = top + h2 / 2.0
-
                             theta = math.radians(angle)
                             cos_t = math.cos(theta)
                             sin_t = math.sin(theta)
@@ -2483,7 +2524,7 @@ with tab_figs:
                             if x2 > x1 and y2 > y1:
                                 _rects_er.append((x1, y1, x2, y2))
 
-                        # de-duplicate exact duplicates (can happen when editing)
+                        # de-duplicate exact duplicates
                         _rects_er = list(dict.fromkeys(_rects_er))
 
                         st.write(f"Rectangles detected: **{len(_rects_er)}**")
@@ -2497,14 +2538,6 @@ with tab_figs:
                                 key=f"er_save_crops_{_safe_doi_er}_{_fig_id_er}",
                             ):
                                 _saved_er = save_crops(_source_img_er, _rects_er, _crops_out_dir_er, prefix=_fig_stem_er)
-                                st.success(f"Saved {len(_saved_er)} crops to `{_crops_out_dir_er}`")
-
-                                if _saved_er:
-                                    _sc = st.columns(min(len(_saved_er), 4))
-                                    for _si, _p in enumerate(_saved_er):
-                                        with _sc[_si % len(_sc)]:
-                                            st.image(str(_p), width=200)
-                                            st.caption(_p.name)
 
                         # ---- Existing crops ----
                         _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
@@ -2513,7 +2546,7 @@ with tab_figs:
                             _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
                             for _ci, _cp in enumerate(_existing_crops_er):
                                 with _crop_cols_er[_ci % len(_crop_cols_er)]:
-                                    st.image(str(_cp), width=150)
+                                    st.image(str(_cp), width=300)
                                     st.caption(_cp.name)
 
                             _cl1_er, _cl2_er = st.columns(2)
@@ -2865,50 +2898,13 @@ with tab_figs:
 
                 subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
 
-                # Set latest_manual / out_base for use by the data completion button and
-                # the original-image lookup below.  Prefer the per-figure workdir, then
-                # fall back to the shared interventions_plextract, then plain plextract.
-                # latest_manual = None
-                # out_base = None
-                # for _wd in [
-                #     _per_fig_plextract,
-                #     rr.run_dir / "interventions" / "interventions_plextract",
-                #     rr.run_dir / "plextract",
-                # ]:
-                #     if _wd is None or not _wd.exists():
-                #         continue
-                #     _lat = latest_plextract_run_dir(_wd)
-                #     if _lat:
-                #         _ob = _lat / "output" / safe_doi
-                #         if _ob.exists():
-                #             latest_manual = _lat
-                #             out_base = _ob
-                #             break
-
                 #### SUBFIGURE SECTION #####
                 if subfig_dirs:
                         # Header for subfigures section
                         st.markdown("**Cropped Subfigures**")
                         for subfig_dir in subfig_dirs:
                             st.markdown(f"### {subfig_dir.name}")
-                            # Resolve source image before expander so it's available for rerun buttons
-                            # _subfig_source_img = None
-                            # _subfig_image_caption = None
                             _subfig_source_img, _subfig_image_caption = resolve_source_img_for_subfig_dir(subfig_dir, safe_doi)
-                            # if latest_manual:
-                            #     input_dir = latest_manual / "input" / safe_doi
-                            #     original_img = input_dir / subfig_dir.name
-                            #     if original_img.exists():
-                            #         _subfig_source_img = original_img
-                            #         _subfig_image_caption = "Cropped image"
-                            # if _subfig_source_img is None:
-                            #     _crops_dir = rr.run_dir / "interventions" / safe_doi
-                            #     for _fig_d in (_crops_dir.iterdir() if _crops_dir.exists() else []):
-                            #         _candidate = _fig_d / subfig_dir.name
-                            #         if _candidate.exists():
-                            #             _subfig_source_img = _candidate
-                            #             _subfig_image_caption = "Cropped image"
-                            #             break
                             if _subfig_source_img is None:
                                 _subfig_final_dir = subfig_dir / "final"
                                 if _subfig_final_dir.exists():
