@@ -12,6 +12,39 @@ import glob, re, numpy as np, cv2
 base_input_dir = os.environ.get("PLEXTRACT_BASE_INPUT")
 base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
 
+
+def _load_manual_pix2val_override(base_output_dir: str, img: str) -> Dict[str, Any] | None:
+    """
+    Return a user-supplied calibration override (if present) for this image.
+
+    The Streamlit intervention UI writes axis-value calibrations to:
+      chartdete/pix2val_override.json
+    Those values are in *image pixel coordinates* and should take precedence
+    over OCR-derived tick calibration when re-running extraction.
+    """
+    override_path = Path(base_output_dir) / img / "chartdete" / "pix2val_override.json"
+    if not override_path.exists():
+        return None
+    with open(override_path, "r") as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or "x" not in data or "y" not in data:
+        raise ValueError(f"Invalid pix2val_override format: {override_path}")
+    return data
+
+
+def _axis_map_value(pixel_value: float, axis_map: Dict[str, Any]) -> float:
+    """Map a pixel coordinate to data value using a pix2val axis mapping."""
+    a = float(axis_map.get("a", 1.0))
+    b = float(axis_map.get("b", 0.0))
+    axis_type = str(axis_map.get("type", "linear")).lower()
+    t = a * pixel_value + b
+    if axis_type == "linear":
+        return t
+    if axis_type == "log10":
+        return 10 ** t
+    # Unknown type fallback: keep linear behavior instead of crashing.
+    return t
+
 def _xy_from_coord(c: Any) -> Tuple[float, float]:
     """
     Accept either a point (x, y) or a bbox [x1, y1, x2, y2]; return a single plotting point.
@@ -204,14 +237,19 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
     assert plot_area_height > 0 and plot_area_width > 0
 
     def convertx(x_img):
-        # if your LineFormer x is already in image coords, use x_img directly;
-        # if it's plot-local, add x1 first. Below I assume image coords:
-        x_local = x_img - x1  # plot-area local (left-positive)
+        # Manual overrides use direct image pixel coordinates (x_img).
+        if "a" in conversions.get("x", {}):
+            return _axis_map_value(float(x_img), conversions["x"])
+        # OCR-derived fallback uses plot-local coordinates.
+        x_local = x_img - x1
         return conversions["x"]["slope"] * x_local + conversions["x"]["intercept"]
 
     def converty(y_img):
-        # Same: assume y_img is image coords. If plot-local, add y1 first.
-        y_up = y2 - y_img     # plot-area local upward-positive
+        # Manual overrides use direct image pixel coordinates (y_img).
+        if "a" in conversions.get("y", {}):
+            return _axis_map_value(float(y_img), conversions["y"])
+        # OCR-derived fallback uses upward-positive plot-local coordinates.
+        y_up = y2 - y_img
         return conversions["y"]["slope"] * y_up + conversions["y"]["intercept"]
 
     converted_lineseries = {}
@@ -311,7 +349,12 @@ def correct_coordinates(run_id: str, img: str):
         )
 
 
-        conversions = calc_conversion(coord_val_map, plot_area=label_coordinates["plot_area"])
+        manual_override = _load_manual_pix2val_override(base_output_dir, img)
+        if manual_override is not None:
+            print("\tUsing manual pix2val_override.json for coordinate conversion")
+            conversions = {"x": manual_override["x"], "y": manual_override["y"]}
+        else:
+            conversions = calc_conversion(coord_val_map, plot_area=label_coordinates["plot_area"])
         convert_data_points(conversions, run_id, img, label_coordinates)
 
     except Exception as e:
