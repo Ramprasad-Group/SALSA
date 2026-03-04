@@ -62,7 +62,6 @@ def _find_chartdete_dir_for_image(
 
 def _has_required_chartdete_output(chartdete_dir: Optional[Path]) -> bool:
     """Return True when the minimum ChartDete files needed by intervention exist."""
-    print('=======CHARTDETE_DIR=====', chartdete_dir)
     if not chartdete_dir or not chartdete_dir.exists():
         return False
     required = [
@@ -144,7 +143,11 @@ def run_plextract_on_crops(
             # Override files that plextract will never overwrite but must
             # survive into the new run (ChartDete writes axis_title_texts.json
             # and pix2val.json; it never touches the *_override variants).
-            _CHARTDETE_OVERRIDES = ["axis_title_override.json", "pix2val_override.json"]
+            _CHARTDETE_OVERRIDES = [
+                "axis_title_override.json",
+                "pix2val_override.json",
+                "axis_type_override.json",
+            ]
 
             for img_name, lf_src_dir in override_lineformer_dirs.items():
                 if not lf_src_dir.exists():
@@ -294,22 +297,40 @@ def run_plextract_intervention_on_crops(
         # Pre-populate chartdete dirs from the sibling of each lineformer dir.
         # The convention is: .../output/<doi>/<img>/lineformer
         #                     .../output/<doi>/<img>/chartdete
+        #
+        # NOTE: the UI now saves user axis-calibration overrides (axis_title_override.json,
+        # pix2val_override.json, axis_type_override.json) into the interventions chartdete
+        # dir (lf_src_dir.parent / "chartdete"), which does NOT contain the full plextract
+        # outputs (bounding_boxes.json etc).  We must therefore check for required plextract
+        # files before deciding to use a candidate dir, and then separately overlay the user
+        # override files on top of whatever full chartdete dir we end up using.
+        _AXIS_OVERRIDE_FILES = [
+            "axis_title_override.json",
+            "pix2val_override.json",
+            "axis_type_override.json",
+        ]
         for img_name, lf_src_dir in override_lineformer_dirs.items():
             cd_src_dir = None
             if override_chartdete_dirs and img_name in override_chartdete_dirs:
                 cd_src_dir = override_chartdete_dirs[img_name]
-            if not cd_src_dir or not cd_src_dir.exists():
-                cd_src_dir = lf_src_dir.parent / "chartdete"
-            if not cd_src_dir.exists():
-                # The intervention override lineformer dir may not have a sibling
-                # chartdete directory. In that case, reuse the original
-                # chartdete outputs from the latest available plextract run.
-                cd_src_dir = _find_chartdete_dir_for_image(
-                    run_dir=run_dir,
-                    safe_doi=safe_doi,
-                    img_name=img_name,
-                    figure_id=figure_id,
-                )
+
+            # Use the sibling chartdete dir only when it has full plextract outputs.
+            # The interventions chartdete dir holds only user overrides and must not
+            # block the heuristic search below.
+            if not _has_required_chartdete_output(cd_src_dir):
+                sibling_cd = lf_src_dir.parent / "chartdete"
+                if _has_required_chartdete_output(sibling_cd):
+                    cd_src_dir = sibling_cd
+                else:
+                    # Sibling dir either doesn't exist or only has override files —
+                    # search the known plextract workdirs for the real chartdete output.
+                    cd_src_dir = _find_chartdete_dir_for_image(
+                        run_dir=run_dir,
+                        safe_doi=safe_doi,
+                        img_name=img_name,
+                        figure_id=figure_id,
+                    )
+
             if not _has_required_chartdete_output(cd_src_dir):
                 _LOG.warning(
                     "[intervention] Missing required ChartDete output for %s; running full plextract fallback.",
@@ -343,6 +364,17 @@ def run_plextract_intervention_on_crops(
                 / img_name / "chartdete"
             )
             shutil.copytree(str(cd_src_dir), str(out_cd_dir), dirs_exist_ok=True)
+
+            # Overlay user axis-calibration overrides from the interventions chartdete
+            # dir on top of the base plextract chartdete.  The UI always writes overrides
+            # to lf_src_dir.parent / "chartdete" regardless of where the full chartdete
+            # output lives, so we layer them in here after the copytree.
+            _user_override_cd = lf_src_dir.parent / "chartdete"
+            if _user_override_cd.exists() and _user_override_cd != cd_src_dir:
+                for _fname in _AXIS_OVERRIDE_FILES:
+                    _src_f = _user_override_cd / _fname
+                    if _src_f.exists():
+                        shutil.copy2(str(_src_f), str(out_cd_dir / _fname))
 
         cmd = [
             "python", str(plextract_intervention_py),
