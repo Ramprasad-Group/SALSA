@@ -389,19 +389,33 @@ def render_axis_configuration_dropdown(
     source_img: Optional[Path],
     key_prefix: str,
     expanded: bool = False,
+    override_dir: Optional[Path] = None,
 ):
-    """Render the full Axis Configuration dropdown, shared between figures and subfigures."""
+    """Render the full Axis Configuration dropdown, shared between figures and subfigures.
+
+    chartdete_dir: directory containing the read-only plextract source files
+                   (axis_title_texts.json, pix2val.json, label_coordinates.json).
+    override_dir:  directory where user overrides are read from and written to
+                   (axis_title_override.json, pix2val_override.json, axis_type_override.json).
+                   Defaults to chartdete_dir when not supplied.
+    """
+    # Determine where overrides are stored; separate from the read-only source dir so
+    # we never write back into the original plextract output.
+    _override_base: Optional[Path] = override_dir if override_dir is not None else chartdete_dir
+
     with section_dropdown("Axis Configuration", expanded=expanded):
         if chartdete_dir is None:
             st.info("No plextract output found for this figure. Run plextract extraction first.")
             return
         chartdete_dir.mkdir(parents=True, exist_ok=True)
+        if _override_base is not None:
+            _override_base.mkdir(parents=True, exist_ok=True)
 
         # ========================
         # Axis Titles
         # ========================
         st.markdown("**Axis Titles**")
-        title_override_path = chartdete_dir / "axis_title_override.json"
+        title_override_path = _override_base / "axis_title_override.json"
         title_ocr_path = chartdete_dir / "axis_title_texts.json"
 
         def _load_axis_titles_default() -> tuple[str, str]:
@@ -456,9 +470,9 @@ def render_axis_configuration_dropdown(
             st.info("No source image available for axis calibration.")
             return
 
-        pix2val_override_path = chartdete_dir / "pix2val_override.json"
+        pix2val_override_path = _override_base / "pix2val_override.json"
         pix2val_orig_path = chartdete_dir / "pix2val.json"
-        axis_type_path = chartdete_dir / "axis_type_override.json"
+        axis_type_path = _override_base / "axis_type_override.json"
         label_coords_path = chartdete_dir / "label_coordinates.json"
 
         # Plot area bbox (optional but helpful)
@@ -2229,6 +2243,23 @@ with tab_text:
         st.warning("No parsed.json found for this DOI in the run workspace.")
 
 with tab_figs:
+    # When the loaded run changes, clear any cached axis-config widget values from the
+    # previous run so the new run's override files (titles, calibration) are displayed.
+    _ax_run_dir_key = "_axis_cfg_last_run_dir"
+    _current_run_dir_str = str(rr.run_dir)
+    if st.session_state.get(_ax_run_dir_key) != _current_run_dir_str:
+        _ax_cfg_patterns = (
+            "_ax_x_title", "_ax_y_title",
+            "_ax_xtype", "_ax_ytype",
+            "_ax_val_xmin", "_ax_val_xmax", "_ax_val_ymin", "_ax_val_ymax",
+            "_ax_pt_xmin", "_ax_pt_xmax", "_ax_pt_ymin", "_ax_pt_ymax",
+            "_ax_calib_ver", "_ax_calib_w",
+        )
+        for _k in list(st.session_state.keys()):
+            if any(pat in _k for pat in _ax_cfg_patterns):
+                del st.session_state[_k]
+        st.session_state[_ax_run_dir_key] = _current_run_dir_str
+
     if not doi_item.figures:
         st.warning("No figures found.")
     for idx, f in enumerate(doi_item.figures):
@@ -2590,10 +2621,14 @@ with tab_figs:
                         _all_imgs = sorted(set(_all_imgs), key=_score, reverse=True)
                         if _all_imgs:
                             _calib_img_path_er = _all_imgs[0]
+                # Overrides always go to the interventions dir so the original
+                # plextract output is never modified.
+                _ax_override_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "chartdete"
                 render_axis_configuration_dropdown(
                     chartdete_dir=_ax_chartdete_er,
                     source_img=_calib_img_path_er,
                     key_prefix=f"er_{_safe_doi_er}_{_ax_sel_name_er}",
+                    override_dir=_ax_override_dir_er,
                 )
 
                 # ========================
@@ -2921,10 +2956,13 @@ with tab_figs:
                             )
                             _subfig_lf_dir = get_lineformer_dir(subfig_dir)
                             _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                            # Overrides go to the interventions dir; source data still read from subfig_dir.
+                            _subfig_override_chartdete = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "chartdete"
                             render_axis_configuration_dropdown(
                                 chartdete_dir=subfig_dir / "chartdete",
                                 source_img=_subfig_source_img,
                                 key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                                override_dir=_subfig_override_chartdete,
                             )
                             render_series_management_dropdown(
                                 run_dir=rr.run_dir,
