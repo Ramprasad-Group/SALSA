@@ -2976,12 +2976,24 @@ with tab_figs:
                                 key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
                             )
 
-                            final_dir = subfig_dir / "final"
-                            final_csv = final_dir / "final_dataset.csv"
+                            # Prefer latest intervention output over original plextract for the OCR display.
+                            _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
+                            _lat_int = latest_plextract_run_dir(_subfig_int_wd) if _subfig_int_wd.exists() else None
+                            _best_csv: Optional[Path] = None
+                            _best_axis_dir: Optional[Path] = subfig_dir
+                            if _lat_int:
+                                _int_out = _lat_int / "output" / safe_doi / subfig_dir.name
+                                _int_csv = _int_out / "final" / "final_dataset.csv"
+                                if _int_csv.exists():
+                                    _best_csv = _int_csv
+                                    _best_axis_dir = _int_out
+                            if _best_csv is None:
+                                _orig = subfig_dir / "final" / "final_dataset.csv"
+                                _best_csv = _orig if _orig.exists() else None
                             render_ocr_dropdown(
-                                csv_path=final_csv if final_csv.exists() else None,
+                                csv_path=_best_csv,
                                 key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
-                                axis_override_dir=subfig_dir,
+                                axis_override_dir=_best_axis_dir,
                             )
 
                             emit_rows_path_subfig = find_emit_rows_for_source(
@@ -3097,27 +3109,19 @@ with tab_figs:
                                     except Exception as _subfig_llm_e:
                                         st.error(f"Error: {_subfig_llm_e}")
 
-                            # subfigure-specific intervention workdir
-                            _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
-                            if _subfig_int_wd.exists():
-                                _lat = latest_plextract_run_dir(_subfig_int_wd)
-                                if _lat:
-                                    _out = _lat / "output" / safe_doi / subfig_dir.name
-                                    if _out.exists():
-                                        render_ocr_dropdown(
-                                            csv_path=_out / "final" / "final_dataset.csv",
-                                            key_prefix=f"subfig_int_ocr_{safe_doi}_{subfig_dir.name}",
-                                            axis_override_dir=_out,
-                                            title=f"New OCR-Extracted Data: {subfig_dir.name}",
-                                        )
-                                        _emit = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", subfig_dir.name)
-                                        render_llm_dropdown(
-                                            run_dir=rr.run_dir,
-                                            emit_rows_path=_emit,
-                                            key_prefix=f"subfig_int_llm_{safe_doi}_{subfig_dir.name}",
-                                            file_name_prefix=subfig_dir.name,
-                                            title=f"New LLM-Generated Dataset: {subfig_dir.name}",
-                                        )
+                            # Show LLM output from the latest intervention run if present.
+                            # (_subfig_int_wd and _lat_int computed above for OCR display.)
+                            if _lat_int:
+                                _int_out_llm = _lat_int / "output" / safe_doi / subfig_dir.name
+                                if _int_out_llm.exists():
+                                    _emit = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", subfig_dir.name)
+                                    render_llm_dropdown(
+                                        run_dir=rr.run_dir,
+                                        emit_rows_path=_emit,
+                                        key_prefix=f"subfig_int_llm_{safe_doi}_{subfig_dir.name}",
+                                        file_name_prefix=subfig_dir.name,
+                                        title=f"New LLM-Generated Dataset: {subfig_dir.name}",
+                                    )
 
                             # Add separator between subfigures if there are multiple
                             if subfig_dir != subfig_dirs[-1]:
