@@ -205,7 +205,7 @@ def intervention_dir(run_dir: Path, safe_doi: str, figure_id: str) -> Path:
 
 
 def override_lineformer_dir(run_dir: Path, safe_doi: str, figure_id: str) -> Path:
-    return intervention_dir(run_dir, safe_doi, figure_id) / "lineformer"
+    return intervention_dir(run_dir, safe_doi, figure_id) / "new_lineformer"
 
 
 def mapping_json_path(run_dir: Path, safe_doi: str, figure_id: str) -> Path:

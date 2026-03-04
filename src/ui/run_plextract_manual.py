@@ -77,7 +77,9 @@ def run_plextract_on_crops(
     safe_doi: str,
     image_paths: list[Path],
     override_lineformer_dirs: Optional[Dict[str, Path]] = None,
+    override_chartdete_dirs: Optional[Dict[str, Path]] = None,
     figure_id: Optional[str] = None,
+    intervention: bool = False,
 ) -> None:
     """
     Run plextract on a list of image files (crops or full figures).
@@ -99,21 +101,51 @@ def run_plextract_on_crops(
         image_paths:  Image files to process.
         override_lineformer_dirs:
             Optional mapping of **image filename** (e.g. ``Figure_1_subfig_0.png``)
-            to a Path containing lineformer masks to pre-populate.  When provided,
-            ``--skip-lineformer`` is passed so the pipeline reuses these masks
-            instead of regenerating them.
+            to a Path containing lineformer masks to pre-populate.  When provided
+            and ``intervention=False``, ``--skip-lineformer`` is passed so the
+            pipeline reuses these masks instead of regenerating them.
+            Required when ``intervention=True``.
+        override_chartdete_dirs:
+            Optional mapping of image filename to a chartdete directory.
+            Only used when ``intervention=True``.  When provided for an image,
+            this path is used first to supply the base ChartDete output and
+            avoids relying on heuristic chartdete lookup.
         figure_id:
             When set, results are written to a per-figure subdirectory
             (``<run_dir>/interventions/<safe_doi>/<figure_id>/plextract_interventions/``)
             so that multiple figures can each track their own intervention
             extraction history without interfering with one another.
+        intervention:
+            When ``True``, calls ``plextract_intervention.py`` instead of
+            ``plextract.py``.  The intervention pipeline skips ChartDete and
+            all OCR passes — their outputs are reused from disk — and only
+            re-runs the steps that depend on user-edited data:
+
+            1. ``regenerate_coordinates_from_masks``
+            2. ``correct_coordinates``
+            3. ``match_legend``
+            4. ``export_labeled_dataset_and_plot``
+
+            The chartdete outputs required by steps 2–4 are located automatically
+            from ``override_chartdete_dirs`` or the sibling
+            ``<intervention_dir>/new_chartdete/`` of the supplied lineformer dir,
+            falling back to a full plextract run if neither is available.
+            ``override_lineformer_dirs`` is required in this mode.
     """
     if not image_paths:
         raise FileNotFoundError("No image files provided for extraction")
+    if intervention and not override_lineformer_dirs:
+        raise ValueError(
+            "override_lineformer_dirs is required for the intervention pipeline. "
+            "Call apply_overrides_to_plextract() first to populate the masks."
+        )
 
-    skip_lineformer = bool(override_lineformer_dirs)
+    if intervention:
+        script_py = scripts_root / "extract_figure_data" / "plextract_intervention.py"
+    else:
+        script_py = scripts_root / "extract_figure_data" / "plextract.py"
 
-    plextract_py = scripts_root / "extract_figure_data" / "plextract.py"
+    skip_lineformer = bool(override_lineformer_dirs) and not intervention
 
     if figure_id:
         workdir = run_dir / "interventions" / safe_doi / figure_id / "plextract_interventions"
@@ -122,6 +154,27 @@ def run_plextract_on_crops(
     logs_dir = workdir / "logs"
     workdir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine the next incremental run ID.  Always needed for intervention
+    # mode; only needed for full mode when override_lineformer_dirs is supplied.
+    results_root = workdir / "results"
+    results_root.mkdir(parents=True, exist_ok=True)
+    existing = [
+        int(p.name)
+        for p in results_root.iterdir()
+        if p.is_dir() and p.name.isdigit()
+    ]
+    next_id = str(max(existing) + 1 if existing else 0)
+    need_run_id = intervention or bool(override_lineformer_dirs)
+
+    # Override files that plextract will never overwrite but must survive into
+    # the new run (ChartDete writes axis_title_texts.json and pix2val.json;
+    # it never touches the *_override variants).
+    _OVERRIDE_FILES = [
+        "axis_title_override.json",
+        "pix2val_override.json",
+        "axis_type_override.json",
+    ]
 
     with tempfile.TemporaryDirectory(prefix="plextract_crops_") as td:
         staged_root = Path(td) / "figures" / safe_doi
@@ -132,24 +185,6 @@ def run_plextract_on_crops(
 
         # Pre-populate lineformer output dirs so plextract reuses the masks.
         if override_lineformer_dirs:
-            results_root = workdir / "results"
-            results_root.mkdir(parents=True, exist_ok=True)
-            existing = [
-                int(p.name)
-                for p in results_root.iterdir()
-                if p.is_dir() and p.name.isdigit()
-            ]
-            next_id = str(max(existing) + 1 if existing else 0)
-
-            # Override files that plextract will never overwrite but must
-            # survive into the new run (ChartDete writes axis_title_texts.json
-            # and pix2val.json; it never touches the *_override variants).
-            _CHARTDETE_OVERRIDES = [
-                "axis_title_override.json",
-                "pix2val_override.json",
-                "axis_type_override.json",
-            ]
-
             for img_name, lf_src_dir in override_lineformer_dirs.items():
                 if not lf_src_dir.exists():
                     continue
@@ -162,212 +197,97 @@ def run_plextract_on_crops(
                     if src_file.is_file():
                         shutil.copy2(src_file, out_lf_dir / src_file.name)
 
-                # Pre-populate user override files from the sibling chartdete dir
-                # so finalize_labels picks them up even after ChartDete re-runs.
-                src_cd = lf_src_dir.parent / "chartdete"
-                if src_cd.exists():
-                    out_cd = results_root / next_id / "output" / safe_doi / img_name / "chartdete"
-                    for fname in _CHARTDETE_OVERRIDES:
-                        src_f = src_cd / fname
-                        if src_f.exists():
-                            out_cd.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(str(src_f), str(out_cd / fname))
+        if intervention:
+            # For intervention: locate the base ChartDete output for each image,
+            # copy it in full, then overlay user override files on top.
+            for img_name, lf_src_dir in override_lineformer_dirs.items():
+                cd_src_dir = None
+                if override_chartdete_dirs and img_name in override_chartdete_dirs:
+                    cd_src_dir = override_chartdete_dirs[img_name]
 
-        cmd = [
-            "python", str(plextract_py),
-            "--input", str(staged_root.parent),
-            "--workdir", str(workdir),
-            "--log_file", str(logs_dir),
-        ]
-        if skip_lineformer:
-            cmd.append("--skip-lineformer")
-            # Pass the same run ID that was used to pre-populate lineformer
-            # masks, so plextract writes output into the same results directory
-            # instead of creating a new one.
-            cmd.extend(["--run-id", next_id])
-        subprocess.run(cmd, check=True)
-
-
-def run_plextract_intervention_on_crops(
-    scripts_root: Path,
-    run_dir: Path,
-    safe_doi: str,
-    image_paths: list[Path],
-    override_lineformer_dirs: Dict[str, Path],
-    figure_id: Optional[str] = None,
-    override_chartdete_dirs: Optional[Dict[str, Path]] = None,
-) -> None:
-    """
-    Run the lightweight intervention pipeline (plextract_intervention.py) on a
-    list of image files.
-
-    Unlike :func:`run_plextract_on_crops`, this function:
-
-    * Calls ``plextract_intervention.py`` instead of ``plextract.py``.
-    * **Skips ChartDete and all OCR passes** — their outputs already exist on
-      disk and have not changed because the user only edited series masks,
-      renamed/deleted series, or updated axis-title overrides.
-    * Runs only the steps that depend on the edited data:
-
-      1. ``regenerate_coordinates_from_masks``  — rebuilds ``coordinates.json``
-         from the (possibly user-edited) ``mask_series_*.png`` files.
-      2. ``correct_coordinates``  — re-converts pixel coords to data-space
-         values using the existing OCR / ChartDete outputs.
-      3. ``match_legend``  — re-matches legend entries to series (mask colours
-         may have changed).
-      4. ``export_labeled_dataset_and_plot``  — produces ``final_dataset.csv``
-         and ``final_image.png``, honouring ``intervention_overrides.json``
-         (renamed / deleted series) and ``axis_title_override.json``.
-
-    The chartdete outputs required by steps 2–4 are located automatically as
-    the sibling ``chartdete/`` directory of each supplied lineformer dir::
-
-        .../output/<doi>/<img>/lineformer/   ← override_lineformer_dirs value
-        .../output/<doi>/<img>/chartdete/    ← derived automatically
-
-    Args:
-        scripts_root:             Path to the ``src/`` directory.
-        run_dir:                  Root of the current pipeline run.
-        safe_doi:                 DOI with ``/`` replaced by ``@``.
-        image_paths:              Image files to process.
-        override_lineformer_dirs: **Required** mapping of image filename
-            (e.g. ``Figure_1_subfig_0.png``) to the lineformer directory that
-            holds the pre-populated / user-edited masks and
-            ``intervention_overrides.json``.  Call
-            :func:`~intervention.apply_overrides_to_plextract` before this
-            function to ensure the directory is up to date.
-        figure_id:                When set, results are written to a per-figure
-            subdirectory so multiple figures do not interfere with one another.
-        override_chartdete_dirs:  Optional mapping of image filename to a
-            chartdete directory. When provided for an image, this path is used
-            first and avoids relying on heuristic chartdete lookup.
-    """
-    if not image_paths:
-        raise FileNotFoundError("No image files provided for extraction")
-    if not override_lineformer_dirs:
-        raise ValueError(
-            "override_lineformer_dirs is required for the intervention pipeline. "
-            "Call apply_overrides_to_plextract() first to populate the masks."
-        )
-
-    plextract_intervention_py = (
-        scripts_root / "extract_figure_data" / "plextract_intervention.py"
-    )
-
-    if figure_id:
-        workdir = (
-            run_dir / "interventions" / safe_doi / figure_id
-            / "plextract_interventions"
-        )
-    else:
-        workdir = run_dir / "interventions" / "interventions_plextract"
-    logs_dir = workdir / "logs"
-    workdir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    # Determine the next incremental run ID up front (we always need it).
-    results_root = workdir / "results"
-    results_root.mkdir(parents=True, exist_ok=True)
-    existing = [
-        int(p.name)
-        for p in results_root.iterdir()
-        if p.is_dir() and p.name.isdigit()
-    ]
-    next_id = str(max(existing) + 1 if existing else 0)
-
-    with tempfile.TemporaryDirectory(prefix="plextract_intervention_") as td:
-        staged_root = Path(td) / "figures" / safe_doi
-        staged_root.mkdir(parents=True, exist_ok=True)
-
-        for img_path in image_paths:
-            shutil.copy2(img_path, staged_root / img_path.name)
-
-        # Pre-populate lineformer dirs (edited masks + intervention_overrides.json).
-        for img_name, lf_src_dir in override_lineformer_dirs.items():
-            if not lf_src_dir.exists():
-                continue
-            out_lf_dir = (
-                results_root / next_id / "output" / safe_doi
-                / img_name / "lineformer"
-            )
-            out_lf_dir.mkdir(parents=True, exist_ok=True)
-            for src_file in lf_src_dir.iterdir():
-                if src_file.is_file():
-                    shutil.copy2(src_file, out_lf_dir / src_file.name)
-
-        _AXIS_OVERRIDE_FILES = [
-            "axis_title_override.json",
-            "pix2val_override.json",
-            "axis_type_override.json",
-        ]
-        for img_name, lf_src_dir in override_lineformer_dirs.items():
-            cd_src_dir = None
-            if override_chartdete_dirs and img_name in override_chartdete_dirs:
-                cd_src_dir = override_chartdete_dirs[img_name]
-
-            if not _has_required_chartdete_output(cd_src_dir):
-                sibling_cd = lf_src_dir.parent / "chartdete"
-                if _has_required_chartdete_output(sibling_cd):
-                    cd_src_dir = sibling_cd
-                else:
+                if not _has_required_chartdete_output(cd_src_dir):
+                    sibling_cd = lf_src_dir.parent / "new_chartdete"
+                    if _has_required_chartdete_output(sibling_cd):
+                        cd_src_dir = sibling_cd
+                    else:
+                        cd_src_dir = _find_chartdete_dir_for_image(
+                            run_dir=run_dir,
+                            safe_doi=safe_doi,
+                            img_name=img_name,
+                            figure_id=figure_id,
+                        )
+                if not _has_required_chartdete_output(cd_src_dir):
+                    _LOG.warning(
+                        "[intervention] Missing required ChartDete output for %s; running full plextract fallback.",
+                        img_name,
+                    )
+                    # Generate ChartDete outputs by running the full pipeline for this image once.
+                    run_plextract_on_crops(
+                        scripts_root=scripts_root,
+                        run_dir=run_dir,
+                        safe_doi=safe_doi,
+                        image_paths=[next((p for p in image_paths if p.name == img_name), image_paths[0])],
+                        override_lineformer_dirs=None,
+                        figure_id=figure_id,
+                    )
                     cd_src_dir = _find_chartdete_dir_for_image(
                         run_dir=run_dir,
                         safe_doi=safe_doi,
                         img_name=img_name,
                         figure_id=figure_id,
                     )
-            if not _has_required_chartdete_output(cd_src_dir):
-                _LOG.warning(
-                    "[intervention] Missing required ChartDete output for %s; running full plextract fallback.",
-                    img_name,
-                )
-                # Generate ChartDete outputs by running the full pipeline for this image once.
-                run_plextract_on_crops(
-                    scripts_root=scripts_root,
-                    run_dir=run_dir,
-                    safe_doi=safe_doi,
-                    image_paths=[next((p for p in image_paths if p.name == img_name), image_paths[0])],
-                    override_lineformer_dirs=None,
-                    figure_id=figure_id,
-                )
-                cd_src_dir = _find_chartdete_dir_for_image(
-                    run_dir=run_dir,
-                    safe_doi=safe_doi,
-                    img_name=img_name,
-                    figure_id=figure_id,
-                )
 
-            if not _has_required_chartdete_output(cd_src_dir):
-                _LOG.warning(
-                    "[intervention] Missing required ChartDete output (full fallback also unavailable): %s",
-                    (cd_src_dir / "bounding_boxes.json") if cd_src_dir else f"<none for {img_name}>",
+                if not _has_required_chartdete_output(cd_src_dir):
+                    _LOG.warning(
+                        "[intervention] Missing required ChartDete output (full fallback also unavailable): %s",
+                        (cd_src_dir / "bounding_boxes.json") if cd_src_dir else f"<none for {img_name}>",
+                    )
+                    continue
+
+                out_cd_dir = (
+                    results_root / next_id / "output" / safe_doi
+                    / img_name / "chartdete"
                 )
-                continue
+                shutil.copytree(str(cd_src_dir), str(out_cd_dir), dirs_exist_ok=True)
 
-            out_cd_dir = (
-                results_root / next_id / "output" / safe_doi
-                / img_name / "chartdete"
-            )
-            shutil.copytree(str(cd_src_dir), str(out_cd_dir), dirs_exist_ok=True)
-
-            # Overlay user axis-calibration overrides from the interventions chartdete
-            # dir on top of the base plextract chartdete.  The UI always writes overrides
-            # to lf_src_dir.parent / "chartdete" regardless of where the full chartdete
-            # output lives, so we layer them in here after the copytree.
-            _user_override_cd = lf_src_dir.parent / "chartdete"
-            if _user_override_cd.exists() and _user_override_cd != cd_src_dir:
-                for _fname in _AXIS_OVERRIDE_FILES:
-                    _src_f = _user_override_cd / _fname
-                    if _src_f.exists():
-                        shutil.copy2(str(_src_f), str(out_cd_dir / _fname))
+                # Overlay user axis-calibration overrides from the interventions new_chartdete
+                # dir on top of the base plextract chartdete.  The UI always writes overrides
+                # to lf_src_dir.parent / "new_chartdete" regardless of where the full chartdete
+                # output lives, so we layer them in here after the copytree.
+                _user_override_cd = lf_src_dir.parent / "new_chartdete"
+                if _user_override_cd.exists() and _user_override_cd != cd_src_dir:
+                    for _fname in _OVERRIDE_FILES:
+                        _src_f = _user_override_cd / _fname
+                        if _src_f.exists():
+                            shutil.copy2(str(_src_f), str(out_cd_dir / _fname))
+        else:
+            # For the full pipeline: only pre-populate the specific user override
+            # files (ChartDete will regenerate the base chartdete outputs itself).
+            if override_lineformer_dirs:
+                for img_name, lf_src_dir in override_lineformer_dirs.items():
+                    if not lf_src_dir.exists():
+                        continue
+                    src_cd = lf_src_dir.parent / "new_chartdete"
+                    if src_cd.exists():
+                        out_cd = results_root / next_id / "output" / safe_doi / img_name / "chartdete"
+                        for fname in _OVERRIDE_FILES:
+                            src_f = src_cd / fname
+                            if src_f.exists():
+                                out_cd.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(str(src_f), str(out_cd / fname))
 
         cmd = [
-            "python", str(plextract_intervention_py),
+            "python", str(script_py),
             "--input", str(staged_root.parent),
             "--workdir", str(workdir),
             "--log_file", str(logs_dir),
-            "--run-id", next_id,
         ]
+        if skip_lineformer:
+            cmd.append("--skip-lineformer")
+        if need_run_id:
+            # Pass the run ID so plextract writes output into the same results
+            # directory that was pre-populated with lineformer masks / chartdete.
+            cmd.extend(["--run-id", next_id])
         subprocess.run(cmd, check=True)
 
 

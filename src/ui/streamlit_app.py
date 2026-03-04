@@ -23,7 +23,7 @@ from intervention import (
     apply_overrides_to_plextract,
     override_lineformer_dir,
 )
-from run_plextract_manual import run_plextract_intervention_on_crops
+from run_plextract_manual import run_plextract_on_crops as _run_plextract_on_crops
 from custom_instructions import (
     default_instructions,
     list_presets,
@@ -2623,7 +2623,7 @@ with tab_figs:
                             _calib_img_path_er = _all_imgs[0]
                 # Overrides always go to the interventions dir so the original
                 # plextract output is never modified.
-                _ax_override_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "chartdete"
+                _ax_override_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "new_chartdete"
                 render_axis_configuration_dropdown(
                     chartdete_dir=_ax_chartdete_er,
                     source_img=_calib_img_path_er,
@@ -2709,11 +2709,12 @@ with tab_figs:
                                 if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
                                     _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
                         with st.spinner("Re-running data extraction..."):
-                            run_plextract_intervention_on_crops(
+                            _run_plextract_on_crops(
                                 scripts_root=scripts_root, run_dir=rr.run_dir,
                                 safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
                                 override_lineformer_dirs=_rerun_lf_er,
                                 figure_id=_fig_id_er,
+                                intervention=True,
                             )
                         st.success("Data extraction complete!")
                         st.rerun()
@@ -2957,7 +2958,7 @@ with tab_figs:
                             _subfig_lf_dir = get_lineformer_dir(subfig_dir)
                             _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
                             # Overrides go to the interventions dir; source data still read from subfig_dir.
-                            _subfig_override_chartdete = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "chartdete"
+                            _subfig_override_chartdete = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "new_chartdete"
                             render_axis_configuration_dropdown(
                                 chartdete_dir=subfig_dir / "chartdete",
                                 source_img=_subfig_source_img,
@@ -3019,7 +3020,7 @@ with tab_figs:
                                             _cd_map[_subfig_source_img.name] = _subfig_cd_dir
                                         target_id = subfig_dir.name
                                         with st.spinner("Re-running data extraction..."):
-                                            run_plextract_intervention_on_crops(
+                                            _run_plextract_on_crops(
                                                 scripts_root=scripts_root,
                                                 run_dir=rr.run_dir,
                                                 safe_doi=safe_doi,
@@ -3027,6 +3028,7 @@ with tab_figs:
                                                 override_lineformer_dirs=_lf_map,
                                                 figure_id=target_id,
                                                 override_chartdete_dirs=_cd_map,
+                                                intervention=True,
                                             )
                                         st.success(f"Data extraction complete for {subfig_dir.name}!")
                                         st.rerun()
