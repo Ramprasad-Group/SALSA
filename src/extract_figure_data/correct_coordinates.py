@@ -13,7 +13,7 @@ base_input_dir = os.environ.get("PLEXTRACT_BASE_INPUT")
 base_output_dir = os.environ.get("PLEXTRACT_BASE_OUTPUT")
 
 
-def _load_manual_pix2val_override(base_output_dir: str, img: str) -> Dict[str, Any] | None:
+def _load_manual_pix2val_override(base_output_dir: str, img: str):
     """
     Return a user-supplied calibration override (if present) for this image.
 
@@ -23,6 +23,7 @@ def _load_manual_pix2val_override(base_output_dir: str, img: str) -> Dict[str, A
     over OCR-derived tick calibration when re-running extraction.
     """
     override_path = Path(base_output_dir) / img / "chartdete" / "pix2val_override.json"
+    print('---override path---', override_path)
     if not override_path.exists():
         return None
     with open(override_path, "r") as f:
@@ -353,6 +354,7 @@ def correct_coordinates(run_id: str, img: str):
         if manual_override is not None:
             print("\tUsing manual pix2val_override.json for coordinate conversion")
             conversions = {"x": manual_override["x"], "y": manual_override["y"]}
+            print("conversions: ", conversions)
         else:
             conversions = calc_conversion(coord_val_map, plot_area=label_coordinates["plot_area"])
         convert_data_points(conversions, run_id, img, label_coordinates)
