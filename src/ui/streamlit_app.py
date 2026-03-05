@@ -1382,8 +1382,8 @@ def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: li
         safe = doi_to_safe(d.doi)
         rows.append({
             "DOI": d.doi,
-            "Figures": len(d.figures or []),
             "Tables": len(d.tables or []),
+            "Figures": len(d.figures or []),
             "Interventions Needed": flagged_counts.get(safe, 0) if include_interventions else None,
             "_doi_safe": safe,  # hidden helper
         })
@@ -1442,7 +1442,7 @@ def resolve_source_img_for_subfig_dir(subfig_dir: Path, safe_doi: str):
         # Try exact name first (in case it includes extension)
         p = input_dir / subfig_dir.name
         if p.exists():
-            return p, "Cropped image (run input)"
+            return p, "Cropped image"
 
         # Try matching by stem (handles missing/extra extension)
         stem = Path(subfig_dir.name).stem
@@ -2232,8 +2232,8 @@ if doi_item is None:
     st.stop()
 
 # ---------------- Tabs (under DOI dropdown) ----------------
-tab_text, tab_figs, tab_tables, tab_chem, tab_xy = st.tabs(
-    ["Parsed text", "Figures", "Tables", "Chemical Composition", "Dataset"]
+tab_text, tab_tables, tab_figs, tab_chem, tab_xy = st.tabs(
+    ["Parsed text", "Tables", "Figures", "Chemical Composition", "Dataset"]
 )
 
 with tab_text:
@@ -2241,6 +2241,58 @@ with tab_text:
         st.json(json.loads(doi_item.parsed_json_path.read_text()))
     else:
         st.warning("No parsed.json found for this DOI in the run workspace.")
+
+with tab_tables:
+    if not doi_item.tables:
+        st.warning("No tables found.")
+    for idx, t in enumerate(doi_item.tables):
+        # Add divider between tables
+        if idx > 0:
+            st.divider()
+
+        # Table header and basic info (not in expander)
+        st.markdown(f"### {t.id}")
+        with st.expander(f"### {t.id}"):
+            if t.caption:
+                st.markdown(f"**Caption:** {t.caption}")
+            if t.table_path and t.table_path.exists():
+                suf = t.table_path.suffix.lower()
+                if suf in [".png", ".jpg", ".jpeg", ".webp", ".gif"]:
+                    st_image_auto(str(t.table_path), full_width=True)
+                elif suf == ".csv":
+                    df = pd.read_csv(t.table_path)
+                    st.data_editor(df, use_container_width=True, key=f"table_{selected_doi}_{t.id}")
+                else:
+                    st.code(t.table_path.read_text(errors="ignore")[:20000])
+                st.caption(str(t.table_path))
+
+        # --- Display LLM-generated emit_rows from row_cache ---
+        emit_rows_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "table", t.id)
+        if emit_rows_path:
+            df_emit = load_emit_rows(emit_rows_path)
+            if df_emit is not None and not df_emit.empty:
+                with section_dropdown("LLM-Generated Dataset", expanded=False):
+                    st.caption(f"**Source:** `{emit_rows_path.relative_to(rr.run_dir)}`")
+                    st.data_editor(df_emit, use_container_width=True, hide_index=True, key=f"table_emit_{selected_doi}_{t.id}")
+
+                    csv_data = df_emit.to_csv(index=False)
+                    st.download_button(
+                        label="Download emit_rows CSV",
+                        data=csv_data,
+                        file_name=f"{t.id}_emit_rows.csv",
+                        mime="text/csv",
+                    )
+        else:
+            # Check if row_cache exists but no data found for this table
+            row_cache_dir = rr.run_dir / "complete_dataset" / "row_cache"
+            if row_cache_dir.exists():
+                with section_dropdown("LLM-Generated Dataset", expanded=False):
+                    st.info(f"No row_cache data found for {t.id}. Cache may not have been generated yet.")
+
+        # Metadata expander
+        if t.metadata_path and t.metadata_path.exists():
+            with st.expander("Metadata", expanded=False):
+                st.json(json.loads(t.metadata_path.read_text()))
 
 with tab_figs:
     # When the loaded run changes, clear any cached axis-config widget values from the
@@ -2955,6 +3007,37 @@ with tab_figs:
                                 key=f"subfig_{safe_doi}_{subfig_dir.name}_img",
                                 expanded=True,
                             )
+                           
+                                                        # Prefer latest intervention output over original plextract for the OCR display.
+                            _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
+                            _lat_int = latest_plextract_run_dir(_subfig_int_wd) if _subfig_int_wd.exists() else None
+                            _best_csv: Optional[Path] = None
+                            _best_axis_dir: Optional[Path] = subfig_dir
+                            
+                            if _lat_int:
+                                _int_out = _lat_int / "output" / safe_doi / subfig_dir.name
+                                _int_csv = _int_out / "final" / "final_dataset.csv"
+                                if _int_csv.exists():
+                                    _best_csv = _int_csv
+                                    _best_axis_dir = _int_out
+                            if _best_csv is None:
+                                _orig = subfig_dir / "final" / "final_dataset.csv"
+                                _best_csv = _orig if _orig.exists() else None
+                            
+                            render_ocr_dropdown(
+                                csv_path=_best_csv,
+                                key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
+                                axis_override_dir=_best_axis_dir)
+
+                            emit_rows_path_subfig = find_emit_rows_for_source(
+                                rr.run_dir, selected_doi, "figure", subfig_dir.name)
+                            
+                            render_llm_dropdown(
+                                run_dir=rr.run_dir,
+                                emit_rows_path=emit_rows_path_subfig,
+                                key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
+                                file_name_prefix=subfig_dir.name)
+
                             _subfig_lf_dir = get_lineformer_dir(subfig_dir)
                             _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
                             # Overrides go to the interventions dir; source data still read from subfig_dir.
@@ -2974,41 +3057,6 @@ with tab_figs:
                                 lf_override_dir=_subfig_override_lf,
                                 source_img=_subfig_source_img,
                                 key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
-                            )
-
-                            # Prefer latest intervention output over original plextract for the OCR display.
-                            _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
-                            _lat_int = latest_plextract_run_dir(_subfig_int_wd) if _subfig_int_wd.exists() else None
-                            _best_csv: Optional[Path] = None
-                            _best_axis_dir: Optional[Path] = subfig_dir
-                            if _lat_int:
-                                _int_out = _lat_int / "output" / safe_doi / subfig_dir.name
-                                _int_csv = _int_out / "final" / "final_dataset.csv"
-                                if _int_csv.exists():
-                                    _best_csv = _int_csv
-                                    _best_axis_dir = _int_out
-                            if _best_csv is None:
-                                _orig = subfig_dir / "final" / "final_dataset.csv"
-                                _best_csv = _orig if _orig.exists() else None
-                            render_ocr_dropdown(
-                                csv_path=_best_csv,
-                                key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
-                                axis_override_dir=_best_axis_dir,
-                            )
-
-                            emit_rows_path_subfig = find_emit_rows_for_source(
-                                rr.run_dir, selected_doi, "figure", subfig_dir.name
-                            )
-                            render_llm_dropdown(
-                                run_dir=rr.run_dir,
-                                emit_rows_path=emit_rows_path_subfig,
-                                key_prefix=f"subfig_{selected_doi}_{subfig_dir.name}",
-                                file_name_prefix=subfig_dir.name,
-                            )
-
-                            _subfig_metadata = final_dir / "final_metadata.json"
-                            render_metadata_dropdown(
-                                metadata_path=_subfig_metadata if _subfig_metadata.exists() else None,
                             )
 
                             # ========================
@@ -3109,8 +3157,7 @@ with tab_figs:
                                     except Exception as _subfig_llm_e:
                                         st.error(f"Error: {_subfig_llm_e}")
 
-                            # Show LLM output from the latest intervention run if present.
-                            # (_subfig_int_wd and _lat_int computed above for OCR display.)
+                            # Show LLM output from the latest OCR and LLM data generation run if present.
                             if _lat_int:
                                 _int_out_llm = _lat_int / "output" / safe_doi / subfig_dir.name
                                 if _int_out_llm.exists():
@@ -3122,62 +3169,13 @@ with tab_figs:
                                         file_name_prefix=subfig_dir.name,
                                         title=f"New LLM-Generated Dataset: {subfig_dir.name}",
                                     )
+                            
+                            render_metadata_dropdown(metadata_path=f.metadata_path)
+
 
                             # Add separator between subfigures if there are multiple
                             if subfig_dir != subfig_dirs[-1]:
                                 st.markdown("---")
-
-with tab_tables:
-    if not doi_item.tables:
-        st.warning("No tables found.")
-    for idx, t in enumerate(doi_item.tables):
-        # Add divider between tables
-        if idx > 0:
-            st.divider()
-
-        # Table header and basic info (not in expander)
-        st.markdown(f"### {t.id}")
-        with st.expander(f"### {t.id}"):
-            if t.caption:
-                st.markdown(f"**Caption:** {t.caption}")
-            if t.table_path and t.table_path.exists():
-                suf = t.table_path.suffix.lower()
-                if suf in [".png", ".jpg", ".jpeg", ".webp", ".gif"]:
-                    st_image_auto(str(t.table_path), full_width=True)
-                elif suf == ".csv":
-                    df = pd.read_csv(t.table_path)
-                    st.data_editor(df, use_container_width=True, key=f"table_{selected_doi}_{t.id}")
-                else:
-                    st.code(t.table_path.read_text(errors="ignore")[:20000])
-                st.caption(str(t.table_path))
-
-        # --- Display LLM-generated emit_rows from row_cache ---
-        emit_rows_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "table", t.id)
-        if emit_rows_path:
-            df_emit = load_emit_rows(emit_rows_path)
-            if df_emit is not None and not df_emit.empty:
-                with section_dropdown("LLM-Generated Dataset", expanded=False):
-                    st.caption(f"**Source:** `{emit_rows_path.relative_to(rr.run_dir)}`")
-                    st.data_editor(df_emit, use_container_width=True, hide_index=True, key=f"table_emit_{selected_doi}_{t.id}")
-
-                    csv_data = df_emit.to_csv(index=False)
-                    st.download_button(
-                        label="Download emit_rows CSV",
-                        data=csv_data,
-                        file_name=f"{t.id}_emit_rows.csv",
-                        mime="text/csv",
-                    )
-        else:
-            # Check if row_cache exists but no data found for this table
-            row_cache_dir = rr.run_dir / "complete_dataset" / "row_cache"
-            if row_cache_dir.exists():
-                with section_dropdown("LLM-Generated Dataset", expanded=False):
-                    st.info(f"No row_cache data found for {t.id}. Cache may not have been generated yet.")
-
-        # Metadata expander
-        if t.metadata_path and t.metadata_path.exists():
-            with st.expander("Metadata", expanded=False):
-                st.json(json.loads(t.metadata_path.read_text()))
 
 with tab_xy:
     st.subheader("Completed dataset")
