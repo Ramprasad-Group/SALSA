@@ -2786,22 +2786,24 @@ with tab_figs:
                                 # Crops with prior results: intervention pipeline (skip LineFormer)
                                 if _rerun_lf_er:
                                     _crops_with_lf_er = [p for p in _int_crops_er if p.name in _rerun_lf_er]
-                                    _run_plextract_on_crops(
-                                        scripts_root=scripts_root, run_dir=rr.run_dir,
-                                        safe_doi=_safe_doi_er, image_paths=_crops_with_lf_er,
-                                        override_lineformer_dirs=_rerun_lf_er,
-                                        figure_id=_fig_id_er,
-                                        intervention=True,
-                                    )
+                                    for _cwlf_er in _crops_with_lf_er:
+                                        _run_plextract_on_crops(
+                                            scripts_root=scripts_root, run_dir=rr.run_dir,
+                                            safe_doi=_safe_doi_er, image_paths=[_cwlf_er],
+                                            override_lineformer_dirs={_cwlf_er.name: _rerun_lf_er[_cwlf_er.name]},
+                                            figure_id=_cwlf_er.name,
+                                            intervention=True,
+                                        )
                                 # Fresh crops: full pipeline so LineFormer generates masks
                                 # in crop-coordinate space (pixel indices reset to crop origin)
                                 if _fresh_crops_er:
-                                    _run_plextract_on_crops(
-                                        scripts_root=scripts_root, run_dir=rr.run_dir,
-                                        safe_doi=_safe_doi_er, image_paths=_fresh_crops_er,
-                                        figure_id=_fig_id_er,
-                                        intervention=False,
-                                    )
+                                    for _fc_er in _fresh_crops_er:
+                                        _run_plextract_on_crops(
+                                            scripts_root=scripts_root, run_dir=rr.run_dir,
+                                            safe_doi=_safe_doi_er, image_paths=[_fc_er],
+                                            figure_id=_fc_er.name,
+                                            intervention=False,
+                                        )
                             else:
                                 if _source_img_er and _source_img_er.exists():
                                     _rerun_lf_er = {}
@@ -2831,21 +2833,25 @@ with tab_figs:
                 _llm_fig_dirs_er: list = []
                 _llm_fig_efr_er: dict = {}  # figure_name → extracted_figures_root path
 
-                if _int_crops_er and _per_fig_plextract and _per_fig_plextract.exists():
-                    # Crops exist: find the latest intervention-plextract result for each crop.
-                    _llm_lat_int_er = latest_plextract_run_dir(_per_fig_plextract)
-                    if _llm_lat_int_er:
-                        _llm_int_out_er = _llm_lat_int_er / "output" / _safe_doi_er
-                        if _llm_int_out_er.exists():
-                            for _crop_er in _int_crops_er:
-                                _crop_result_dir = _llm_int_out_er / _crop_er.name
-                                if _crop_result_dir.is_dir():
-                                    if _crop_er.name not in _llm_fig_options_er:
-                                        _llm_fig_options_er.append(_crop_er.name)
-                                        _llm_fig_dirs_er.append(_crop_result_dir)
-                                        # efr is the output root so complete_dataset.py
-                                        # Priority-2 can also find the crop via doi subdir.
-                                        _llm_fig_efr_er[_crop_er.name] = _llm_lat_int_er / "output"
+                if _int_crops_er:
+                    # Crops exist: each crop now has its own per-crop workdir
+                    # (<interventions>/<doi>/<crop_name>/plextract_interventions/).
+                    # Find the latest result for each crop from its own workdir.
+                    for _crop_er in _int_crops_er:
+                        _crop_plextract_wd = (
+                            rr.run_dir / "interventions" / _safe_doi_er
+                            / _crop_er.name / "plextract_interventions"
+                        )
+                        if not _crop_plextract_wd.exists():
+                            continue
+                        _crop_lat_er = latest_plextract_run_dir(_crop_plextract_wd)
+                        if not _crop_lat_er:
+                            continue
+                        _crop_out_er = _crop_lat_er / "output" / _safe_doi_er / _crop_er.name
+                        if _crop_out_er.is_dir() and _crop_er.name not in _llm_fig_options_er:
+                            _llm_fig_options_er.append(_crop_er.name)
+                            _llm_fig_dirs_er.append(_crop_out_er)
+                            _llm_fig_efr_er[_crop_er.name] = _crop_lat_er / "output"
 
                 if not _llm_fig_options_er:
                     # No crop results found — fall back to original plextract output.
