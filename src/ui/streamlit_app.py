@@ -2736,9 +2736,6 @@ with tab_figs:
 
                 if st.button("Rerun OCR data extraction", type="primary", key=f"er_rerun_from_series_{_safe_doi_er}_{_sm_fig_id_er}"):
                     try:
-                        _rerun_images_er: list = []
-                        _rerun_lf_er: dict = {}
-
                         with st.spinner("Applying mask overrides..."):
                             # Writes prepared masks + catalog + overrides into the
                             # intervention dir only; the original plextract output
@@ -2748,40 +2745,75 @@ with tab_figs:
                         # so the original plextract results remain untouched.
                         _lf_dir_rerun_er = _sm_lf_override_dir_er
 
-                        if _is_subfig_sel_er:
-                            _rerun_images_er = [_sm_source_img_er]
-                            if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
-                                _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
-                        elif _int_crops_er:
-                            _rerun_images_er = list(_int_crops_er)
-                            for _crop_er in _int_crops_er:
-                                _crop_lf_er = None
-                                # Search all workdirs for this crop's lineformer dir
-                                for _sm_wd_r_er in _sm_workdirs_to_search_er:
-                                    if not _sm_wd_r_er.exists():
-                                        continue
-                                    _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
-                                    if _lat2_er:
-                                        _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
-                                        if _cand_lf_er.exists():
-                                            _crop_lf_er = _cand_lf_er
-                                            break
-                                _lf_to_use_er = _crop_lf_er or (_lf_dir_rerun_er if _lf_dir_rerun_er and _lf_dir_rerun_er.exists() else None)
-                                if _lf_to_use_er:
-                                    _rerun_lf_er[_crop_er.name] = _lf_to_use_er
-                        else:
-                            if _source_img_er and _source_img_er.exists():
-                                _rerun_images_er = [_source_img_er]
-                                if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
-                                    _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
                         with st.spinner("Re-running data extraction..."):
-                            _run_plextract_on_crops(
-                                scripts_root=scripts_root, run_dir=rr.run_dir,
-                                safe_doi=_safe_doi_er, image_paths=_rerun_images_er,
-                                override_lineformer_dirs=_rerun_lf_er,
-                                figure_id=_fig_id_er,
-                                intervention=True,
-                            )
+                            if _is_subfig_sel_er:
+                                _rerun_lf_er: dict = {}
+                                if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
+                                    _rerun_lf_er[_sm_source_img_er.name] = _lf_dir_rerun_er
+                                _run_plextract_on_crops(
+                                    scripts_root=scripts_root, run_dir=rr.run_dir,
+                                    safe_doi=_safe_doi_er, image_paths=[_sm_source_img_er],
+                                    override_lineformer_dirs=_rerun_lf_er,
+                                    figure_id=_fig_id_er,
+                                    intervention=True,
+                                )
+                            elif _int_crops_er:
+                                # Each crop is treated as an independent new image.
+                                # Only reuse a prior lineformer dir that belongs to
+                                # that specific crop — never inherit the original
+                                # figure's masks, which are in the wrong coordinate
+                                # space for the (smaller) crop image.
+                                _rerun_lf_er = {}
+                                _fresh_crops_er = []
+                                for _crop_er in _int_crops_er:
+                                    _crop_lf_er = None
+                                    # Search all workdirs for this crop's own lineformer dir
+                                    for _sm_wd_r_er in _sm_workdirs_to_search_er:
+                                        if not _sm_wd_r_er.exists():
+                                            continue
+                                        _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
+                                        if _lat2_er:
+                                            _cand_lf_er = _lat2_er / "output" / _safe_doi_er / _crop_er.name / "lineformer"
+                                            if _cand_lf_er.exists():
+                                                _crop_lf_er = _cand_lf_er
+                                                break
+                                    if _crop_lf_er:
+                                        _rerun_lf_er[_crop_er.name] = _crop_lf_er
+                                    else:
+                                        # No crop-specific lineformer exists yet;
+                                        # must run full pipeline to generate fresh masks.
+                                        _fresh_crops_er.append(_crop_er)
+                                # Crops with prior results: intervention pipeline (skip LineFormer)
+                                if _rerun_lf_er:
+                                    _crops_with_lf_er = [p for p in _int_crops_er if p.name in _rerun_lf_er]
+                                    _run_plextract_on_crops(
+                                        scripts_root=scripts_root, run_dir=rr.run_dir,
+                                        safe_doi=_safe_doi_er, image_paths=_crops_with_lf_er,
+                                        override_lineformer_dirs=_rerun_lf_er,
+                                        figure_id=_fig_id_er,
+                                        intervention=True,
+                                    )
+                                # Fresh crops: full pipeline so LineFormer generates masks
+                                # in crop-coordinate space (pixel indices reset to crop origin)
+                                if _fresh_crops_er:
+                                    _run_plextract_on_crops(
+                                        scripts_root=scripts_root, run_dir=rr.run_dir,
+                                        safe_doi=_safe_doi_er, image_paths=_fresh_crops_er,
+                                        figure_id=_fig_id_er,
+                                        intervention=False,
+                                    )
+                            else:
+                                if _source_img_er and _source_img_er.exists():
+                                    _rerun_lf_er = {}
+                                    if _lf_dir_rerun_er and _lf_dir_rerun_er.exists():
+                                        _rerun_lf_er[_source_img_er.name] = _lf_dir_rerun_er
+                                    _run_plextract_on_crops(
+                                        scripts_root=scripts_root, run_dir=rr.run_dir,
+                                        safe_doi=_safe_doi_er, image_paths=[_source_img_er],
+                                        override_lineformer_dirs=_rerun_lf_er,
+                                        figure_id=_fig_id_er,
+                                        intervention=True,
+                                    )
                         st.success("Data extraction complete!")
                         st.rerun()
                     except Exception as _e2_er:

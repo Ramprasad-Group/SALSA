@@ -104,7 +104,11 @@ def hsv_from_mask(img_bgr: np.ndarray, mask_bin: np.ndarray,
         # try a bit more dilation if too few samples
         return hsv_from_mask(img_bgr, cv2.dilate(mask, np.ones((3,3),np.uint8), 1), 0, 0)
 
+    if not picks:
+        return (0.0, 0.0, 0.0), 0.0
     arr = np.asarray(picks, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr.reshape(-1, 3)
     # keep only reasonably colored pixels
     keep = (arr[:,2] > 40) & (arr[:,1] > 30)
     conf = float(np.mean(keep))  # fraction of colored pixels
