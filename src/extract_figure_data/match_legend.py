@@ -380,7 +380,15 @@ def series_descriptors(image_path: str,
         else:
             xs2, ys2 = xs, ys
 
-        pixels = img[ys2, xs2] if len(xs2) else img[ys, xs]
+        img_h, img_w = img.shape[:2]
+        if len(xs2):
+            valid = (xs2 < img_w) & (ys2 < img_h)
+            xs2, ys2 = xs2[valid], ys2[valid]
+        if len(xs2):
+            pixels = img[ys2, xs2]
+        else:
+            valid = (xs < img_w) & (ys < img_h)
+            pixels = img[ys[valid], xs[valid]]
 
         mask_bin = (m > 127).astype(np.uint8)
         hsv, color_conf = hsv_from_mask(img, mask_bin, k_dilate=1)
