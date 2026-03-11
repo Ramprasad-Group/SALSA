@@ -3035,6 +3035,14 @@ with tab_figs:
         if _per_fig_plextract is not None:
             _workdirs_priority.append(_per_fig_plextract)
 
+        # 1b. Per-crop workdirs: each crop now has its own plextract_interventions dir.
+        #     Add them so collect_subfig_dirs_across_runs finds their output.
+        _crops_wd_er = sorted(_crops_out_dir_er.glob(f"{fig_stem}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+        for _c in _crops_wd_er:
+            _c_wd = rr.run_dir / "interventions" / safe_doi / _c.name / "plextract_interventions"
+            if _c_wd.exists():
+                _workdirs_priority.append(_c_wd)
+
         # 2. Legacy shared interventions_plextract (backward compatibility).
         _workdirs_priority.append(rr.run_dir / "interventions" / "interventions_plextract")
 
