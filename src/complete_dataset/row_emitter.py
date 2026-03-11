@@ -443,7 +443,7 @@ def infer_rows_for_table(
         ],
         response_format={"type": "json_schema", "json_schema": json_schema},
         temperature=0.0,
-        max_tokens=10000,
+        max_tokens=32768,
         return_meta=True,
     )
 
@@ -624,7 +624,7 @@ def infer_rows_for_figure_dataset(
         ],
         response_format={"type": "json_schema", "json_schema": json_schema},
         temperature=0.0,
-        max_tokens=10000,
+        max_tokens=32768,
         return_meta=True,
     )
 

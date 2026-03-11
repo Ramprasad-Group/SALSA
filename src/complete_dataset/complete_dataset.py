@@ -687,7 +687,7 @@ def complete_dataset_from_figures_llm(complete_record, client) -> pd.DataFrame:
         )
 
         try:
-            _log_cost(meta, extra={"kind": "emit_rows_figure", "dataset_name": ds_name})
+            _log_cost(meta, extra={"doi": doi, "kind": "emit_rows_figure", "dataset_name": ds_name})
         except Exception:
             pass
 
@@ -739,7 +739,7 @@ def complete_dataset_from_tables_llm(complete_record, client) -> pd.DataFrame:
             extra_rules=_EXTRA_RULES,
         )
         try:
-            _log_cost(meta, extra={"kind": "emit_rows_table", "table_name": table_name})
+            _log_cost(meta, extra={"doi": doi, "kind": "emit_rows_table", "table_name": table_name})
         except Exception:
             pass
 
