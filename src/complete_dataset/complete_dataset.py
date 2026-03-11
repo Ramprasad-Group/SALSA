@@ -382,6 +382,10 @@ def load_extracted_figure_datasets(modified_doi: str, run_dir: Optional[Path] = 
                     if args.target_figure and figure_name != args.target_figure:
                         continue
 
+                    # Skip if we already have data for this figure from another workdir
+                    if figure_name in intervention_figure_names:
+                        continue
+
                     # Find the most recent run dir for THIS figure's plextract_interventions folder
                     # prefix = .../<Figure_X>/plextract_interventions
                     idx = fp.parts.index("results")
