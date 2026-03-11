@@ -2823,25 +2823,47 @@ with tab_figs:
                 # SECTION: Rerun LLM Dataset Generation
                 # ========================
 
-                # Find available figures/subfigures for LLM rerun
+                # Find available figures/subfigures for LLM rerun.
+                # When user-created crops exist, prefer their intervention-plextract
+                # results (new OCR data) over the original figure's plextract output.
+                # Each entry stores (figure_name, result_dir, extracted_figures_root).
                 _llm_fig_options_er: list = []
                 _llm_fig_dirs_er: list = []
-                for _llm_wd_er in [
-                    # rr.run_dir / "interventions" / _safe_doi_er / _fig_id_er / "plextract_interventions",
-                    # rr.run_dir / "interventions" / "interventions_plextract",
-                    Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.jpg"),
-                    Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.png")
-                ]:
-                    if not _llm_wd_er.exists():
-                        continue
-                    if _llm_wd_er.is_dir() and (_fig_stem_er == _fig_id_er or
-                        _llm_wd_er.name.startswith(_fig_stem_er + "_subfig_")):
-                            if _llm_wd_er.name not in _llm_fig_options_er:
-                                _llm_fig_options_er.append(_llm_wd_er.name)
-                                _llm_fig_dirs_er.append(_llm_wd_er)
+                _llm_fig_efr_er: dict = {}  # figure_name → extracted_figures_root path
+
+                if _int_crops_er and _per_fig_plextract and _per_fig_plextract.exists():
+                    # Crops exist: find the latest intervention-plextract result for each crop.
+                    _llm_lat_int_er = latest_plextract_run_dir(_per_fig_plextract)
+                    if _llm_lat_int_er:
+                        _llm_int_out_er = _llm_lat_int_er / "output" / _safe_doi_er
+                        if _llm_int_out_er.exists():
+                            for _crop_er in _int_crops_er:
+                                _crop_result_dir = _llm_int_out_er / _crop_er.name
+                                if _crop_result_dir.is_dir():
+                                    if _crop_er.name not in _llm_fig_options_er:
+                                        _llm_fig_options_er.append(_crop_er.name)
+                                        _llm_fig_dirs_er.append(_crop_result_dir)
+                                        # efr is the output root so complete_dataset.py
+                                        # Priority-2 can also find the crop via doi subdir.
+                                        _llm_fig_efr_er[_crop_er.name] = _llm_lat_int_er / "output"
+
+                if not _llm_fig_options_er:
+                    # No crop results found — fall back to original plextract output.
+                    for _llm_wd_er in [
+                        Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.jpg"),
+                        Path(f"{rr.run_dir}/plextract/results/0/output/{_safe_doi_er}/{_fig_id_er}.png")
+                    ]:
+                        if not _llm_wd_er.exists():
+                            continue
+                        if _llm_wd_er.is_dir() and (_fig_stem_er == _fig_id_er or
+                            _llm_wd_er.name.startswith(_fig_stem_er + "_subfig_")):
+                                if _llm_wd_er.name not in _llm_fig_options_er:
+                                    _llm_fig_options_er.append(_llm_wd_er.name)
+                                    _llm_fig_dirs_er.append(_llm_wd_er)
+                                    _llm_fig_efr_er[_llm_wd_er.name] = _llm_wd_er.parent.parent
 
                 if not _llm_fig_dirs_er:
-                    st.info("No plextract output found. Run plextract extraction first.")
+                    st.info("No plextract output found. Run OCR data extraction first.")
                 else:
                     if len(_llm_fig_dirs_er) > 1:
                         _llm_sel_er = st.selectbox(
@@ -2887,7 +2909,10 @@ with tab_figs:
                                     _tmp_path_er = _tmp_er.name
 
                                 _complete_script_er = Path(__file__).parent.parent / "complete_dataset" / "complete_dataset.py"
-                                _efr_er = _llm_sel_dir_er.parent.parent  # .../output
+                                # Use the pre-computed efr for this selection so crop
+                                # entries correctly point to the intervention-plextract
+                                # output rather than the original plextract output.
+                                _efr_er = _llm_fig_efr_er.get(_llm_sel_er, _llm_sel_dir_er.parent.parent)
                                 _cmd_er = [
                                     "python", str(_complete_script_er),
                                     "--file_path", _tmp_path_er,
