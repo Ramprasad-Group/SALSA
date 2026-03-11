@@ -85,9 +85,13 @@ def hsv_from_mask(img_bgr: np.ndarray, mask_bin: np.ndarray,
     H, W = img_bgr.shape[:2]
     picks = []
     for y, x in zip(ys, xs):
+        if y >= H or x >= W:
+            continue
         y0, y1 = max(0, y-1), min(H, y+2)
         x0, x1 = max(0, x-1), min(W, x+2)
         patch = img_bgr[y0:y1, x0:x1]
+        if patch.size == 0:
+            continue
         hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
         # flatten and take the pixel with maximum S
         idx = np.argmax(hsv[...,1].reshape(-1))
