@@ -3122,6 +3122,13 @@ with tab_figs:
                         key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
                     )
 
+                    _subfig_final_csv = subfig_dir / "final" / "final_dataset.csv"
+                    render_ocr_dropdown(
+                        csv_path=_subfig_final_csv if _subfig_final_csv.exists() else None,
+                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                        axis_override_dir=subfig_dir,
+                    )
+
                     # ========================
                     # SECTION: Rerun buttons (at subfigure level, matching figure structure)
                     # ========================
