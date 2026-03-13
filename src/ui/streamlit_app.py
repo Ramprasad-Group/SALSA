@@ -3099,9 +3099,12 @@ with tab_figs:
                     )
 
                     _subfig_lf_dir = get_lineformer_dir(subfig_dir)
-                    _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                    # Use stem (no extension) so the intervention dirs don't conflict
+                    # with the crop image file stored at interventions/<safe_doi>/<name>.
+                    _subfig_id_er = subfig_dir.stem
+                    _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, _subfig_id_er)
                     # Overrides go to the interventions dir; source data still read from subfig_dir.
-                    _subfig_override_chartdete = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "new_chartdete"
+                    _subfig_override_chartdete = rr.run_dir / "interventions" / safe_doi / _subfig_id_er / "new_chartdete"
                     render_axis_configuration_dropdown(
                         chartdete_dir=subfig_dir / "chartdete",
                         source_img=_subfig_source_img,
@@ -3111,7 +3114,7 @@ with tab_figs:
                     render_series_management_dropdown(
                         run_dir=rr.run_dir,
                         safe_doi=safe_doi,
-                        fig_id=subfig_dir.name,
+                        fig_id=_subfig_id_er,
                         fig_dir=subfig_dir,
                         lf_dir=_subfig_lf_dir,
                         lf_override_dir=_subfig_override_lf,
@@ -3125,12 +3128,12 @@ with tab_figs:
                     if st.button("Rerun OCR data extraction", type="primary", key=f"subfig_rerun_ocr_{safe_doi}_{subfig_dir.name}"):
                         try:
                             with st.spinner("Applying mask overrides..."):
-                                apply_overrides_to_plextract(subfig_dir, rr.run_dir, safe_doi, subfig_dir.name)
+                                apply_overrides_to_plextract(subfig_dir, rr.run_dir, safe_doi, _subfig_id_er)
 
                             if not (_subfig_source_img and _subfig_source_img.exists()):
                                 st.error("Could not locate subfigure source image for rerun.")
                             else:
-                                _subfig_lf_override = override_lineformer_dir(rr.run_dir, safe_doi, subfig_dir.name)
+                                _subfig_lf_override = override_lineformer_dir(rr.run_dir, safe_doi, _subfig_id_er)
                                 _lf_map = {}
                                 if _subfig_lf_override.exists():
                                     _lf_map[_subfig_source_img.name] = _subfig_lf_override
@@ -3138,7 +3141,7 @@ with tab_figs:
                                 _subfig_cd_dir = subfig_dir / "chartdete"
                                 if _subfig_cd_dir.exists():
                                     _cd_map[_subfig_source_img.name] = _subfig_cd_dir
-                                target_id = subfig_dir.name
+                                target_id = _subfig_id_er
                                 with st.spinner("Re-running data extraction..."):
                                     _run_plextract_on_crops(
                                         scripts_root=scripts_root,
