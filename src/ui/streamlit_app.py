@@ -1532,7 +1532,7 @@ def ensure_canvas_remount(*, boot_key: str, version_key: str):
 default_ollama_dir = _default_ollama_models_dir()
 default_ollama_host = _default_ollama_host()
 
-_openai_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5"]
+_openai_models = ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini","gpt-5-mini", "gpt-5-nano", "gpt-5"]
 
 
 
@@ -1634,7 +1634,7 @@ with st.sidebar:
 
         provider = st.radio(
             "Provider",
-            options=["Ollama", "Chat GPT"],
+            options=["Chat GPT", "Ollama"],
             index=0,
             key="llm_provider",
         )
@@ -2402,16 +2402,18 @@ with tab_figs:
             _fig_display_img = f.figure_path
             _fig_display_img_caption = str(f.figure_path)
         # Collapse parent figure dropdown if subfigures exist
-        _has_subfigs_er = _crops_out_dir_er.exists() and bool(
-            list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png"))
-        )
+        _has_subfigs_er = _crops_out_dir_er.exists()
+        # _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+       
+        print(_has_subfigs_er,_fig_stem_er, _crops_out_dir_er)
+        
         render_figure_image_dropdown(
             image=_fig_display_img,
             image_caption=_fig_display_img_caption,
             figure_caption=f.caption,
             title=f"{f.id}",
             key=f"fig_{_safe_doi_er}_{_fig_id_er}_img",
-            expanded=not _has_subfigs_er,
+            expanded= not _has_subfigs_er,
         )
         
         # ========================
@@ -2641,8 +2643,9 @@ with tab_figs:
                                 st.rerun()
 
                         # ---- Existing crops ----
-                        _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
+                        _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.*")) if _crops_out_dir_er.exists() else []
                         if _existing_crops_er:
+                            print("===AHHHHH======")
                             st.write(f"**Existing crops:** {len(_existing_crops_er)}")
                             _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
                             for _ci, _cp in enumerate(_existing_crops_er):
@@ -2658,6 +2661,7 @@ with tab_figs:
                                     st.success("Cleared existing crops.")
                                     st.rerun()
                         else:
+                            print('====NAAAAHHH====')
                             st.info("No crops saved yet. Draw rectangles above to create crops.")
 
                 
@@ -2826,7 +2830,7 @@ with tab_figs:
                         st.error(f"Failed: {_e2_er}")
 
                 # ========================
-                # SECTION: Rerun LLM Dataset Generation
+                # SECTION: Run LLM Dataset Generation
                 # ========================
 
                 # Find available figures/subfigures for LLM rerun.
@@ -2886,7 +2890,7 @@ with tab_figs:
                         _llm_sel_er = _llm_fig_options_er[0]
                         _llm_sel_dir_er = _llm_fig_dirs_er[0]
 
-                    if st.button("Rerun LLM dataset generation", type="primary", key=f"er_rerun_llm_{_safe_doi_er}_{_fig_id_er}"):
+                    if st.button("Run LLM dataset generation", type="primary", key=f"er_rerun_llm_{_safe_doi_er}_{_fig_id_er}"):
                         _reparsed_dir_er = rr.run_dir / "reparsed"
                         _index_csv_er = _reparsed_dir_er / "index.csv"
                         if not _index_csv_er.exists():
@@ -3031,7 +3035,7 @@ with tab_figs:
                 # ========================
                 # SECTION: Display metadata
                 # ========================
-                render_metadata_dropdown(metadata_path=f.metadata_path)
+                # render_metadata_dropdown(metadata_path=f.metadata_path)
         _subfig_map: dict[str, Path] = {} 
         _workdirs_priority: list[Path] = []
 
@@ -3063,6 +3067,7 @@ with tab_figs:
                     _subfig_map[name] = path
 
         subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
+        print('===subfig_dirs===', subfig_dirs)
 
         #### SUBFIGURE SECTION #####
         if subfig_dirs:
@@ -3143,7 +3148,7 @@ with tab_figs:
                         except Exception as _subfig_ocr_e:
                             st.error(f"Failed: {_subfig_ocr_e}")
 
-                    if st.button("Rerun LLM dataset generation", type="primary", key=f"subfig_rerun_llm_{safe_doi}_{subfig_dir.name}"):
+                    if st.button("Run LLM dataset generation", type="primary", key=f"subfig_rerun_llm_{safe_doi}_{subfig_dir.name}"):
                         _reparsed_dir_sf = rr.run_dir / "reparsed"
                         _index_csv_sf = _reparsed_dir_sf / "index.csv"
                         if not _index_csv_sf.exists():
@@ -3231,7 +3236,7 @@ with tab_figs:
                                 title=f"New LLM-Generated Dataset: {subfig_dir.name}",
                             )
                     
-                    render_metadata_dropdown(metadata_path=f.metadata_path)
+                    # render_metadata_dropdown(metadata_path=f.metadata_path)
 
 
                     # Add separator between subfigures if there are multiple
@@ -3260,7 +3265,7 @@ with tab_xy:
         st.info(
             "No dataset rows found in row_cache for this DOI.\n\n"
             "To generate dataset rows: enable **Complete dataset (LLM)** and run the pipeline, "
-            "or use the per-figure/per-subfigure 'Rerun LLM dataset generation' controls."
+            "or use the per-figure/per-subfigure 'Run LLM dataset generation' controls."
         )
 
     # Show legacy dataset CSV if it exists (for reference)
