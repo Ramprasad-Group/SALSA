@@ -2777,8 +2777,11 @@ with tab_figs:
                                 _fresh_crops_er = []
                                 for _crop_er in _int_crops_er:
                                     _crop_lf_er = None
-                                    # Search all workdirs for this crop's own lineformer dir
-                                    for _sm_wd_r_er in _sm_workdirs_to_search_er:
+                                    # Per-crop workdir uses stem to avoid conflicting with the
+                                    # crop image file stored at interventions/<safe_doi>/<name>.
+                                    _per_crop_wd_er = rr.run_dir / "interventions" / _safe_doi_er / _crop_er.stem / "plextract_interventions"
+                                    # Search per-crop workdir first, then figure-level workdirs
+                                    for _sm_wd_r_er in [_per_crop_wd_er] + _sm_workdirs_to_search_er:
                                         if not _sm_wd_r_er.exists():
                                             continue
                                         _lat2_er = latest_plextract_run_dir(_sm_wd_r_er)
@@ -2801,7 +2804,7 @@ with tab_figs:
                                             scripts_root=scripts_root, run_dir=rr.run_dir,
                                             safe_doi=_safe_doi_er, image_paths=[_cwlf_er],
                                             override_lineformer_dirs={_cwlf_er.name: _rerun_lf_er[_cwlf_er.name]},
-                                            figure_id=_cwlf_er.name,
+                                            figure_id=_cwlf_er.stem,
                                             intervention=True,
                                         )
                                 # Fresh crops: full pipeline so LineFormer generates masks
@@ -2811,7 +2814,7 @@ with tab_figs:
                                         _run_plextract_on_crops(
                                             scripts_root=scripts_root, run_dir=rr.run_dir,
                                             safe_doi=_safe_doi_er, image_paths=[_fc_er],
-                                            figure_id=_fc_er.name,
+                                            figure_id=_fc_er.stem,
                                             intervention=False,
                                         )
                             else:
@@ -3049,7 +3052,9 @@ with tab_figs:
         #     Add them so collect_subfig_dirs_across_runs finds their output.
         _crops_wd_er = sorted(_crops_out_dir_er.glob(f"{fig_stem}_subfig_*.png")) if _crops_out_dir_er.exists() else []
         for _c in _crops_wd_er:
-            _c_wd = rr.run_dir / "interventions" / safe_doi / _c.name / "plextract_interventions"
+            # Use stem (no extension) as the workdir name so it doesn't conflict
+            # with the crop image file stored at interventions/<safe_doi>/<name>.
+            _c_wd = rr.run_dir / "interventions" / safe_doi / _c.stem / "plextract_interventions"
             if _c_wd.exists():
                 _workdirs_priority.append(_c_wd)
 

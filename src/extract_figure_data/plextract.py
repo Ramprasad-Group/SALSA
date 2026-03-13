@@ -223,9 +223,13 @@ def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0, skip_linef
                 if new_imgs:
                     # og image
                     cd.inference(img)
-                    # get and save predictions on new images
+                    # Copy each subfig from interventions into base_input so that
+                    # downstream pipeline steps (LineFormer, OCR) can process it.
                     for new_img in new_imgs:
                         print('=====NEW_IMG====', new_img)
+                        pipeline_copy = Path(base_input) / Path(new_img).name
+                        if not pipeline_copy.exists():
+                            shutil.copy2(str(new_img), str(pipeline_copy))
                         cd.inference(Path(new_img).name)
                 else:
                     # get and save predicitons on original image

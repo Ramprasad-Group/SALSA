@@ -441,14 +441,9 @@ class ChartDete:
 
                 subfig_name = f"{stem}_subfig_{i}{suffix}"
 
-                # Primary storage in the interventions dir
+                # Store in the interventions dir (canonical location).
                 out_path = interventions_dir / subfig_name
                 cv2.imwrite(str(out_path), crop)
-
-                # Also write to base_input so the rest of the pipeline
-                # (LineFormer, OCR, etc.) can process the subfigure.
-                pipeline_path = img_path.parent / subfig_name
-                cv2.imwrite(str(pipeline_path), crop)
 
                 new_imgs.append(out_path)
 
