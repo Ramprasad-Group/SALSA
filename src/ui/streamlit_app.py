@@ -2360,8 +2360,10 @@ with tab_figs:
                             _int_fig_dir_er = _cand2_er
                             break
 
-        # crops output directory
-        _crops_out_dir_er = rr.run_dir / "interventions" / _safe_doi_er / _img_name_er
+        # crops output directory – auto-detected subfigures are stored flat under
+        # interventions/<safe_doi>/ rather than in a per-figure subdirectory, so
+        # point here and glob by figure stem to find crops for this figure.
+        _crops_out_dir_er = rr.run_dir / "interventions" / _safe_doi_er
 
         # ---- Collect axis config subfig dirs ----
         # Match by exact name, by stem (handles extension-bearing plextract dirs),
@@ -2402,7 +2404,7 @@ with tab_figs:
             _fig_display_img = f.figure_path
             _fig_display_img_caption = str(f.figure_path)
         # Collapse parent figure dropdown if subfigures exist
-        _has_subfigs_er = _crops_out_dir_er.exists()
+        _has_subfigs_er = _crops_out_dir_er.exists() and bool(list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.*")))
         # _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
        
         print(_has_subfigs_er,_fig_stem_er, _crops_out_dir_er)

@@ -393,9 +393,17 @@ class ChartDete:
             pad_x = int(PAD_FRAC * W)
             pad_y = int(PAD_FRAC * H)
 
-            out_dir = img_path.parent
             stem = img_path.stem
             suffix = img_path.suffix
+
+            # Save auto-detected subfigures to the interventions directory so they
+            # are stored alongside manually-drawn crops rather than in the plextract
+            # working directory.
+            base_input_path = Path(base_input)
+            safe_doi = base_input_path.name
+            workdir = base_input_path.parents[3]
+            interventions_dir = workdir / "interventions" / safe_doi
+            interventions_dir.mkdir(parents=True, exist_ok=True)
 
             new_imgs = []
 
@@ -405,20 +413,20 @@ class ChartDete:
                 crop_y1 = max(0, int(y1 - pad_y))
                 crop_x2 = min(W, int(x2 + pad_x))
                 crop_y2 = min(H, int(y2 + pad_y))
-                
+
                 # Find x_titles that overlap with this plot area (horizontally aligned)
                 for xt_x1, xt_y1, xt_x2, xt_y2, xt_s in x_titles:
                     # Check if x_title overlaps horizontally with plot area
                     h_overlap = not (xt_x2 < x1 or xt_x1 > x2)
                     # Check if x_title is below the plot area
                     is_below = xt_y1 >= y1
-                    
+
                     if h_overlap and is_below:
                         # Extend crop to include this x_title
                         crop_x1 = min(crop_x1, int(xt_x1))
                         crop_x2 = max(crop_x2, int(xt_x2))
                         crop_y2 = max(crop_y2, int(xt_y2))
-                
+
                 # Ensure bounds are within image
                 crop_x1 = max(0, crop_x1)
                 crop_y1 = max(0, crop_y1)
@@ -431,9 +439,18 @@ class ChartDete:
                     print('=====CROP.SIZE==0====')
                     continue
 
-                out_path = out_dir / f"{stem}_subfig_{i}{suffix}"
-                new_imgs.append(out_path)
+                subfig_name = f"{stem}_subfig_{i}{suffix}"
+
+                # Primary storage in the interventions dir
+                out_path = interventions_dir / subfig_name
                 cv2.imwrite(str(out_path), crop)
+
+                # Also write to base_input so the rest of the pipeline
+                # (LineFormer, OCR, etc.) can process the subfigure.
+                pipeline_path = img_path.parent / subfig_name
+                cv2.imwrite(str(pipeline_path), crop)
+
+                new_imgs.append(out_path)
 
             # Delete original image
             # img_path.unlink()
