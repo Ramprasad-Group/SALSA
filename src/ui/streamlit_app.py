@@ -2401,13 +2401,17 @@ with tab_figs:
         elif f.figure_path and f.figure_path.exists():
             _fig_display_img = f.figure_path
             _fig_display_img_caption = str(f.figure_path)
+        # Collapse parent figure dropdown if subfigures exist
+        _has_subfigs_er = _crops_out_dir_er.exists() and bool(
+            list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png"))
+        )
         render_figure_image_dropdown(
             image=_fig_display_img,
             image_caption=_fig_display_img_caption,
             figure_caption=f.caption,
             title=f"{f.id}",
             key=f"fig_{_safe_doi_er}_{_fig_id_er}_img",
-            expanded=True,
+            expanded=not _has_subfigs_er,
         )
         
         # ========================
