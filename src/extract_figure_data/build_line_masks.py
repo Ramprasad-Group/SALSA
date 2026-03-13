@@ -209,14 +209,23 @@ def regenerate_coordinates_from_masks(lineformer_dir: Path) -> None:
     been edited by the user and LineFormer is skipped (``--skip-lineformer``).
     """
     import glob as _glob
+    import re as _re
 
     mask_files = sorted(_glob.glob(str(lineformer_dir / "mask_series_*.png")))
     if not mask_files:
         return
 
-    all_series: List[List[Dict[str, float]]] = []
+    # Write a dict keyed by the filename-derived series index so that
+    # correct_coordinates assigns the right series_<N> key even when indices
+    # are non-consecutive (e.g. a newly created series with index 5 among
+    # existing indices 0 and 1).
+    series_dict: Dict[str, List[Dict[str, float]]] = {}
     for mask_path in mask_files:
         mask_p = Path(mask_path)
+
+        # Extract the numeric index from the filename (mask_series_<N>.png).
+        _m = _re.search(r"(\d+)", mask_p.stem)
+        series_key = _m.group(1) if _m else str(len(series_dict))
 
         # If the user picked exact points via the UI, a clicked_points_<i>.json
         # file sits alongside the mask.  Use those coordinates directly instead
@@ -227,19 +236,19 @@ def regenerate_coordinates_from_masks(lineformer_dir: Path) -> None:
                 pts = json.loads(clicked_pts_file.read_text())
                 pts = [{"x": float(p["x"]), "y": float(p["y"])} for p in pts]
                 pts.sort(key=lambda p: p["x"])
-                all_series.append(pts)
+                series_dict[series_key] = pts
                 continue
             except Exception:
                 pass  # fall through to mask-extraction on error
 
         m = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         if m is None:
-            all_series.append([])
+            series_dict[series_key] = []
             continue
 
         ys, xs = np.where(m > 127)
         if len(xs) == 0:
-            all_series.append([])
+            series_dict[series_key] = []
             continue
 
         # For each unique x column, average the y values to get the centerline
@@ -256,9 +265,9 @@ def regenerate_coordinates_from_masks(lineformer_dir: Path) -> None:
             indices = np.linspace(0, len(points) - 1, 2000).astype(int)
             points = [points[i] for i in indices]
 
-        all_series.append(points)
+        series_dict[series_key] = points
 
     coords_path = lineformer_dir / "coordinates.json"
     with open(coords_path, "w") as f:
-        json.dump(all_series, f)
+        json.dump(series_dict, f)
     print(f"[lineformer] Regenerated coordinates.json from masks: {coords_path}")

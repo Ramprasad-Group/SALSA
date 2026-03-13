@@ -230,7 +230,18 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
         return
 
     with open(coordinates_path, "r") as f:
-        all_lineseries = json.load(f)
+        _coords_raw = json.load(f)
+
+    # coordinates.json is either:
+    #   list  – written by LineFormer (positional; index = enumerate position)
+    #   dict  – written by regenerate_coordinates_from_masks (keyed by filename
+    #           index, preserves non-consecutive indices like 0,1,5)
+    if isinstance(_coords_raw, dict):
+        all_lineseries = _coords_raw          # key → points
+        _use_keys = True
+    else:
+        all_lineseries = _coords_raw          # list of points
+        _use_keys = False
 
     x1, y1, x2, y2 = label_coordinates["plot_area"][:4]
     plot_area_height = y2 - y1
@@ -255,12 +266,10 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
 
     converted_lineseries = {}
 
-    for series_index, lineseries in enumerate(all_lineseries):
+    _items = all_lineseries.items() if _use_keys else enumerate(all_lineseries)
+    for series_index, lineseries in _items:
         converted_points = []
         for point in lineseries:
-            # If your LineFormer points are plot-local, change to:
-            # x_img = point["x"] + x1
-            # y_img = point["y"] + y1
             x_img = point["x"]
             y_img = point["y"]
             converted_points.append({
