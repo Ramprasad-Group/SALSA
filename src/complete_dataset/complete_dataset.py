@@ -73,6 +73,9 @@ parser.add_argument('--exclude_full_text', default=False, action='store_true',
 
 # allow skipping LLM completion (still writes combined json)
 parser.add_argument('--skip_llm', action='store_true', help="Skip GPT plan step (will use heuristics only)")
+parser.add_argument('--skip_llm_figures', action='store_true',
+                    help="Skip LLM row generation for figures (tables still processed). "
+                         "Use on first pass; re-run per-figure via 'Rerun LLM dataset generation'.")
 
 # plan caching
 parser.add_argument('--plan_cache_dir', default='',
@@ -896,7 +899,11 @@ def complete_dataset_llm(complete_record, client) -> pd.DataFrame:
         df_tables = pd.DataFrame(columns=DATASET_COLUMNS)
     else:
         df_tables = complete_dataset_from_tables_llm(complete_record, client)
-    df_figs = complete_dataset_from_figures_llm(complete_record, client)
+
+    if args.skip_llm_figures:
+        df_figs = pd.DataFrame(columns=DATASET_COLUMNS)
+    else:
+        df_figs = complete_dataset_from_figures_llm(complete_record, client)
 
     df_all = pd.concat([df_tables, df_figs], ignore_index=True)
     df_all = df_all.reindex(columns=DATASET_COLUMNS, fill_value="").fillna("").astype(str)

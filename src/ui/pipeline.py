@@ -116,6 +116,7 @@ def run_full_pipeline(
     run_filter_tables: bool = True,
     run_plextract: bool = True,
     run_complete_dataset: bool = True,
+    skip_llm_figures: bool = True,
     run_chemical_composition: bool = False,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
@@ -332,6 +333,8 @@ def run_full_pipeline(
                 cmd += ["--extracted_figures_root", str(plextract_results_root)]
         if exclude_full_text:
             cmd.append("--exclude_full_text")
+        if skip_llm_figures:
+            cmd.append("--skip_llm_figures")
         if ci_path and ci_path.exists():
             cmd += ["--custom_instructions", str(ci_path)]
 
