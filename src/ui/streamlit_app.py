@@ -2405,8 +2405,6 @@ with tab_figs:
             _fig_display_img_caption = str(f.figure_path)
         # Collapse parent figure dropdown if subfigures exist
         _has_subfigs_er = _crops_out_dir_er.exists() and bool(list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*/")))
-        # _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
-        print(_fig_id_er, _has_subfigs_er, bool(list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*/"))))
         
         render_figure_image_dropdown(
             image=_fig_display_img,
