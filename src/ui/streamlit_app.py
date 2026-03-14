@@ -2404,10 +2404,9 @@ with tab_figs:
             _fig_display_img = f.figure_path
             _fig_display_img_caption = str(f.figure_path)
         # Collapse parent figure dropdown if subfigures exist
-        _has_subfigs_er = _crops_out_dir_er.exists() and bool(list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.*")))
+        _has_subfigs_er = _crops_out_dir_er.exists() and bool(list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*/")))
         # _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.png")) if _crops_out_dir_er.exists() else []
-       
-        print(_has_subfigs_er,_fig_stem_er, _crops_out_dir_er)
+        print(_fig_id_er, _has_subfigs_er, bool(list(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*/"))))
         
         render_figure_image_dropdown(
             image=_fig_display_img,
@@ -2647,7 +2646,6 @@ with tab_figs:
                         # ---- Existing crops ----
                         _existing_crops_er = sorted(_crops_out_dir_er.glob(f"{_fig_stem_er}_subfig_*.*")) if _crops_out_dir_er.exists() else []
                         if _existing_crops_er:
-                            print("===AHHHHH======")
                             st.write(f"**Existing crops:** {len(_existing_crops_er)}")
                             _crop_cols_er = st.columns(min(len(_existing_crops_er), 6))
                             for _ci, _cp in enumerate(_existing_crops_er):
@@ -2663,7 +2661,6 @@ with tab_figs:
                                     st.success("Cleared existing crops.")
                                     st.rerun()
                         else:
-                            print('====NAAAAHHH====')
                             st.info("No crops saved yet. Draw rectangles above to create crops.")
 
                 
@@ -3074,7 +3071,6 @@ with tab_figs:
                     _subfig_map[name] = path
 
         subfig_dirs = sorted(_subfig_map.values(), key=lambda d: d.name)
-        print('===subfig_dirs===', subfig_dirs)
 
         #### SUBFIGURE SECTION #####
         if subfig_dirs:

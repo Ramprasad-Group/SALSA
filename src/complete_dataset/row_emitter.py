@@ -134,44 +134,7 @@ def subsample_figure_points(
 
     return pd.concat(out, ignore_index=True) if out else df
 
-# def create_table_prompt(payload, OUTPUT_COLUMNS):
-#     """Create prompt for table extraction"""
 
-#     parts = []
-
-#     parts.append(f"""
-#         Convert the given table into rows with exactly the specified output columns.
-
-#         You may use:
-#         - Table (columns + rows)
-#         - Table caption
-#         - Full paper text (if available)
-
-#         OUTPUT_COLUMNS:
-#         {json.dumps(OUTPUT_COLUMNS, indent=2)}
-
-#         Table Columns: 
-#         {json.dumps(payload.get("table_columns"), indent=2)},
-
-#         Table Rows:
-#         {json.dumps(payload.get("table_rows"), indent=2)},
-
-#         Table Caption:
-#         {json.dumps(payload.get("caption"), indent=2)},
-#     """)
-
-#     full_text = payload.get("full_text")
-#     if full_text:
-#         parts.append(f"""
-#             Full Paper Text:
-#             {json.dumps(full_text, indent=2)}
-#         """)
-
-#     prompt = "\n\n".join(parts)
-
-#     # print("===TABLE PROMPT===", prompt)
-
-#     return prompt
 
 def create_table_prompt(payload, OUTPUT_COLUMNS):
     """
@@ -191,46 +154,6 @@ def create_table_prompt(payload, OUTPUT_COLUMNS):
         "INPUT_PAYLOAD_JSON (authoritative; do not invent fields outside this payload):\n"
         + json.dumps(data, ensure_ascii=False, indent=2)
     )
-
-# def create_figure_prompt(payload: Dict[str, Any], OUTPUT_COLUMNS: List[str]) -> str:
-#     """Create prompt for figure extraction (entire figure dataset)."""
-#     parts: List[str] = []
-
-#     parts.append(
-#         f"""
-#         Convert the given extracted figure dataset into rows with exactly the specified output columns.
-
-#         You may use:
-#         - Figure dataset (columns + points)
-#         - Figure caption/snippets
-#         - Full paper text (if available)
-
-#         OUTPUT_COLUMNS:
-#         {json.dumps(OUTPUT_COLUMNS, indent=2)}
-
-#         FIGURE DATASET COLUMNS:
-#         {json.dumps(payload.get("data_columns", []), indent=2)}
-
-#         FIGURE DATASET ROWS:
-#         {json.dumps(payload.get("data_rows", []), indent=2)}
-
-#         FIGURE SNIPPETS (caption/context):
-#         {json.dumps(payload.get("figure_snippets", []), indent=2)}
-#         """.strip()
-#         )
-
-#     full_text = payload.get("full_text")
-#     if full_text:
-#         parts.append(
-#             f"""
-#             FULL PAPER TEXT:
-#             {json.dumps(full_text, indent=2)}
-#             """.strip()
-#                     )
-
-#     prompt = "\n\n".join(parts)
-#     # print("===FIGURE PROMPT===\n", prompt)
-#     return prompt
 
 def create_figure_prompt(payload, OUTPUT_COLUMNS):
     data = {
@@ -432,10 +355,6 @@ def infer_rows_for_table(
         allow_nulls=False,
     )
 
-    print('===TABLE INSTRUCTIONS===', instructions)
-    print('===TABLE PROMPT===', prompt)
-    print('===TABLE JSON_SCHEMA===', json_schema)
-
     text, meta = client.chat(
         messages=[
             {"role": "system", "content": instructions},
@@ -446,8 +365,6 @@ def infer_rows_for_table(
         max_tokens=32768,
         return_meta=True,
     )
-
-    print("====TABLE TEXT====", text)
 
     try:
         obj = json.loads(text) if isinstance(text, str) else text
@@ -611,12 +528,6 @@ def infer_rows_for_figure_dataset(
         allow_nulls=False,
     )
 
-    print('===FIGURE INSTRUCTIONS===', instructions)
-    print('===FIGURE PROMPT===', prompt)
-    print('===FIGURE JSON_SCHEMA===', json_schema)
-
-
-
     text, meta = client.chat(
         messages=[
             {"role": "system", "content": instructions},
@@ -627,8 +538,6 @@ def infer_rows_for_figure_dataset(
         max_tokens=32768,
         return_meta=True,
     )
-
-    print("====FIGURE TEXT====", text)
 
     try:
         obj = json.loads(text) if isinstance(text, str) else text
