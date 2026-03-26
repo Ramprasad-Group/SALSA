@@ -9,6 +9,7 @@ FILE_THREW_EXCEPTION = 7
 TIME_OUT_SEC = 90
 SLEEP_SEC = 1
 ELS_API_KEY = '9f937ae349ee8358cc8271ec5198bacd'
+WILEY_TDM_TOKEN = 'b6d871f9-3079-4019-936e-8c07c97d9f78'
 DATE_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 publisher_gap_time = {'acs': 481, 'aip': 3, 'wiley': 6, 'ecs': 120}
 
@@ -23,6 +24,6 @@ PASSWORD = 'bree-wonk1FICT-gul'
 ROOT_EMAIL = 'pranav.shetty@gatech.edu'
 
 URL_DICT = {'acs': 'http://pubs.acs.org/doi/full/', 'nature': 'https://www.nature.com/articles/',
-                'springer': 'http://link.springer.com/article/', 'wiley': 'http://onlinelibrary.wiley.com/doi/full/', 'elsevier':'https://api.elsevier.com/content/article/doi/',
+                'springer': 'http://link.springer.com/article/', 'wiley': 'https://api.wiley.com/onlinelibrary/tdm/v1/articles/', 'elsevier':'https://api.elsevier.com/content/article/doi/',
                 'emerald':'http://www.emeraldinsight.com/doi/full/', 'informa uk':'https://www.tandfonline.com/doi/full/', 'iop publishing': 'https://iopscience.iop.org/article/',
                 'sage': 'https://journals.sagepub.com/doi/', 'aip': 'https://aip.scitation.org/doi/', 'doi': 'https://dx.doi.org/'}

@@ -57,7 +57,7 @@ def update_metadata(db, doc_id, logger, download_status, note_entry, download_ti
     local_status_log=local_status_log, doi=doi, publisher=publisher, title=title, year=year
 )
 
-def download_article(doi, publisher, title, year, download_directory, db, doc_id, extension, logger=None, timeout_sec = 90, html_url=None, download_pdf=True, debug=False, local_status_log=None):
+def download_article(doi, publisher, title, year, download_directory, db, doc_id, extension, logger=None, timeout_sec = 90, html_url=None, download_pdf=True, debug=False, local_status_log=None, extra_headers=None):
     '''
     Downloads an article into a folder given its url and updates a database db on its status
 
@@ -116,6 +116,8 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
             'Accept': header_prefix_accept[extension] + '/' + extension,
             'User-agent': 'Mozilla/5.6 (Windows NT 11.0; rv:68.0 Gecko/20100101 Firefox/70.0'
         }
+        if extra_headers:
+            headers.update(extra_headers)
 
         # Make the request to download the file
         # html_data = requests.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
@@ -297,10 +299,12 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
                 continue_status, last_download['wiley'] = utils.download_gap_time(last_download['wiley'], 'wiley')
                 if continue_status:
                     # logger.info(f"Waiting before downloading Wiley paper with DOI: {doi}")
-                    # sleep(config.publisher_gap_time['wiley']) 
+                    # sleep(config.publisher_gap_time['wiley'])
                     continue
                 url = url_dict['wiley'] + doi
                 download_directory_input = path.join(download_directory, 'wiley')
+                download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'xml', logger=logger, download_pdf=download_pdf, html_url=url,
+                                 extra_headers={'Wiley-TDM-Client-Token': config.WILEY_TDM_TOKEN}, local_status_log=local_status_log)
                 sleep(2)
             elif 'springer' in publisher.lower() and ('10.1038/' in doi or '10.1295/' in doi):
                 #url = url_dict['nature'] + doi.replace('10.1038/', '').replace('10.1295/', '').replace('.', '')
@@ -360,7 +364,7 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
                 sleep(1)
 
 
-            if 'elsevier' not in publisher.lower(): 
+            if 'elsevier' not in publisher.lower() and 'wiley' not in publisher.lower():
                 logger.info(f"Publisher: {publisher.lower()}")
                 download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'html',logger=logger, html_url=url, download_pdf=download_pdf)
 
