@@ -710,7 +710,7 @@ def main():
             logger.error("Cannot proceed without LLM extractor for table extraction")
             return
     else:
-        logger.info("Skipping LLM extractor initialization (tables not being extracted)")
+        logger.debug("Skipping LLM extractor initialization (tables not being extracted)")
     
     # Check for debug mode
     if args.debug_publishers:
