@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Wiley publisher figure and table extraction
-Handles HTML files from Wiley journals
+Handles HTML and PDF files from Wiley journals
 """
 
 import os
+import json
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -224,3 +225,118 @@ def _save_figure_metadata(fig_dir, clean_label, original_label, caption, url, do
         logger.debug(f"Saved metadata: {metadata_file}")
     except Exception as e:
         logger.warning(f"Failed to save metadata: {e}")
+
+
+# ---------------------------------------------------------------------------
+# PDF extraction (used when Wiley papers are downloaded as PDFs via TDM API)
+# ---------------------------------------------------------------------------
+
+# Minimum image size in bytes to skip icons/logos
+_MIN_IMAGE_BYTES = 5_000
+
+
+def extract_wiley_figures_from_pdf(file_path, output_dir, doi):
+    """Extract figures from a Wiley PDF using PyMuPDF (fitz)."""
+    logger = logging.getLogger('extraction')
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        logger.error("PyMuPDF not installed. Run: pip install pymupdf")
+        return 0
+
+    try:
+        doc = fitz.open(file_path)
+        safe_doi = doi.replace('/', '@')
+        fig_dir = os.path.join(output_dir, 'figures', safe_doi)
+
+        # Collect images across all pages, deduplicate by xref
+        seen_xrefs = set()
+        figures = []
+        for page in doc:
+            for img in page.get_images(full=True):
+                xref = img[0]
+                if xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                if len(image_bytes) < _MIN_IMAGE_BYTES:
+                    continue  # skip tiny decorative images
+                figures.append((xref, image_bytes, base_image["ext"], page.number + 1))
+
+        if not figures:
+            logger.info(f"No figures found in PDF {file_path}")
+            return 0
+
+        os.makedirs(fig_dir, exist_ok=True)
+        for idx, (xref, image_bytes, ext, page_num) in enumerate(figures):
+            label = f"Figure_{idx + 1}"
+            img_path = os.path.join(fig_dir, f"{label}.{ext}")
+            with open(img_path, 'wb') as f:
+                f.write(image_bytes)
+            metadata = {
+                "original_label": label,
+                "clean_label": label,
+                "caption": "",
+                "page": page_num,
+                "doi": doi,
+                "figure_file_path": img_path,
+                "figure_directory": fig_dir,
+                "extraction_timestamp": pd.Timestamp.now().isoformat(),
+                "file_type": "figure",
+                "publisher": "wiley",
+            }
+            with open(os.path.join(fig_dir, f"{label}_metadata.json"), 'w') as f:
+                json.dump(metadata, f, indent=2)
+            logger.info(f"Saved {label} (page {page_num}) -> {img_path}")
+
+        logger.info(f"Extracted {len(figures)} figures from PDF {file_path}")
+        return len(figures)
+
+    except Exception as e:
+        logger.error(f"Error extracting figures from PDF {file_path}: {e}")
+        return 0
+
+
+def extract_wiley_tables_from_pdf(file_path, output_dir, doi, llm_extractor=None):
+    """Extract tables from a Wiley PDF using pdfplumber."""
+    logger = logging.getLogger('extraction')
+    try:
+        import pdfplumber
+    except ImportError:
+        logger.error("pdfplumber not installed. Run: pip install pdfplumber")
+        return 0, []
+
+    try:
+        tables_found = []
+        with pdfplumber.open(file_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                for t_idx, raw_table in enumerate(page.extract_tables() or []):
+                    if raw_table and len(raw_table) > 1:
+                        tables_found.append((page_num + 1, raw_table))
+
+        if not tables_found:
+            logger.info(f"No tables found in PDF {file_path}")
+            return 0, []
+
+        table_dir = os.path.join(output_dir, 'tables', doi.replace('/', '@'))
+        os.makedirs(table_dir, exist_ok=True)
+
+        saved_files = []
+        for i, (page_num, raw_table) in enumerate(tables_found):
+            label = f"Table_{i + 1}"
+            filepath = os.path.join(table_dir, f"{label}.csv")
+            headers = [str(h) if h is not None else f"Column_{j+1}"
+                       for j, h in enumerate(raw_table[0])]
+            data = [[str(cell) if cell is not None else "" for cell in row]
+                    for row in raw_table[1:]]
+            pd.DataFrame(data, columns=headers).to_csv(filepath, index=False)
+            saved_files.append(filepath)
+            logger.info(f"Saved {label} (page {page_num}) -> {filepath}")
+
+        logger.info(f"Extracted {len(tables_found)} tables from PDF {file_path}")
+        return len(tables_found), saved_files
+
+    except Exception as e:
+        logger.error(f"Error extracting tables from PDF {file_path}: {e}")
+        return 0, []

@@ -303,14 +303,19 @@ def run_full_pipeline(
 
     # --- 7) plextract.py ---
     # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
+    _figures_dir = figures_tables_dir / "figures"
     if run_plextract:
-        _run([
-            sys.executable, str(p_plextract),
-            "--input", str(figures_tables_dir / "figures"),
-            "--workdir", str(plextract_workdir),
-        ])
+        if not _figures_dir.exists() or not any(_figures_dir.iterdir()):
+            print(f"[Pipeline] WARNING: No figures were extracted — skipping plextract "
+                  f"(figures dir missing or empty: {_figures_dir})")
+        else:
+            _run([
+                sys.executable, str(p_plextract),
+                "--input", str(_figures_dir),
+                "--workdir", str(plextract_workdir),
+            ])
 
-    if run_plextract:
+    if run_plextract and _figures_dir.exists() and any(_figures_dir.iterdir()):
         plextract_results_root = _plextract_results_root(plextract_workdir)
         if plextract_results_root is not None:
             _copy_figure_metadata_to_plextract(figures_tables_dir, plextract_results_root)

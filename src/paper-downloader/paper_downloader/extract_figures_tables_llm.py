@@ -36,7 +36,8 @@ from llm_table_extractor import LLMTableExtractor
 
 # Import all available extractors
 from parsers.elsevier_extractor import extract_elsevier_figures, extract_elsevier_tables
-from parsers.wiley_extractor import extract_wiley_figures, extract_wiley_tables
+from parsers.wiley_extractor import (extract_wiley_figures, extract_wiley_tables,
+                                     extract_wiley_figures_from_pdf, extract_wiley_tables_from_pdf)
 from parsers.springer_extractor import extract_springer_figures, extract_springer_tables
 from parsers.rsc_extractor import extract_rsc_figures, extract_rsc_tables
 from parsers.nature_extractor import extract_nature_figures, extract_nature_tables
@@ -292,15 +293,23 @@ def extract_figures_tables(file_path, publisher, output_dir, doi, llm_extractor,
             logger.warning("Skipping table extraction")
     
     elif publisher.lower() == 'wiley':
+        is_pdf = file_path.lower().endswith('.pdf')
+        if is_pdf:
+            logger.info(f"Wiley file is PDF - using PDF extraction")
         # Extract figures if requested
         if extract_figures:
-            figures_count = extract_wiley_figures(file_path, output_dir, doi)
+            if is_pdf:
+                figures_count = extract_wiley_figures_from_pdf(file_path, output_dir, doi)
+            else:
+                figures_count = extract_wiley_figures(file_path, output_dir, doi)
         else:
             logger.warning("Skipping figure extraction")
-        
+
         # Extract tables if requested
         if extract_tables:
-            if llm_extractor:
+            if is_pdf:
+                tables_count, saved_files = extract_wiley_tables_from_pdf(file_path, output_dir, doi, llm_extractor)
+            elif llm_extractor:
                 tables_count, saved_files = extract_wiley_tables(file_path, output_dir, doi, llm_extractor)
             else:
                 logger.warning("LLM extractor not available - cannot extract tables")
