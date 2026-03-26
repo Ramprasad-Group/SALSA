@@ -303,7 +303,7 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
                     continue
                 url = url_dict['wiley'] + doi
                 download_directory_input = path.join(download_directory, 'wiley')
-                download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'xml', logger=logger, download_pdf=download_pdf, html_url=url,
+                download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'pdf', logger=logger, download_pdf=download_pdf, html_url=url,
                                  extra_headers={'Wiley-TDM-Client-Token': config.WILEY_TDM_TOKEN}, local_status_log=local_status_log)
                 sleep(2)
             elif 'springer' in publisher.lower() and ('10.1038/' in doi or '10.1295/' in doi):
