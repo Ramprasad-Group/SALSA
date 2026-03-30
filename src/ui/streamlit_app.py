@@ -3099,22 +3099,6 @@ with tab_figs:
                     _subfig_override_lf = override_lineformer_dir(rr.run_dir, safe_doi, _subfig_id_er)
                     # Overrides go to the interventions dir; source data still read from subfig_dir.
                     _subfig_override_chartdete = rr.run_dir / "interventions" / safe_doi / _subfig_id_er / "new_chartdete"
-                    render_axis_configuration_dropdown(
-                        chartdete_dir=subfig_dir / "chartdete",
-                        source_img=_subfig_source_img,
-                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
-                        override_dir=_subfig_override_chartdete,
-                    )
-                    render_series_management_dropdown(
-                        run_dir=rr.run_dir,
-                        safe_doi=safe_doi,
-                        fig_id=_subfig_id_er,
-                        fig_dir=subfig_dir,
-                        lf_dir=_subfig_lf_dir,
-                        lf_override_dir=_subfig_override_lf,
-                        source_img=_subfig_source_img,
-                        key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
-                    )
 
                     _subfig_final_csv = subfig_dir / "final" / "final_dataset.csv"
                     render_ocr_dropdown(
@@ -3122,6 +3106,34 @@ with tab_figs:
                         key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
                         axis_override_dir=subfig_dir,
                     )
+
+                    # ========================
+                    # SECTION: Load Interventions toggle (mirrors main-figure behaviour)
+                    # ========================
+                    _subfig_show_int_key = f"subfig_show_interventions_{safe_doi}_{subfig_dir.name}"
+                    if _subfig_show_int_key not in st.session_state:
+                        st.session_state[_subfig_show_int_key] = False
+                    if st.button("Load Interventions", type="primary", key=f"subfig_intervene_toggle_{safe_doi}_{subfig_dir.name}"):
+                        st.session_state[_subfig_show_int_key] = not st.session_state[_subfig_show_int_key]
+                        st.rerun()
+
+                    if st.session_state[_subfig_show_int_key]:
+                        render_axis_configuration_dropdown(
+                            chartdete_dir=subfig_dir / "chartdete",
+                            source_img=_subfig_source_img,
+                            key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                            override_dir=_subfig_override_chartdete,
+                        )
+                        render_series_management_dropdown(
+                            run_dir=rr.run_dir,
+                            safe_doi=safe_doi,
+                            fig_id=_subfig_id_er,
+                            fig_dir=subfig_dir,
+                            lf_dir=_subfig_lf_dir,
+                            lf_override_dir=_subfig_override_lf,
+                            source_img=_subfig_source_img,
+                            key_prefix=f"subfig_{safe_doi}_{subfig_dir.name}",
+                        )
 
                     # ========================
                     # SECTION: Rerun buttons (at subfigure level, matching figure structure)
@@ -3221,7 +3233,7 @@ with tab_figs:
                             except Exception as _subfig_llm_e:
                                 st.error(f"Error: {_subfig_llm_e}")
 
-                    _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / subfig_dir.name / "plextract_interventions"
+                    _subfig_int_wd = rr.run_dir / "interventions" / safe_doi / _subfig_id_er / "plextract_interventions"
                     _lat_int = latest_plextract_run_dir(_subfig_int_wd) if _subfig_int_wd.exists() else None
 
                     if _lat_int:
