@@ -309,11 +309,12 @@ def convert_data_points(conversions, run_id: str, img: str, label_coordinates: d
                 ys, xs = np.where(m > 127)
                 if len(xs):
                     centroid = [float(xs.mean()), float(ys.mean())]
-        catalog.append({
-            "series_index": si,
-            "mask_path": mask_path,
-            "centroid": centroid
-        })
+        if mask_path is not None:
+            catalog.append({
+                "series_index": si,
+                "mask_path": mask_path,
+                "centroid": centroid
+            })
 
     with open(catalog_path, "w") as f:
         json.dump(catalog, f, indent=2)

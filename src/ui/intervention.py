@@ -185,6 +185,8 @@ def load_series_catalog(lineformer_dir: Path) -> List[SeriesItem]:
     raw = json.loads(cat.read_text())
     out: List[SeriesItem] = []
     for r in raw:
+        if r.get("mask_path") is None:
+            continue
         out.append(
             SeriesItem(
                 series_index=int(r["series_index"]),
