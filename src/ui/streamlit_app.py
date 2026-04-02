@@ -514,6 +514,17 @@ def render_axis_configuration_dropdown(
         if cv_ver_key not in st.session_state:
             st.session_state[cv_ver_key] = 0
 
+        # Bump the canvas version when the display width changes so the canvas
+        # remounts with the correct background dimensions.  The width must NOT
+        # be baked into the canvas key itself — doing so creates a new key on
+        # every slider move, leaving orphaned entries in st.session_state that
+        # cause "dictionary changed size during iteration" in _call_callbacks.
+        _ax_last_w_key = f"{key_prefix}_ax_calib_last_w"
+        if st.session_state.get(_ax_last_w_key) != disp_w:
+            if _ax_last_w_key in st.session_state:
+                st.session_state[cv_ver_key] += 1
+            st.session_state[_ax_last_w_key] = disp_w
+
         c1_ax, _c2_ax = st.columns([1, 3])
         with c1_ax:
             if st.button("Clear markers", key=f"{key_prefix}_ax_clear_markers"):
@@ -525,7 +536,7 @@ def render_axis_configuration_dropdown(
         st.write("**Click on the image to place the selected endpoint.**")
 
         canvas_key = (
-            f"{key_prefix}_ax_calib_canvas_{Path(source_img).name}_{disp_w}x{disp_h}"
+            f"{key_prefix}_ax_calib_canvas_{Path(source_img).name}"
             f"_v{st.session_state[cv_ver_key]}"
         )
         canvas = st_canvas(
@@ -928,7 +939,7 @@ def render_series_management_dropdown(
                     # )
                     canvas_key_freehand = (
                         f"{key_prefix}_mask_canvas_{selected_idx}_{mode}"
-                        f"_{disp_w}x{disp_h}_v{st.session_state[cv_ver_key_sm]}"
+                        f"_v{st.session_state[cv_ver_key_sm]}"
                     )
 
                     mask_canvas = st_canvas(
@@ -1002,7 +1013,7 @@ def render_series_management_dropdown(
                         st.caption("Click on the figure to place data points.")
                     canvas_key_points = (
                         f"{key_prefix}_point_canvas_{selected_idx}_{mode}"
-                        f"_{disp_w}x{disp_h}_v{st.session_state[cv_ver_key_sm]}"
+                        f"_v{st.session_state[cv_ver_key_sm]}"
                     )
 
                     point_canvas = st_canvas(
@@ -2526,9 +2537,19 @@ with tab_figs:
                             st.session_state[_cv_ver_key] += 1
 
                         # ---- Build a stable canvas key ----
+                        # Width/height must NOT be in the key: changing the
+                        # slider would mint a new key each run and leave orphaned
+                        # entries in st.session_state, causing "dictionary changed
+                        # size during iteration" in Streamlit's _call_callbacks.
+                        # Instead, bump the version counter when the width changes
+                        # so the canvas remounts cleanly with the right dimensions.
+                        _er_last_w_key = f"er_canvas_last_w_{_safe_doi_er}_{_fig_id_er}"
+                        if st.session_state.get(_er_last_w_key) != _disp_w_er:
+                            if _er_last_w_key in st.session_state:
+                                st.session_state[_cv_ver_key] += 1
+                            st.session_state[_er_last_w_key] = _disp_w_er
                         _canvas_key_er = (
                             f"er_canvas_{_safe_doi_er}_{_fig_id_er}"
-                            f"_{_disp_w_er}x{_disp_h_er}"
                             f"_v{st.session_state[_cv_ver_key]}"
                         )
 
