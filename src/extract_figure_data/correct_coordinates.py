@@ -150,8 +150,18 @@ def plot_axis_points_on_image(
 def sort_and_check_labels(label_coordinates: dict, axis_label_texts: dict, img_key: str):
     print("\tNow starting to sort and check labels...")
 
-    # Convert all OCR texts to floats (skip plot_area)
-    ocr_values = {k: float(v) for k, v in axis_label_texts.items() if "plot_area" not in k}
+    # Convert all OCR texts to floats (skip plot_area and non-numeric labels such
+    # as bar-chart category names).  Non-numeric labels are silently skipped so
+    # that bar charts — where x-axis labels are categorical strings — don't crash
+    # the whole calibration step.
+    ocr_values = {}
+    for k, v in axis_label_texts.items():
+        if "plot_area" in k:
+            continue
+        try:
+            ocr_values[k] = float(v)
+        except (ValueError, TypeError):
+            pass
 
     yvalues = {k: v for k, v in ocr_values.items() if "ylabel" in k}
     xvalues = {k: v for k, v in ocr_values.items() if "xlabel" in k}
@@ -200,6 +210,10 @@ def calc_conversion(coord_val_map: dict, plot_area: list):
             cx, cy = v["coord"]  # already center from Patch 1
             x_local = cx - x1    # plot-area local x (left-positive)
             pts.append((x_local, v["val"]))
+        if not pts:
+            # No numeric x-axis labels (e.g. bar chart with categorical labels).
+            # Return an identity mapping so pixel x becomes data x.
+            return {"slope": 1.0 / plot_w if plot_w else 1.0, "intercept": 0.0}
         xs, vals = zip(*pts)
         slope, intercept, *_ = linregress(xs, vals)
         return {"slope": slope, "intercept": intercept}
@@ -344,28 +358,31 @@ def correct_coordinates(run_id: str, img: str):
         axis_label_texts = json.load(f)
 
     try:
-        coord_val_map = sort_and_check_labels(
-            label_coordinates=label_coordinates,
-            axis_label_texts=axis_label_texts,
-            img_key=img,
-        )
-
-        # Visual overlay to verify placement:
-        plot_axis_points_on_image(
-            run_id=run_id,
-            img=img,
-            label_coordinates=label_coordinates,
-            axis_label_texts=axis_label_texts,
-            # image_path=<optional explicit path to the original figure if needed>
-        )
-
-
+        # Check for a user-supplied axis calibration override first.  When
+        # present we skip OCR-based label parsing entirely — this is important
+        # for bar charts whose x-axis labels are categorical (non-numeric) and
+        # would otherwise cause sort_and_check_labels to fail.
         manual_override = _load_manual_pix2val_override(base_output_dir, img)
         if manual_override is not None:
             print("\tUsing manual pix2val_override.json for coordinate conversion")
             conversions = {"x": manual_override["x"], "y": manual_override["y"]}
             print("conversions: ", conversions)
         else:
+            coord_val_map = sort_and_check_labels(
+                label_coordinates=label_coordinates,
+                axis_label_texts=axis_label_texts,
+                img_key=img,
+            )
+
+            # Visual overlay to verify placement:
+            plot_axis_points_on_image(
+                run_id=run_id,
+                img=img,
+                label_coordinates=label_coordinates,
+                axis_label_texts=axis_label_texts,
+                # image_path=<optional explicit path to the original figure if needed>
+            )
+
             conversions = calc_conversion(coord_val_map, plot_area=label_coordinates["plot_area"])
         convert_data_points(conversions, run_id, img, label_coordinates)
 
