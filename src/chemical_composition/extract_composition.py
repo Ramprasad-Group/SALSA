@@ -43,13 +43,19 @@ IMPORTANT — you MUST include:
 - Tables listing polymer compositions, monomer feed ratios, IEC values, water uptake, degree of functionalization, etc.
 - Body-text paragraphs describing synthesis procedures, reagent amounts, grafting degrees, functionalization steps, or naming conventions for samples.
 
+IMPORTANT EXCLUSION:
+- Do NOT include figures that are primarily property-performance plots/data (e.g. conductivity vs temperature, tensile strength, IEC trends, water uptake/swelling, durability/retention curves, polarization/power-density curves, Nyquist/EIS plots, TGA/DSC/DTG, SAXS/WAXS/XRD property analyses), unless that same figure explicitly contains a chemical structure/reaction diagram as a central element.
+
 TASK 2: From the paper content, identify every **unique sample name** that has associated **materials-property data** reported in this manuscript (e.g. conductivity, stability/retention, IEC, water uptake, swelling ratio, mechanical properties, or any other measured property).
 
 Do NOT include samples that are only mentioned as literature references, reagents consumed during synthesis, or comparison points from other papers without new measurements in this manuscript.
 
 For each qualifying sample extract:
-- Its chemical components (monomers, polymers, fillers, dopants, solvents…)
-- The composition of each component (mole %, weight %, volume %, ratio, or however it is expressed in the paper)
+- One SMILES string for each co-monomer (if determinable from text/table/caption context)
+- The composition ratio of each co-monomer in the monomer feed or polymer (mol%, wt%, feed ratio, etc.; keep original unit text)
+- Additive information: additive name + additive content/amount for the sample.
+  - If no additive is reported for the sample, leave additive fields blank ("").
+- Its broader chemical components (monomers, polymers, fillers, dopants, solvents…)
 - Any SMILES or molecular formula you can determine from the paper text
 - The chemical structure class (e.g. "quaternary ammonium", "imidazolium", "polysulfone", "PEEK", …)
 
@@ -63,6 +69,13 @@ Return a JSON object with TWO keys:
 
 2. "samples": array of objects, each with:
    - "sample_name": str – the exact sample label used in the paper
+   - "co_monomers": list of objects, each with:
+      - "name": str – co-monomer name
+      - "smiles": str – SMILES for this co-monomer, or "" if unavailable
+      - "ratio": str – ratio/content for this co-monomer with units/context, or "" if unavailable
+   - "additive": object with:
+      - "name": str – additive name, or ""
+      - "content": str – additive amount/content, or ""
    - "components": list of objects, each with:
        - "name": str – component name
        - "role": str – one of "polymer_backbone", "functional_group", "crosslinker", "filler", "dopant", "solvent", "other"
@@ -112,6 +125,89 @@ def _log_cost(meta: Any, *, doi: str = "", extra: Optional[Dict] = None):
         )
     except Exception as e:
         print(f"[chemical_composition] WARNING: failed to log cost: {e}")
+
+
+_PROPERTY_FIGURE_KEYWORDS = (
+    "conductivity",
+    "water uptake",
+    "swelling",
+    "iec",
+    "ion exchange capacity",
+    "mechanical",
+    "tensile",
+    "elongation",
+    "thermal stability",
+    "durability",
+    "retention",
+    "polarization",
+    "power density",
+    "eis",
+    "nyquist",
+    "tga",
+    "dsc",
+    "xrd",
+    "saxs",
+    "waxs",
+)
+
+
+def _is_property_figure(item: Dict[str, Any]) -> bool:
+    """Heuristic filter for figures that are primarily property-data visuals."""
+    src_type = (item.get("source_type") or "").strip().lower()
+    if src_type not in ("figure/scheme", "figure"):
+        return False
+
+    haystack = " ".join(
+        [
+            str(item.get("source_id", "")),
+            str(item.get("excerpt", "")),
+            str(item.get("relevance", "")),
+        ]
+    ).lower()
+    return any(keyword in haystack for keyword in _PROPERTY_FIGURE_KEYWORDS)
+
+
+def _normalize_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize model output into a stable schema for downstream consumers."""
+    relevant = result.get("relevant_content", [])
+    if not isinstance(relevant, list):
+        relevant = []
+    # Hard guard: never keep property-data-only figures in relevant content.
+    relevant = [item for item in relevant if not _is_property_figure(item)]
+
+    normalized_samples = []
+    raw_samples = result.get("samples", [])
+    if isinstance(raw_samples, list):
+        for sample in raw_samples:
+            if not isinstance(sample, dict):
+                continue
+            co_monomers = sample.get("co_monomers", [])
+            if not isinstance(co_monomers, list):
+                co_monomers = []
+            additive = sample.get("additive", {})
+            if not isinstance(additive, dict):
+                additive = {}
+
+            normalized_samples.append(
+                {
+                    **sample,
+                    "co_monomers": [
+                        {
+                            "name": str(cm.get("name", "")),
+                            "smiles": str(cm.get("smiles", "")),
+                            "ratio": str(cm.get("ratio", "")),
+                        }
+                        for cm in co_monomers
+                        if isinstance(cm, dict)
+                    ],
+                    "additive": {
+                        "name": str(additive.get("name", "")),
+                        "content": str(additive.get("content", "")),
+                    },
+                }
+            )
+
+    return {"relevant_content": relevant, "samples": normalized_samples}
 
 
 def extract_chemical_composition_combined(
@@ -174,7 +270,7 @@ def extract_chemical_composition_combined(
         if isinstance(result, dict):
             # Validate structure
             if "relevant_content" in result and "samples" in result:
-                return result
+                return _normalize_result(result)
     except json.JSONDecodeError:
         pass
 
@@ -410,9 +506,22 @@ def run_chemical_composition_extraction(
             row["formula"] = comp.get("formula", "")
             row["smiles"] = comp.get("smiles", "")
             row["amount"] = comp.get("amount", "")
+            row["co_monomers"] = json.dumps(
+                s.get("co_monomers", []), ensure_ascii=False
+            )
+            additive = s.get("additive", {}) or {}
+            row["additive_name"] = additive.get("name", "")
+            row["additive_content"] = additive.get("content", "")
             rows.append(row)
         if not s.get("components"):
-            rows.append(base)
+            row = dict(base)
+            row["co_monomers"] = json.dumps(
+                s.get("co_monomers", []), ensure_ascii=False
+            )
+            additive = s.get("additive", {}) or {}
+            row["additive_name"] = additive.get("name", "")
+            row["additive_content"] = additive.get("content", "")
+            rows.append(row)
 
     if rows:
         df = pd.DataFrame(rows)
