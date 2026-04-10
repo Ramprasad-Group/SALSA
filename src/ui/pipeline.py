@@ -1,6 +1,7 @@
 # AEM_OCR/src/ui/pipeline_orchestrator.py
 from __future__ import annotations
 import csv
+import inspect
 import json
 import subprocess
 import sys
@@ -283,6 +284,8 @@ def run_full_pipeline(
         chem_cfg = ChemistryTextPipelineConfig(
             **(chemistry_text_pipeline_config or {})
         )
+        _cc_sig = inspect.signature(run_chemical_composition_extraction)
+        _supports_chemistry_text_cfg = "chemistry_text_config" in _cc_sig.parameters
 
         for doi in dois:
             safe = doi_to_safe(doi.strip())
@@ -291,14 +294,16 @@ def run_full_pipeline(
             figures_d = figures_tables_dir / "figures" / safe
 
             try:
-                run_chemical_composition_extraction(
+                cc_kwargs = dict(
                     run_dir=run_dir,
                     safe_doi=safe,
                     parsed_json_path=parsed_json if parsed_json.exists() else None,
                     tables_dir=tables_d if tables_d.exists() else None,
                     figures_dir=figures_d if figures_d.exists() else None,
-                    chemistry_text_config=chem_cfg,
                 )
+                if _supports_chemistry_text_cfg:
+                    cc_kwargs["chemistry_text_config"] = chem_cfg
+                run_chemical_composition_extraction(**cc_kwargs)
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
             except Exception as e:
                 print(f"[Pipeline] WARNING: Chemical composition failed for {doi}: {e}")
