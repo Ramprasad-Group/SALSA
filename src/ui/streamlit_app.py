@@ -1635,6 +1635,33 @@ with st.sidebar:
         run_plextract = st.checkbox("Extract data from figures", value=True)
         run_complete_dataset = st.checkbox("Complete dataset", value=True)
         exclude_full_text = st.checkbox("Exclude full text from context", value=True)
+    with st.expander("Chemistry text embedding pipeline", expanded=False):
+        enable_chemistry_text_pipeline = st.checkbox(
+            "Enable chemistry text pipeline", value=False
+        )
+        chemistry_schema_extractor = st.selectbox(
+            "Schema extractor",
+            options=["rule_based", "llm", "hybrid"],
+            index=0,
+        )
+        chemistry_embedding_backend = st.selectbox(
+            "Embedding backend",
+            options=["local", "api"],
+            index=0,
+        )
+        chemistry_embedding_model = st.text_input(
+            "Embedding model",
+            value="hash-embedding-v1",
+            help="Use hash-embedding-v1 for fully local deterministic fallback, or sentence-transformers/<model> for local transformer embeddings.",
+        )
+        exclude_performance_sentences = st.checkbox(
+            "Exclude performance-heavy sentences", value=True
+        )
+        include_caption_text = st.checkbox("Include caption text", value=True)
+        include_table_context = st.checkbox("Include table context", value=True)
+        include_experimental_section = st.checkbox(
+            "Include synthesis/experimental context", value=True
+        )
 
     st.divider()
     st.header("Select LLM(s)")
@@ -2162,6 +2189,16 @@ if st.button("Run pipeline", type="primary"):
                 run_plextract=run_plextract,
                 run_complete_dataset=run_complete_dataset,
                 run_chemical_composition=run_chemical_composition,
+                chemistry_text_pipeline_config={
+                    "enable_chemistry_text_pipeline": enable_chemistry_text_pipeline,
+                    "chemistry_schema_extractor": chemistry_schema_extractor,
+                    "chemistry_embedding_backend": chemistry_embedding_backend,
+                    "chemistry_embedding_model": chemistry_embedding_model,
+                    "exclude_performance_sentences": exclude_performance_sentences,
+                    "include_caption_text": include_caption_text,
+                    "include_table_context": include_table_context,
+                    "include_experimental_section": include_experimental_section,
+                },
                 exclude_full_text=exclude_full_text,
                 custom_instructions=_run_ci,
             )

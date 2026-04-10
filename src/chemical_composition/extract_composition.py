@@ -24,6 +24,16 @@ if str(_src) not in sys.path:
 
 from llm_client import get_llm_client, load_processing_llm_config
 from ui.openai_cost import append_usage, run_id_from_env
+from chemical_composition.chemistry_text_pipeline import (
+    ChemistryTextPipelineConfig,
+    canonicalize_chemistry_schema,
+    chemistry_schema_to_text,
+    collect_sample_description_text,
+    extract_chemistry_schema_llm,
+    extract_chemistry_schema_rule_based,
+    get_text_embedding,
+    save_chemistry_text_artifacts,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +337,7 @@ def run_chemical_composition_extraction(
     parsed_json_path: Optional[Path] = None,
     tables_dir: Optional[Path] = None,
     figures_dir: Optional[Path] = None,
+    chemistry_text_config: Optional[ChemistryTextPipelineConfig] = None,
 ) -> Dict[str, Any]:
     """
     End-to-end extraction for one DOI.
@@ -490,6 +501,86 @@ def run_chemical_composition_extraction(
     (out_dir / "result.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False)
     )
+
+    # --- Optional chemistry text -> schema -> canonical text -> embedding pipeline ---
+    chemistry_text_cfg = chemistry_text_config or ChemistryTextPipelineConfig()
+    if chemistry_text_cfg.enable_chemistry_text_pipeline:
+        chem_root = run_dir / "chemistry_text" / safe_doi
+        cache_dir = run_dir / "chemistry_text" / "_cache"
+        chem_root.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        schema_all_path = chem_root / "chemistry_schema_all.jsonl"
+        canonical_all_path = chem_root / "canonical_text_all.jsonl"
+        emb_index_path = chem_root / "embedding_index.jsonl"
+        # reset aggregate files for this DOI run
+        schema_all_path.write_text("")
+        canonical_all_path.write_text("")
+        emb_index_path.write_text("")
+
+        for idx, sample in enumerate(samples):
+            sample_name = str(sample.get("sample_name", "")).strip() or f"sample_{idx+1}"
+            sample_dir_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", sample_name).strip("_") or f"sample_{idx+1}"
+            sample_out_dir = chem_root / sample_dir_name
+
+            try:
+                bundle = collect_sample_description_text(
+                    sample=sample,
+                    parsed_text=parsed_text,
+                    tables_text=tables_text,
+                    figures_text=figures_text,
+                    relevant_content=relevant,
+                    include_caption_text=chemistry_text_cfg.include_caption_text,
+                    include_table_context=chemistry_text_cfg.include_table_context,
+                    include_experimental_section=chemistry_text_cfg.include_experimental_section,
+                    exclude_performance_sentences=chemistry_text_cfg.exclude_performance_sentences,
+                )
+
+                if chemistry_text_cfg.chemistry_schema_extractor == "llm":
+                    schema = extract_chemistry_schema_llm(bundle.raw_text, sample_name=sample_name)
+                elif chemistry_text_cfg.chemistry_schema_extractor == "hybrid":
+                    schema = extract_chemistry_schema_llm(bundle.raw_text, sample_name=sample_name)
+                    if not schema.backbone_family and not schema.cation_type:
+                        schema = extract_chemistry_schema_rule_based(
+                            bundle.raw_text, sample_name=sample_name, extraction_method="hybrid_fallback"
+                        )
+                else:
+                    schema = extract_chemistry_schema_rule_based(
+                        bundle.raw_text, sample_name=sample_name, extraction_method="rule_based"
+                    )
+
+                schema = canonicalize_chemistry_schema(schema)
+                canonical = chemistry_schema_to_text(schema)
+
+                embedding = None
+                try:
+                    embedding = get_text_embedding(
+                        canonical.canonical_text,
+                        sample_id=sample_name,
+                        model_name=chemistry_text_cfg.chemistry_embedding_model,
+                        backend=chemistry_text_cfg.chemistry_embedding_backend,
+                        cache_dir=cache_dir,
+                    )
+                except Exception as e:
+                    print(
+                        f"[chemical_composition] WARNING: embedding failed for {sample_name}: {e}"
+                    )
+
+                save_chemistry_text_artifacts(sample_out_dir, bundle, schema, canonical, embedding)
+
+                with schema_all_path.open("a", encoding="utf-8") as sf:
+                    sf.write(json.dumps({"sample_id": sample_name, **schema.__dict__}, ensure_ascii=False) + "\n")
+                with canonical_all_path.open("a", encoding="utf-8") as cf:
+                    cf.write(json.dumps(canonical.__dict__, ensure_ascii=False) + "\n")
+                if embedding is not None:
+                    emb_meta = dict(embedding.__dict__)
+                    emb_meta.pop("embedding_vector", None)
+                    with emb_index_path.open("a", encoding="utf-8") as ef:
+                        ef.write(json.dumps(emb_meta, ensure_ascii=False) + "\n")
+            except Exception as e:
+                print(
+                    f"[chemical_composition] WARNING: chemistry text pipeline failed for {sample_name}: {e}"
+                )
 
     # Also produce a flat CSV of samples for convenience
     rows = []

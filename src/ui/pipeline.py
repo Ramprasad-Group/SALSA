@@ -118,6 +118,7 @@ def run_full_pipeline(
     run_complete_dataset: bool = True,
     skip_llm_figures: bool = True,
     run_chemical_composition: bool = False,
+    chemistry_text_pipeline_config: Dict[str, Any] | None = None,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
 ) -> RunResult:
@@ -267,6 +268,11 @@ def run_full_pipeline(
         from chemical_composition.extract_composition import (
             run_chemical_composition_extraction,
         )
+        from chemical_composition.chemistry_text_pipeline import ChemistryTextPipelineConfig
+
+        chem_cfg = ChemistryTextPipelineConfig(
+            **(chemistry_text_pipeline_config or {})
+        )
 
         for doi in dois:
             safe = doi_to_safe(doi.strip())
@@ -281,6 +287,7 @@ def run_full_pipeline(
                     parsed_json_path=parsed_json if parsed_json.exists() else None,
                     tables_dir=tables_d if tables_d.exists() else None,
                     figures_dir=figures_d if figures_d.exists() else None,
+                    chemistry_text_config=chem_cfg,
                 )
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
             except Exception as e:
