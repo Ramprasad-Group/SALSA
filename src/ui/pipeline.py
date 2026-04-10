@@ -259,9 +259,19 @@ def run_full_pipeline(
         _chemical_composition_dir = run_dir / "chemical_composition"
         _chemical_composition_dir.mkdir(parents=True, exist_ok=True)
 
-        # Add src/ to path for the import
-        _src_root = scripts_root.parent if scripts_root.name != "src" else scripts_root
-        _src_path = str(_src_root / "src") if (_src_root / "src").exists() else str(scripts_root.parent)
+        # Add the repository src/ directory to path for imports.
+        # NOTE:
+        #   If we accidentally add repo root (instead of repo/src), Python can resolve
+        #   `chemical_composition` from an installed site-packages module with an older
+        #   function signature. That causes runtime errors like:
+        #   "unexpected keyword argument 'chemistry_text_config'".
+        if scripts_root.name == "src":
+            _src_path = str(scripts_root.resolve())
+        elif (scripts_root / "src").exists():
+            _src_path = str((scripts_root / "src").resolve())
+        else:
+            # Fallback, but still prefer explicit src path if discoverable.
+            _src_path = str((scripts_root.parent / "src").resolve())
         if _src_path not in sys.path:
             sys.path.insert(0, _src_path)
 
