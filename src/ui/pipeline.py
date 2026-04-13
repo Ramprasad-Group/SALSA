@@ -285,6 +285,7 @@ def run_full_pipeline(
             **(chemistry_text_pipeline_config or {})
         )
         _cc_sig = inspect.signature(run_chemical_composition_extraction)
+        print('=====_cc_sig.parameters=====', _cc_sig.parameters)
         _supports_chemistry_text_cfg = "chemistry_text_config" in _cc_sig.parameters
 
         for doi in dois:
@@ -303,6 +304,9 @@ def run_full_pipeline(
                 )
                 if _supports_chemistry_text_cfg:
                     cc_kwargs["chemistry_text_config"] = chem_cfg
+                    print("====using chemistry text====")
+                else:
+                    print("====NOT using chemistry text====")
                 run_chemical_composition_extraction(**cc_kwargs)
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
             except Exception as e:

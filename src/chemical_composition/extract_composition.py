@@ -561,11 +561,16 @@ def run_chemical_composition_extraction(
                         backend=chemistry_text_cfg.chemistry_embedding_backend,
                         cache_dir=cache_dir,
                     )
+                    print(
+                        f"[text chemical_composition]: embedding generated for {sample_name}"
+                    )
+                    print("====embedding====", embedding)
                 except Exception as e:
                     print(
-                        f"[chemical_composition] WARNING: embedding failed for {sample_name}: {e}"
+                        f"[text chemical_composition] WARNING: embedding failed for {sample_name}: {e}"
                     )
 
+                print()
                 save_chemistry_text_artifacts(sample_out_dir, bundle, schema, canonical, embedding)
 
                 with schema_all_path.open("a", encoding="utf-8") as sf:
