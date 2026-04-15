@@ -54,6 +54,9 @@ from huggingface_hub import snapshot_download
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../extern"))
 sys.path.insert(0, parent_dir)
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_HF_DIR = _REPO_ROOT / "huggingface"
+
 # Now it's safe to import mmdet apis; they will resolve to the fork
 from mmdet.apis import init_detector, inference_detector  # noqa: E402
 
@@ -99,7 +102,7 @@ class ChartDete:
         confidence_threshold : float | None
             Threshold for cropping axis labels. Defaults to env CHARTDETE_CONF_THR or 0.9.
         """
-        self.hf_dir = Path(hf_dir or os.environ.get("CHARTDETE_HF_DIR", "./huggingface")).resolve()
+        self.hf_dir = Path(hf_dir or os.environ.get("CHARTDETE_HF_DIR", str(_DEFAULT_HF_DIR))).resolve()
         self.device = device or os.environ.get("CHARTDETE_DEVICE", _auto_device())
 
         default_cfg = self.hf_dir / "cascade_rcnn_swin-t_fpn_LGF_VCE_PCE_coco_focalsmoothloss.py"

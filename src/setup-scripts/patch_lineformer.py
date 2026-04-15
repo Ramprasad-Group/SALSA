@@ -21,14 +21,16 @@ if not infer_path.exists():
 src = infer_path.read_text()
 
 # Already patched?
-if "sys.path.insert(0" in src or "from .clean_chart import get_clean_input" in src:
+if 'sys.path.insert(0, str(_THIS_DIR))' in src or "from .clean_chart import get_clean_input" in src:
     print("[setup] LineFormer infer.py already patched; skipping.")
     raise SystemExit(0)
 
 # Inject a dynamic sys.path insert based on __file__ (not cwd)
 inject = (
-    "import sys, os as _os\n"
-    "sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))\n"
+    "import sys\n"
+    "from pathlib import Path\n"
+    "_THIS_DIR = Path(__file__).resolve().parent\n"
+    "sys.path.insert(0, str(_THIS_DIR))\n"
     "from clean_chart import get_clean_input\n"
 )
 

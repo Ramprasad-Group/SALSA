@@ -1,4 +1,0 @@
-2026-03-02 21:07:02,698 Loaded CSV file: /tmp/tmp7lxuilpm.csv
-2026-03-02 21:07:02,698 Original DataFrame size: 1 rows
-2026-03-02 21:07:02,700 After removing empty DOI strings: 1 rows
-2026-03-02 21:07:02,717 Wrote combined record for DOI 10.1016/j.jpowsour.2012.06.041 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.jpowsour.2012.06.041_complete.json

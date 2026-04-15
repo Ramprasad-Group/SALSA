@@ -16,7 +16,6 @@ from pathlib import Path
 from tqdm import tqdm
 import datetime
 import json
-from llm_client import get_llm_client
 import glob
 import base64
 import mimetypes
@@ -27,6 +26,8 @@ _SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, _PAPER_DL)
+
+from llm_client import get_llm_client
 from ui.openai_cost import append_usage, run_id_from_env
 from ui.custom_instructions import load_instructions_from_env_or_path
 

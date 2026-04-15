@@ -43,7 +43,7 @@ install:
 ui:
 	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
 	conda activate $(CONDA_ENV) && \
-	streamlit run src/ui/streamlit_app.py
+	python -m streamlit run src/ui/streamlit_app.py
 
 clean: ## Remove Python caches and egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

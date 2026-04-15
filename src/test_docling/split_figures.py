@@ -50,7 +50,7 @@ def inspect_pictures_with_images(doc: DoclingDocument, image_size=(6, 4)):
 output_dir = Path("output")
 output_dir.mkdir(exist_ok=True)
 
-test_pdf = "/home/wschertzer3/AEM_OCR/src/test_docling/c5ta01420d.pdf"
+test_pdf = Path(__file__).resolve().with_name("c5ta01420d.pdf")
 
 # # Simple conversion
 
@@ -169,4 +169,3 @@ print(f"Extracted {table_counter} tables and {picture_counter} figures as images
 #         )
 #     html_buffer.append(html_item)
 # print(html_buffer)
-

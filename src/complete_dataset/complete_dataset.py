@@ -21,13 +21,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
 import hashlib
-from llm_client import LLMConfig, get_llm_client, load_processing_llm_config
 
 
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _SRC_ROOT = os.path.join(_REPO_ROOT, "src")
 sys.path.insert(0, _SRC_ROOT)
+
+from llm_client import LLMConfig, get_llm_client, load_processing_llm_config
 from ui.openai_cost import append_usage, run_id_from_env
 from ui.custom_instructions import load_instructions_from_env_or_path
 

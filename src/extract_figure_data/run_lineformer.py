@@ -33,6 +33,9 @@ import os
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../extern"))
 sys.path.insert(0, parent_dir)
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_HF_DIR = _REPO_ROOT / "huggingface"
+
 from LineFormer.infer import load_model, get_dataseries
 from LineFormer.line_utils import draw_lines, points_to_array
 
@@ -74,7 +77,7 @@ class LineFormer:
         download_if_missing : bool
             If True, snapshot repo when files not found.
         """
-        self.hf_dir = Path(hf_dir or os.environ.get("LINEFORMER_HF_DIR", "./huggingface")).resolve()
+        self.hf_dir = Path(hf_dir or os.environ.get("LINEFORMER_HF_DIR", str(_DEFAULT_HF_DIR))).resolve()
         self.device = device or os.environ.get("LINEFORMER_DEVICE", _auto_device())
 
 

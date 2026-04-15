@@ -1,5 +1,0 @@
-2026-02-23 18:47:19,190 Loaded CSV file: /tmp/tmpn2b_9i54.csv
-2026-02-23 18:47:19,190 Original DataFrame size: 1 rows
-2026-02-23 18:47:19,193 After removing empty DOI strings: 1 rows
-2026-02-23 18:47:19,211 Wrote combined record for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.electacta.2015.12.181_complete.json
-2026-02-23 18:47:19,236 Wrote completed dataset CSV for DOI 10.1016/j.electacta.2015.12.181 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.electacta.2015.12.181_dataset.csv (8 rows)

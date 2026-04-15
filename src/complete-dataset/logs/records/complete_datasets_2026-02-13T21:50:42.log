@@ -1,8 +1,0 @@
-2026-02-13 21:50:43,276 Loaded CSV file: /tmp/tmp086hs8be.csv
-2026-02-13 21:50:43,276 Original DataFrame size: 1 rows
-2026-02-13 21:50:43,278 After removing empty DOI strings: 1 rows
-2026-02-13 21:50:43,283 Tables directory does not exist for DOI 10.1039/C6TA05090E: /home/wschertzer3/AEM_OCR/src/ui_runs/cost-time-analysis/test_new/tables/10.1039@C6TA05090E
-2026-02-13 21:50:43,283 Figures directory does not exist for DOI 10.1039/C6TA05090E: /home/wschertzer3/AEM_OCR/src/ui_runs/cost-time-analysis/test_new/figures/10.1039@C6TA05090E
-2026-02-13 21:50:43,324 Wrote combined record for DOI 10.1039/C6TA05090E to /home/wschertzer3/AEM_OCR/src/ui_runs/cost-time-analysis/test_new/complete_dataset/10.1039@C6TA05090E_complete.json
-2026-02-13 21:51:10,310 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-2026-02-13 21:51:10,366 Wrote completed dataset CSV for DOI 10.1039/C6TA05090E to /home/wschertzer3/AEM_OCR/src/ui_runs/cost-time-analysis/test_new/complete_dataset/10.1039@C6TA05090E_dataset.csv (30 rows)

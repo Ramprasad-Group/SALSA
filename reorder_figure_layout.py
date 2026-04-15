@@ -1,7 +1,8 @@
 import ast
 import sys
+from pathlib import Path
 
-FILE = "/home/user/AEM_OCR/src/ui/streamlit_app.py"
+FILE = Path(__file__).resolve().parent / "src" / "ui" / "streamlit_app.py"
 
 with open(FILE, "r") as fh:
     original = fh.read()

@@ -1,6 +1,0 @@
-2026-03-02 21:00:44,445 Loaded CSV file: /tmp/tmpgumo7_mp.csv
-2026-03-02 21:00:44,445 Original DataFrame size: 1 rows
-2026-03-02 21:00:44,447 After removing empty DOI strings: 1 rows
-2026-03-02 21:00:44,473 Wrote combined record for DOI 10.1016/j.jpowsour.2012.06.041 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.jpowsour.2012.06.041_complete.json
-2026-03-02 21:03:29,151 HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-02 21:03:29,243 Wrote completed dataset CSV for DOI 10.1016/j.jpowsour.2012.06.041 to /home/wschertzer3/AEM_OCR/src/ui_runs/gpt4.1-mini/test_one_doi/complete_dataset/10.1016@j.jpowsour.2012.06.041_dataset.csv (0 rows)

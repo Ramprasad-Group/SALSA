@@ -8,7 +8,6 @@ import os
 import json
 import xml.etree.ElementTree as ET
 import requests
-from llm_client import get_llm_client
 from typing import List, Dict, Any, Optional
 import sys
 import logging
@@ -19,6 +18,8 @@ from bs4 import Tag
 from pathlib import Path
 _SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _SRC_ROOT)
+
+from llm_client import get_llm_client
 from ui.openai_cost import append_usage, run_id_from_env
 
 load_dotenv()
@@ -755,4 +756,3 @@ class LLMTableExtractor:
                 self.logger.error(f"Error saving table {i+1}: {e}")
         
         return saved_files
-
