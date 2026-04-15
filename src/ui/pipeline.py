@@ -284,6 +284,7 @@ def run_full_pipeline(
         chem_cfg = ChemistryTextPipelineConfig(
             **(chemistry_text_pipeline_config or {})
         )
+        chemistry_text_enabled = bool(chem_cfg.enable_chemistry_text_pipeline)
         _cc_sig = inspect.signature(run_chemical_composition_extraction)
         print('=====_cc_sig.parameters=====', _cc_sig.parameters)
         _supports_chemistry_text_cfg = "chemistry_text_config" in _cc_sig.parameters
@@ -302,11 +303,13 @@ def run_full_pipeline(
                     tables_dir=tables_d if tables_d.exists() else None,
                     figures_dir=figures_d if figures_d.exists() else None,
                 )
-                if _supports_chemistry_text_cfg:
+                if _supports_chemistry_text_cfg and chemistry_text_enabled:
                     cc_kwargs["chemistry_text_config"] = chem_cfg
-                    print("====using chemistry text====")
+                    print("====chemistry text pipeline ENABLED====")
+                elif _supports_chemistry_text_cfg:
+                    print("====chemistry text pipeline DISABLED====")
                 else:
-                    print("====NOT using chemistry text====")
+                    print("====chemistry text pipeline UNSUPPORTED====")
                 run_chemical_composition_extraction(**cc_kwargs)
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
             except Exception as e:
