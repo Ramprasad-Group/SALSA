@@ -101,9 +101,19 @@ class LLMClient:
     def provider(self) -> str:
         return self.cfg.provider
 
+    def _is_gpt5_model(self) -> bool:
+        return self.cfg.provider == "openai" and self.cfg.model.startswith("gpt-5")
+
+    def _effective_temperature(self, temperature: float) -> Optional[float]:
+        if self.cfg.provider == "openai" and self.cfg.model.startswith("gpt-5.5"):
+            return 1.0
+        if self._is_gpt5_model():
+            return None
+        return temperature
+
     def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         *,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
@@ -112,14 +122,24 @@ class LLMClient:
     ) -> str:
         """
         messages: [{"role":"system"|"user"|"assistant", "content": "..."}]
+        The user content may also be a multimodal OpenAI-compatible content list.
         Returns assistant text.
         If return_meta=True, returns (text, meta) where meta includes raw resp + token counts when available.
         """
 
         if self.cfg.provider in ("openai", "ollama"):
-            kwargs = {"model": self.cfg.model, "messages": messages, "temperature": temperature}
+            effective_temperature = self._effective_temperature(temperature)
+            kwargs = {
+                "model": self.cfg.model,
+                "messages": messages,
+            }
+            if effective_temperature is not None:
+                kwargs["temperature"] = effective_temperature
             if max_tokens is not None:
-                kwargs["max_tokens"] = max_tokens
+                if self._is_gpt5_model():
+                    kwargs["max_completion_tokens"] = max_tokens
+                else:
+                    kwargs["max_tokens"] = max_tokens
             if response_format is not None:
                 kwargs["response_format"] = response_format
 

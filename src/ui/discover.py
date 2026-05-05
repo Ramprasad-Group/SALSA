@@ -133,10 +133,12 @@ def discover_run(run_dir: Path) -> RunResult:
     reparsed = run_dir / "reparsed"
     figures_tables = run_dir / "figures_tables"
     plextract_workdir = run_dir / "plextract"
+    llm_figure_workdir = run_dir / "llm_figure_extraction"
     complete_dataset_dir = run_dir / "complete_dataset"
     chem_comp_dir = run_dir / "chemical_composition"
 
     final_csv_map = _find_final_dataset_csv(plextract_workdir)
+    llm_final_csv_map = _find_final_dataset_csv(llm_figure_workdir)
     plex_artifacts = _scan_plextract_artifacts(plextract_workdir)
     completed_map = _find_completed_dataset_csv(complete_dataset_dir)
     chem_comp_map = _find_chemical_composition(chem_comp_dir)
@@ -194,8 +196,13 @@ def discover_run(run_dir: Path) -> RunResult:
 
                     # attach final extracted dataset if present
                     final_csv = final_csv_map.get(safe_doi, {}).get(img.stem)
+                    data_source = "ocr"
+                    if not final_csv:
+                        final_csv = llm_final_csv_map.get(safe_doi, {}).get(img.stem)
+                        data_source = "llm_direct"
                     if final_csv:
                         fi.extra["final_dataset_csv"] = str(final_csv)
+                        fi.extra["figure_data_source"] = data_source
 
                     # attach plextract outputs if possible
                     candidates = plex_artifacts.get(safe_doi, [])

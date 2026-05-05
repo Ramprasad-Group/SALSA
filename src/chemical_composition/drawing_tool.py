@@ -11,6 +11,7 @@ installation is required and there are no cross-origin iframe restrictions.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -221,6 +222,35 @@ def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int =
         raise
 
 
+def _jsme_bind_host() -> str:
+    """Host/interface the helper HTTP server should bind to."""
+    return os.environ.get("AEM_OCR_JSME_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+
+def _jsme_port() -> int:
+    """Port used by the helper HTTP server."""
+    raw = os.environ.get("AEM_OCR_JSME_PORT", "8765").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return 8765
+
+
+def _jsme_public_base_url(port: int) -> str:
+    """
+    URL the browser should use to reach the helper server.
+
+    Important: when Streamlit is opened from another machine, `127.0.0.1`
+    points to the user's browser machine, not the Streamlit server. In that
+    case set `AEM_OCR_JSME_PUBLIC_URL` to a browser-reachable URL such as
+    `http://<server-host>:8765`.
+    """
+    env = os.environ.get("AEM_OCR_JSME_PUBLIC_URL", "").strip()
+    if env:
+        return env.rstrip("/")
+    return f"http://127.0.0.1:{port}"
+
+
 
 # ---------- Wrapper HTML (lives in-memory, but loaded by iframe URL) ----------
 
@@ -405,31 +435,38 @@ def render_jsme_editor_local(
         )
         return
 
+    bind_host = _jsme_bind_host()
+    port = _jsme_port()
+    public_base_url = _jsme_public_base_url(port)
+
     # Serve *the JSME root folder* (which contains the jsme subdirectory)
-    base_url = _start_static_server(jsme_root, host="127.0.0.1", port=8765)
+    _start_static_server(jsme_root, host=bind_host, port=port)
+    local_base_url = f"http://127.0.0.1:{port}"
 
     # Write wrapper HTML into a temp dir INSIDE the served root
     wrapper_dir = jsme_dir / "_streamlit_wrapper"
     wrapper_path = _write_jsme_wrapper(
         wrapper_dir,
-        jsme_base_url=base_url,
+        jsme_base_url=public_base_url,
         height=height,
     )
 
     # iframe URL: the wrapper is at jsme/_streamlit_wrapper/jsme_wrapper.html
     # relative to the served root (jsme_root)
-    iframe_url = f"{base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
+    iframe_url = f"{public_base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
 
     # Test if server is responding
     import urllib.request
     try:
-        with urllib.request.urlopen(iframe_url, timeout=2) as response:
+        with urllib.request.urlopen(f"{local_base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}", timeout=2) as response:
             st.write(f"**JSME Server is responding**")
     except Exception as e:
         st.error(f"**Server test failed**: {type(e).__name__}: {e}")
         st.write("**Troubleshooting:**")
         st.write("- The HTTP server may not have started correctly")
-        st.write("- Port 8765 might be in use by another process")
+        st.write(f"- Port {port} might be in use by another process")
         st.write("- Try restarting the Streamlit app")
+        st.write("- If you opened Streamlit from another machine, set `AEM_OCR_JSME_PUBLIC_URL` to a browser-reachable address, for example `http://<server-host>:{port}`")
+        st.write("- For remote access, you may also need `AEM_OCR_JSME_BIND_HOST=0.0.0.0`")
 
     components.iframe(iframe_url, height=height, scrolling=True)

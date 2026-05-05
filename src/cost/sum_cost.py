@@ -13,8 +13,17 @@ PRICES_PER_1M = {
     "gpt-4.1": {"in": 2.00, "out":8.00, "cached_in":0.5},
     "gpt-5-nano": {"in": 0.05, "out":0.40, "cached_in":0.005},
     "gpt-5-mini": {"in": 0.25, "out":2.00, "cached_in":0.025},
-    "gpt-5": {"in": 1.25, "out":10.00, "cached_in":0.125}
-
+    "gpt-5": {"in": 1.25, "out":10.00, "cached_in":0.125},
+    "gpt-5.1": {"in": 1.25, "out":10.00, "cached_in":0.125},
+    "gpt-5.2": {"in": 1.75, "out":14.00, "cached_in":0.175},
+    # No cached-input discount listed for pro; cached tokens are priced as input.
+    "gpt-5.2-pro": {"in": 21.00, "out":168.00},
+    "gpt-5.4": {"in": 2.50, "out":15.00, "cached_in":0.25},
+    "gpt-5.4-mini": {"in": 0.75, "out":4.50, "cached_in":0.075},
+    "gpt-5.4-nano": {"in": 0.20, "out":1.25, "cached_in":0.02},
+    "gpt-5.4-pro": {"in": 30.00, "out":180.00},
+    "gpt-5.5": {"in": 5.00, "out":30.00, "cached_in":0.50},
+    "gpt-5.5-pro": {"in": 30.00, "out":180.00},
 }
 
 def canonical_model(name: str) -> str:
@@ -35,6 +44,24 @@ def canonical_model(name: str) -> str:
         return "gpt-5-mini"
     elif name.startswith("gpt-5-nano"):
         return "gpt-5-nano"
+    elif name.startswith("gpt-5.5-pro"):
+        return "gpt-5.5-pro"
+    elif name.startswith("gpt-5.5"):
+        return "gpt-5.5"
+    elif name.startswith("gpt-5.4-mini"):
+        return "gpt-5.4-mini"
+    elif name.startswith("gpt-5.4-nano"):
+        return "gpt-5.4-nano"
+    elif name.startswith("gpt-5.4-pro"):
+        return "gpt-5.4-pro"
+    elif name.startswith("gpt-5.4"):
+        return "gpt-5.4"
+    elif name.startswith("gpt-5.2-pro"):
+        return "gpt-5.2-pro"
+    elif name.startswith("gpt-5.2"):
+        return "gpt-5.2"
+    elif name.startswith("gpt-5.1"):
+        return "gpt-5.1"
     elif name.startswith("gpt-5"):
         return "gpt-5"
     else:

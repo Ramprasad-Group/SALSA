@@ -1268,16 +1268,25 @@ def find_emit_rows_for_source(
 
     # The cache key always starts with "emit_rows::{kind}::{doi}::{name}::"
     # After _safe_filename this becomes "emit_rows__{kind}__{doi_safe}__{name_safe}__"
-    cache_key_prefix = f"emit_rows::{source_kind}::{doi}::{source_name}::"
-    safe_prefix = _safe_filename_compat(cache_key_prefix)
+    source_names = [source_name]
+    source_stem = Path(str(source_name)).stem
+    if source_stem and source_stem not in source_names:
+        source_names.append(source_stem)
+    safe_prefixes = [
+        _safe_filename_compat(f"emit_rows::{source_kind}::{doi}::{name}::")
+        for name in source_names
+    ]
 
     candidates = []
     for cache_file in cache_dir.iterdir():
         if cache_file.suffix != ".json":
             continue
         # Files are named: <safe_prefix><hash>__<sha256>.json
-        # Check that the filename starts with our safe_prefix
-        if cache_file.stem.startswith(safe_prefix) or cache_file.name.startswith(safe_prefix):
+        # Check that the filename starts with a compatible safe_prefix.
+        if any(
+            cache_file.stem.startswith(prefix) or cache_file.name.startswith(prefix)
+            for prefix in safe_prefixes
+        ):
             candidates.append(cache_file)
 
     # Return most recent if multiple found
@@ -1539,11 +1548,67 @@ def ensure_canvas_remount(*, boot_key: str, version_key: str):
         st.session_state[version_key] += 1
         st.rerun()
 
+def apply_selected_general_llm_to_env() -> None:
+    """Apply the sidebar's General LLM selection to the current process."""
+    provider = st.session_state.get("llm_provider", "Ollama")
+    model = st.session_state.get("llm_model", "")
+    if not model:
+        raise RuntimeError("No LLM model configured. Configure LLM settings in the sidebar first.")
+
+    if provider == "Ollama":
+        os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
+        os.environ["AEM_OCR_LLM_MODEL"] = model
+        os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", _default_ollama_host())
+        os.environ["OLLAMA_MODELS"] = st.session_state.get(
+            "ollama_models_dir",
+            str(_default_ollama_models_dir()),
+        )
+    else:
+        os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"
+        os.environ["AEM_OCR_LLM_MODEL"] = model
+        os.environ["OPENAI_BASE_URL"] = st.session_state.get(
+            "openai_base_url",
+            "https://api.openai.com/v1",
+        )
+        if st.session_state.get("openai_api_key"):
+            os.environ["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+
+def clear_processing_llm_env_if_disabled() -> None:
+    """Prevent stale processing-model env vars from affecting in-process reruns."""
+    if st.session_state.get("use_separate_processing_llm"):
+        return
+    for key in (
+        "AEM_OCR_PROCESSING_LLM_PROVIDER",
+        "AEM_OCR_PROCESSING_LLM_MODEL",
+        "AEM_OCR_PROCESSING_OPENAI_BASE_URL",
+        "AEM_OCR_PROCESSING_OPENAI_API_KEY",
+    ):
+        os.environ.pop(key, None)
+
 # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
 default_ollama_dir = _default_ollama_models_dir()
 default_ollama_host = _default_ollama_host()
 
-_openai_models = ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini","gpt-5-mini", "gpt-5-nano", "gpt-5"]
+_openai_models = [
+    "gpt-5.5",
+    "gpt-5.5-pro",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+    "gpt-5.4-pro",
+    "gpt-5.2",
+    "gpt-5.2-pro",
+    "gpt-5.1",
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-nano",
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
+    "gpt-4o",
+    "gpt-4o-mini",
+]
 
 
 
@@ -1633,35 +1698,13 @@ with st.sidebar:
         run_filter_figures = st.checkbox("Filter figures", value=True)
         run_filter_tables = st.checkbox("Filter tables", value=True)
         run_plextract = st.checkbox("Extract data from figures", value=True)
+        bypass_ocr_with_llm = st.checkbox(
+            "Bypass OCR and extract figure data directly with the LLM",
+            value=False,
+            help="Writes an LLM-digitized figure dataset, then Complete dataset can process it.",
+        )
         run_complete_dataset = st.checkbox("Complete dataset", value=True)
         exclude_full_text = st.checkbox("Exclude full text from context", value=True)
-    with st.expander("Chemistry text embedding pipeline", expanded=False):
-        enable_chemistry_text_pipeline = st.checkbox(
-            "Enable chemistry text pipeline", value=False
-        )
-        chemistry_schema_extractor = st.selectbox(
-            "Schema extractor",
-            options=["rule_based", "llm", "hybrid"],
-            index=0,
-        )
-        chemistry_embedding_backend = st.selectbox(
-            "Embedding backend",
-            options=["local", "api"],
-            index=0,
-        )
-        chemistry_embedding_model = st.text_input(
-            "Embedding model",
-            value="hash-embedding-v1",
-            help="Use hash-embedding-v1 for fully local deterministic fallback, or sentence-transformers/<model> for local transformer embeddings.",
-        )
-        exclude_performance_sentences = st.checkbox(
-            "Exclude performance-heavy sentences", value=True
-        )
-        include_caption_text = st.checkbox("Include caption text", value=True)
-        include_table_context = st.checkbox("Include table context", value=True)
-        include_experimental_section = st.checkbox(
-            "Include synthesis/experimental context", value=True
-        )
 
     st.divider()
     st.header("Select LLM(s)")
@@ -1707,7 +1750,7 @@ with st.sidebar:
 
         # --- Data Processing LLM ---
         st.subheader("Data Processing LLM")
-        st.caption("Used for dataset completion and chemical extraction. Can differ from the general LLM.")
+        st.caption("Used for dataset completion. Chemical composition extraction uses the selected general LLM.")
 
         use_separate_processing_llm = st.checkbox(
             "Use a different LLM for data processing",
@@ -2117,20 +2160,7 @@ if st.button("Run pipeline", type="primary"):
             custom_run_id = run_id_input.strip() or None
 
             # --- Apply general LLM configuration for this run ---
-            provider = st.session_state.get("llm_provider", "Ollama")
-            model = st.session_state.get("llm_model", "")
-
-            if provider == "Ollama":
-                os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                os.environ["AEM_OCR_LLM_MODEL"] = model
-                os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", _default_ollama_host())
-                os.environ["OLLAMA_MODELS"] = st.session_state.get("ollama_models_dir", str(_default_ollama_models_dir()))
-            else:
-                os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"
-                os.environ["AEM_OCR_LLM_MODEL"] = model
-                os.environ["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                if st.session_state.get("openai_api_key"):
-                    os.environ["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+            apply_selected_general_llm_to_env()
 
             # --- Apply data processing LLM configuration ---
             if st.session_state.get("use_separate_processing_llm"):
@@ -2150,9 +2180,7 @@ if st.button("Run pipeline", type="primary"):
                         os.environ["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
             else:
                 # Clear processing-specific env vars so processing uses the general LLM
-                for k in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                           "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                    os.environ.pop(k, None)
+                clear_processing_llm_env_if_disabled()
 
             if custom_run_id:
                 target = run_root / custom_run_id
@@ -2186,19 +2214,11 @@ if st.button("Run pipeline", type="primary"):
                 run_extract_tables=run_extract_tables,
                 run_filter_figures=run_filter_figures,
                 run_filter_tables=run_filter_tables,
-                run_plextract=run_plextract,
+                run_plextract=run_plextract and not bypass_ocr_with_llm,
+                run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
                 run_complete_dataset=run_complete_dataset,
+                skip_llm_figures=not bypass_ocr_with_llm,
                 run_chemical_composition=run_chemical_composition,
-                chemistry_text_pipeline_config={
-                    "enable_chemistry_text_pipeline": enable_chemistry_text_pipeline,
-                    "chemistry_schema_extractor": chemistry_schema_extractor,
-                    "chemistry_embedding_backend": chemistry_embedding_backend,
-                    "chemistry_embedding_model": chemistry_embedding_model,
-                    "exclude_performance_sentences": exclude_performance_sentences,
-                    "include_caption_text": include_caption_text,
-                    "include_table_context": include_table_context,
-                    "include_experimental_section": include_experimental_section,
-                },
                 exclude_full_text=exclude_full_text,
                 custom_instructions=_run_ci,
             )
@@ -2471,10 +2491,16 @@ with tab_figs:
             final_csv = f.extra.get("final_dataset_csv")
         _final_csv_path = Path(final_csv) if final_csv else None
         _figure_dir_for_overrides = _final_csv_path.parent.parent if _final_csv_path and _final_csv_path.exists() else None
+        _figure_data_title = (
+            "LLM-Extracted Figure Data"
+            if f.extra.get("figure_data_source") == "llm_direct"
+            else "OCR-Extracted Data"
+        )
         render_ocr_dropdown(
             csv_path=_final_csv_path,
             key_prefix=f"fig_{selected_doi}_{f.id}",
             axis_override_dir=_figure_dir_for_overrides,
+            title=_figure_data_title,
         )
 
         emit_rows_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "figure", f.id)
@@ -3370,10 +3396,107 @@ with tab_chem:
     if str(_src_for_chem) not in sys.path:
         sys.path.insert(0, str(_src_for_chem))
 
-    from chemical_composition.extract_composition import (
-        identify_relevant_content as _cc_identify,
-        extract_samples_and_compositions as _cc_extract,
-        run_chemical_composition_extraction as _cc_run,
+    import importlib
+    import llm_client as _llm_client_module
+    from chemical_composition import extract_composition as _cc_module
+
+    # Streamlit keeps imported modules alive across reruns. Reload the LLM client
+    # and chemistry extractor so model fixes are picked up without restarting.
+    importlib.reload(_llm_client_module)
+    _cc_module = importlib.reload(_cc_module)
+
+    _cc_identify = _cc_module.identify_relevant_content
+    _cc_extract = _cc_module.extract_samples_and_compositions
+    _cc_run = _cc_module.run_chemical_composition_extraction
+
+    def _cc_build_table_fallback(samples: list[dict], *, doi: str = ""):
+        def _num(value):
+            text = "" if value is None else str(value).strip()
+            if not text:
+                return ""
+            if re.fullmatch(r"[+-]?\d+(\.\d+)?", text):
+                return f"{float(text):.12g}"
+            assignment = re.search(r"(?:^|[\s,(;])(?:x|y|z|n|m)\s*=\s*([+-]?\d+(?:\.\d+)?)", text, flags=re.I)
+            if assignment:
+                value_f = float(assignment.group(1))
+                return f"{(value_f / 100.0 if value_f > 1 else value_f):.12g}"
+            exp = re.search(r"(?:experimental|experimentally|exp\.?)\D{0,60}?([+-]?\d+(?:\.\d+)?)", text, flags=re.I)
+            if exp:
+                value_f = float(exp.group(1))
+                return f"{(value_f / 100.0 if value_f > 1 else value_f):.12g}"
+            pct = re.findall(r"([+-]?\d+(?:\.\d+)?)\s*(?:%|mol\s*%|wt\s*%|vol\s*%)", text, flags=re.I)
+            if pct:
+                return f"{(float(pct[0]) / 100.0):.12g}"
+            ctx = re.search(r"\b(?:dob|degree|graft(?:ing|ed)?|content|loading|ratio|fraction|functionalization)\b\D{0,120}?([+-]?\d+(?:\.\d+)?)", text, flags=re.I)
+            if ctx:
+                value_f = float(ctx.group(1))
+                return f"{(value_f / 100.0 if 1 < value_f <= 100 else value_f):.12g}"
+            return ""
+
+        def _smiles(value, *, polymer=False):
+            smiles = "" if value is None else str(value).strip()
+            if not smiles:
+                return ""
+            if polymer and "*" not in smiles:
+                return ""
+            return smiles
+
+        max_polymer = 3
+        max_additive = 3
+        normalized = []
+        for sample in samples:
+            polymers = sample.get("polymer_components") or sample.get("co_monomers") or []
+            additives = sample.get("additive_components") or []
+            if not additives and isinstance(sample.get("additive"), dict):
+                additive = sample["additive"]
+                if additive.get("name") or additive.get("content") or additive.get("smiles"):
+                    additives = [additive]
+            polymers = [p for p in polymers if isinstance(p, dict)]
+            additives = [a for a in additives if isinstance(a, dict)]
+            normalized.append((sample.get("sample_name", ""), polymers, additives))
+            max_polymer = max(max_polymer, len(polymers))
+            max_additive = max(max_additive, len(additives))
+
+        columns = (
+            ["DOI", "sample_name"]
+            + [f"smiles{i}" for i in range(1, max_polymer + 1)]
+            + [f"c{i}" for i in range(1, max_polymer + 1)]
+            + [f"additive_smiles{i}" for i in range(1, max_additive + 1)]
+            + [f"additive_c{i}" for i in range(1, max_additive + 1)]
+            + ["additive_name_1", "additive_name_2"]
+        )
+        rows = []
+        for sample_name, polymers, additives in normalized:
+            row = {column: "" for column in columns}
+            row["DOI"] = doi
+            row["sample_name"] = sample_name
+            for idx, component in enumerate(polymers, start=1):
+                row[f"smiles{idx}"] = _smiles(component.get("smiles", ""), polymer=True)
+                row[f"c{idx}"] = _num(
+                    component.get("ratio")
+                    or component.get("content")
+                    or component.get("amount")
+                    or component.get("ratio_text")
+                    or component.get("content_text")
+                )
+            for idx, component in enumerate(additives, start=1):
+                row[f"additive_smiles{idx}"] = _smiles(component.get("smiles", ""))
+                row[f"additive_c{idx}"] = _num(
+                    component.get("content")
+                    or component.get("ratio")
+                    or component.get("amount")
+                    or component.get("content_text")
+                    or component.get("ratio_text")
+                )
+                if idx <= 2:
+                    row[f"additive_name_{idx}"] = str(component.get("name", "") or "")
+            rows.append(row)
+        return rows, columns
+
+    _cc_build_table = getattr(
+        _cc_module,
+        "build_composition_table_rows",
+        _cc_build_table_fallback,
     )
     from chemical_composition.drawing_tool import (
         render_jsme_editor_local,
@@ -3392,8 +3515,22 @@ with tab_chem:
         cc_data = json.loads(Path(cc_json_path).read_text())
 
         # --- Samples table ---
-        with st.expander("Extracted Samples & Compositions", expanded=True):
-            if cc_csv_path and Path(cc_csv_path).exists():
+        with st.expander("Extracted Sample Composition Table", expanded=True):
+            samples = cc_data.get("samples", [])
+            if samples:
+                try:
+                    _rows, _cols = _cc_build_table(samples, doi=cc_data.get("doi", selected_doi))
+                    df_cc = pd.DataFrame(_rows, columns=_cols)
+                    st.dataframe(df_cc, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        label="Download samples CSV",
+                        data=df_cc.to_csv(index=False).encode("utf-8"),
+                        file_name=f"{_cc_safe}_samples.csv",
+                        mime="text/csv",
+                    )
+                except Exception as e:
+                    st.warning(f"Failed to build samples table from JSON: {e}")
+            elif cc_csv_path and Path(cc_csv_path).exists():
                 try:
                     df_cc = pd.read_csv(cc_csv_path)
                     st.dataframe(df_cc, use_container_width=True, hide_index=True)
@@ -3406,33 +3543,7 @@ with tab_chem:
                 except Exception as e:
                     st.warning(f"Failed to load samples CSV: {e}")
             else:
-                # Fall back to JSON display
-                samples = cc_data.get("samples", [])
-                if samples:
-                    for s in samples:
-                        with st.expander(f"Sample: {s.get('sample_name', 'Unknown')}"):
-                            if s.get("structure_class"):
-                                st.markdown(f"**Structure class:** {s['structure_class']}")
-                            if s.get("notes"):
-                                st.caption(s["notes"])
-                            comps = s.get("components", [])
-                            if comps:
-                                comp_rows = []
-                                for c in comps:
-                                    comp_rows.append({
-                                        "Component": c.get("name", ""),
-                                        "Role": c.get("role", ""),
-                                        "Formula": c.get("formula", ""),
-                                        "SMILES": c.get("smiles", ""),
-                                        "Amount": c.get("amount", ""),
-                                    })
-                                st.dataframe(
-                                    pd.DataFrame(comp_rows),
-                                    use_container_width=True,
-                                    hide_index=True,
-                                )
-                else:
-                    st.info("No samples extracted.")
+                st.info("No samples extracted.")
 
         # --- Relevant content (with full table/figure rendering) ---
         with st.expander("Relevant Content", expanded=False):
@@ -3629,7 +3740,7 @@ with tab_chem:
             st.info("No user-drawn structures saved yet. Use the drawing tool below.")
 
     # --- Run Extraction ---
-    with st.expander("Run Chamical Composition Extraction", expanded=False):
+    with st.expander("Run Chemical Composition Extraction", expanded=False):
         st.caption(
             "Run the LLM-based extraction on demand for this DOI. "
             "This will analyse the parsed text, tables, and figure captions "
@@ -3642,6 +3753,8 @@ with tab_chem:
                     parsed_json = doi_item.parsed_json_path
                     tables_d = rr.run_dir / "figures_tables" / "tables" / _cc_safe
                     figures_d = rr.run_dir / "figures_tables" / "figures" / _cc_safe
+                    apply_selected_general_llm_to_env()
+                    clear_processing_llm_env_if_disabled()
 
                     result = _cc_run(
                         run_dir=rr.run_dir,

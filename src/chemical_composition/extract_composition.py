@@ -11,94 +11,111 @@ Uses the LLM to:
 from __future__ import annotations
 
 import json
+import base64
+import mimetypes
 import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Allow imports from sibling packages when invoked from src/ui/
 _src = Path(__file__).resolve().parent.parent
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from llm_client import get_llm_client, load_processing_llm_config
+from llm_client import get_llm_client
 from ui.openai_cost import append_usage, run_id_from_env
-from chemical_composition.chemistry_text_pipeline import (
-    ChemistryTextPipelineConfig,
-    canonicalize_chemistry_schema,
-    chemistry_schema_to_text,
-    collect_sample_description_text,
-    extract_chemistry_schema_llm,
-    extract_chemistry_schema_rule_based,
-    get_text_embedding,
-    save_chemistry_text_artifacts,
-)
 
 
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
 
-_COMBINED_EXTRACTION_PROMPT = """\
+_RELEVANT_CONTENT_PROMPT = """\
 You are an expert materials-science chemist.
 
-Given the following parsed content from a scientific paper, perform TWO tasks:
-
-TASK 1: Identify ALL sections of text, tables, and figures that are relevant to the **chemical structures, chemical reactions, and chemical composition** of the materials discussed.
+Given the following parsed content from a scientific paper, identify ALL
+sections of text, tables, and figures that are relevant to the **chemical
+structures, chemical reactions, sample naming, sample composition, and measured
+sample/property association** of the materials discussed.
 
 IMPORTANT — you MUST include:
 - Figures or schemes that **depict chemical structures**, molecular diagrams, polymerisation reactions, synthesis routes, or reaction mechanisms (e.g. "Scheme 1", "Figure 1 – synthesis of …"). These are extremely important even if they contain no numerical data.
 - Figures that show chemical drawings, repeat-unit structures, monomer structures, cross-linking diagrams, or any graphical representation of molecules.
-- Tables listing polymer compositions, monomer feed ratios, IEC values, water uptake, degree of functionalization, etc.
+- Tables listing polymer compositions, monomer feed ratios, IEC values, water uptake, degree of functionalization, sample names, or other measured properties.
 - Body-text paragraphs describing synthesis procedures, reagent amounts, grafting degrees, functionalization steps, or naming conventions for samples.
+- Body-text paragraphs that connect sample names to measured property data.
 
 IMPORTANT EXCLUSION:
 - Do NOT include figures that are primarily property-performance plots/data (e.g. conductivity vs temperature, tensile strength, IEC trends, water uptake/swelling, durability/retention curves, polarization/power-density curves, Nyquist/EIS plots, TGA/DSC/DTG, SAXS/WAXS/XRD property analyses), unless that same figure explicitly contains a chemical structure/reaction diagram as a central element.
 
-TASK 2: From the paper content, identify every **unique sample name** that has associated **materials-property data** reported in this manuscript (e.g. conductivity, stability/retention, IEC, water uptake, swelling ratio, mechanical properties, or any other measured property).
-
-Do NOT include samples that are only mentioned as literature references, reagents consumed during synthesis, or comparison points from other papers without new measurements in this manuscript.
-
-For each qualifying sample extract:
-- One SMILES string for each co-monomer (if determinable from text/table/caption context)
-- The composition ratio of each co-monomer in the monomer feed or polymer (mol%, wt%, feed ratio, etc.; keep original unit text)
-- Additive information: additive name + additive content/amount for the sample.
-  - If no additive is reported for the sample, leave additive fields blank ("").
-- Its broader chemical components (monomers, polymers, fillers, dopants, solvents…)
-- Any SMILES or molecular formula you can determine from the paper text
-- The chemical structure class (e.g. "quaternary ammonium", "imidazolium", "polysulfone", "PEEK", …)
-
-Return a JSON object with TWO keys:
+Return a JSON object with one key:
 
 1. "relevant_content": array of objects, each with:
    - "source_type": one of "text", "table", "figure/scheme"
    - "source_id": the ID as used in the paper (e.g. "Table 1", "Figure 3", "Scheme 1") or "body_text" for inline passages
-   - "excerpt": the relevant passage (≤500 chars) or caption/description
-   - "relevance": brief explanation of why this is relevant to chemical composition or structure
+   - "excerpt": a short relevant passage or caption (<=500 chars)
+   - "content": the relevant passage, table rows, caption, or description with enough detail to support downstream chemical composition extraction (<=2500 chars)
+   - "relevance": brief explanation of why this is relevant to chemical composition, structure, sample names, or measured-sample identification
 
-2. "samples": array of objects, each with:
-   - "sample_name": str – the exact sample label used in the paper
-   - "co_monomers": list of objects, each with:
-      - "name": str – co-monomer name
-      - "smiles": str – SMILES for this co-monomer, or "" if unavailable
-      - "ratio": str – ratio/content for this co-monomer with units/context, or "" if unavailable
-   - "additive": object with:
-      - "name": str – additive name, or ""
-      - "content": str – additive amount/content, or ""
-   - "components": list of objects, each with:
-       - "name": str – component name
-       - "role": str – one of "polymer_backbone", "functional_group", "crosslinker", "filler", "dopant", "solvent", "other"
-       - "formula": str or null – molecular formula if available
-       - "smiles": str or null – SMILES string if determinable
-       - "amount": str or null – composition amount as stated
-   - "structure_class": str or null – high-level classification
-   - "notes": str or null – any additional context
-
-Return ONLY a JSON object with these two keys.  No markdown fences.
+Return ONLY a JSON object with this key. No markdown fences.
 
 Paper content:
 {content}
+"""
+
+
+_COMPOSITION_EXTRACTION_PROMPT = """\
+You are an expert materials-science chemist.
+
+You will receive relevant evidence extracted from one scientific paper. Using
+ONLY that evidence, extract a sample-level chemical composition table for every
+unique sample in this paper that has associated materials-property data reported
+in this manuscript.
+
+Do NOT include samples that are only mentioned as literature references, reagents
+consumed during synthesis, solvents/catalysts, or comparison points from other
+papers without new measurements in this manuscript.
+
+Return a JSON object with one key:
+
+1. "samples": array of row objects. Each row object must contain:
+   - "sample_name": exact sample label used in the paper
+   - "smiles1", "smiles2", ..., "smilesN": polymer/repeat-unit SMILES strings for polymer components in the final measured sample
+   - "c1", "c2", ..., "cN": numeric relative ratios for smiles1..smilesN
+   - "additive_smiles1", "additive_smiles2", ..., "additive_smilesN": free additive/filler/dopant/crosslinker SMILES strings
+   - "additive_c1", "additive_c2", ..., "additive_cN": numeric relative contents for additive_smiles1..additive_smilesN
+   - "additive_name_1", "additive_name_2", ..., "additive_name_N": additive/filler/dopant/crosslinker names corresponding to additive_smilesN when available
+   - "notes": concise reasoning and source wording for the row, including uncertainty, units, and why the sample was included
+
+Strict requirements:
+- c and additive_c fields MUST be JSON numbers or null. Never put text in these
+  fields. Use fractions on a 0-1 scale: 40 mol% -> 0.4, 5 wt% -> 0.05, 1:3 ->
+  0.25 and 0.75 for the two components. If both theoretical and experimental
+  values are given, prefer the experimental value. If a numeric value cannot be
+  determined, use null.
+- Put all source wording, units, formulas, assumptions, and ambiguity in "notes",
+  not in c or additive_c.
+- Every smiles1..smilesN value must be a polymer/repeat-unit SMILES for a final
+  polymer component. It must include dummy attachment atoms such as "[*]" to
+  mark repeat-unit connection points. Do not put detached small molecules,
+  monomers, free side chains, free cations, reagents, names, formulas, "R",
+  "Me", "Ph", or invalid condensed groups in smiles columns. If a valid
+  polymer/repeat-unit SMILES cannot be determined, use "".
+- If a side chain or cation is covalently attached to a polymer, encode the
+  whole functionalized repeat unit in the corresponding smiles column; do not
+  list the detached side-chain/cation molecule as a polymer smiles column.
+- additive_smiles columns may be either small-molecule SMILES or
+  polymer/repeat-unit SMILES, but only for free additives/fillers/dopants/
+  crosslinkers that remain in the measured sample.
+- Use as many numbered columns as needed for the paper. Omit unused numbered
+  fields from a row or set them to ""/null.
+
+Return ONLY a JSON object with the "samples" key. No markdown fences.
+
+Relevant evidence:
+{relevant_content}
 """
 
 
@@ -177,47 +194,736 @@ def _is_property_figure(item: Dict[str, Any]) -> bool:
     return any(keyword in haystack for keyword in _PROPERTY_FIGURE_KEYWORDS)
 
 
+def _normalize_relevant_content_items(value: Any) -> List[Dict[str, str]]:
+    """Normalize relevant-content LLM output for persistence and prompt chaining."""
+    if not isinstance(value, list):
+        return []
+
+    relevant: List[Dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        normalized = {
+            "source_type": _to_text(item.get("source_type")).strip(),
+            "source_id": _to_text(item.get("source_id")).strip(),
+            "excerpt": _to_text(item.get("excerpt")).strip(),
+            "content": _to_text(item.get("content") or item.get("excerpt")).strip(),
+            "relevance": _to_text(item.get("relevance")).strip(),
+        }
+        for image_key in ("image_filename", "image_path"):
+            if item.get(image_key):
+                normalized[image_key] = _to_text(item.get(image_key)).strip()
+        if not _is_property_figure(normalized):
+            relevant.append(normalized)
+    return relevant
+
+
 def _normalize_result(result: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize model output into a stable schema for downstream consumers."""
-    relevant = result.get("relevant_content", [])
-    if not isinstance(relevant, list):
-        relevant = []
-    # Hard guard: never keep property-data-only figures in relevant content.
-    relevant = [item for item in relevant if not _is_property_figure(item)]
+    relevant = _normalize_relevant_content_items(result.get("relevant_content", []))
+    samples = _normalize_composition_samples(result.get("samples", []))
+    return {"relevant_content": relevant, "samples": samples}
 
-    normalized_samples = []
-    raw_samples = result.get("samples", [])
-    if isinstance(raw_samples, list):
-        for sample in raw_samples:
-            if not isinstance(sample, dict):
-                continue
-            co_monomers = sample.get("co_monomers", [])
-            if not isinstance(co_monomers, list):
-                co_monomers = []
-            additive = sample.get("additive", {})
-            if not isinstance(additive, dict):
-                additive = {}
 
-            normalized_samples.append(
-                {
-                    **sample,
-                    "co_monomers": [
-                        {
-                            "name": str(cm.get("name", "")),
-                            "smiles": str(cm.get("smiles", "")),
-                            "ratio": str(cm.get("ratio", "")),
-                        }
-                        for cm in co_monomers
-                        if isinstance(cm, dict)
-                    ],
-                    "additive": {
-                        "name": str(additive.get("name", "")),
-                        "content": str(additive.get("content", "")),
-                    },
-                }
+def _to_text(value: Any) -> str:
+    """Return a stable string for values that may be null, numeric, or nested."""
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _as_dict_list(value: Any) -> List[Dict[str, Any]]:
+    """Coerce a model field into a list of dictionaries."""
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _pick_first(item: Dict[str, Any], keys: List[str]) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value not in (None, ""):
+            return _to_text(value)
+    return ""
+
+
+def _format_number(value: float) -> str:
+    return f"{value:.12g}"
+
+
+def _normalize_numeric_fraction(value: Any) -> str:
+    """Coerce model ratio/content output into a numeric fraction string."""
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return _format_number(float(value))
+
+    text = _to_text(value).strip()
+    if not text or text.lower() in {"none", "null", "nan", "n/a", "not available"}:
+        return ""
+
+    if re.fullmatch(r"[+-]?\d+(\.\d+)?", text):
+        return _format_number(float(text))
+
+    assignment = re.search(
+        r"(?:^|[\s,(;])(?:x|y|z|n|m)\s*=\s*([+-]?\d+(?:\.\d+)?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if assignment:
+        value_f = float(assignment.group(1))
+        return _format_number(value_f / 100.0 if value_f > 1 else value_f)
+
+    variable_example = re.search(
+        r"(?:^|[\s,(;])(?:x|y|z|n|m)\b\D{0,30}?(?:e\.g\.|eg|example)\D{0,20}?([+-]?\d+(?:\.\d+)?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if variable_example:
+        value_f = float(variable_example.group(1))
+        return _format_number(value_f / 100.0 if value_f > 1 else value_f)
+
+    experimental = re.search(
+        r"(?:experimental|experimentally|exp\.?)\D{0,60}?([+-]?\d+(?:\.\d+)?)\s*(?:%|mol\s*%|wt\s*%|vol\s*%)?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if experimental:
+        value_f = float(experimental.group(1))
+        return _format_number(value_f / 100.0 if value_f > 1 else value_f)
+
+    percent_matches = re.findall(
+        r"([+-]?\d+(?:\.\d+)?)\s*(?:%|mol\s*%|wt\s*%|vol\s*%)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if percent_matches:
+        return _format_number(float(percent_matches[0]) / 100.0)
+
+    ratio_match = re.fullmatch(
+        r"\s*([+-]?\d+(?:\.\d+)?)\s*[:/]\s*([+-]?\d+(?:\.\d+)?)\s*",
+        text,
+    )
+    if ratio_match:
+        first = float(ratio_match.group(1))
+        second = float(ratio_match.group(2))
+        total = first + second
+        if total:
+            return _format_number(first / total)
+
+    contextual_number = re.search(
+        r"\b(?:dob|degree|graft(?:ing|ed)?|content|loading|ratio|fraction|functionalization)\b\D{0,120}?([+-]?\d+(?:\.\d+)?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if contextual_number:
+        value_f = float(contextual_number.group(1))
+        return _format_number(value_f / 100.0 if 1 < value_f <= 100 else value_f)
+
+    return ""
+
+
+def _table_numeric_value(value: Any) -> str:
+    """Last-mile guard for c/additive_c columns: numeric strings only."""
+    normalized = _normalize_numeric_fraction(value)
+    if re.fullmatch(r"[+-]?\d+(\.\d+)?", normalized):
+        return normalized
+    return ""
+
+
+def _normalize_smiles(value: Any, *, require_polymer: bool = False) -> str:
+    """
+    Keep only plain SMILES-like strings.
+
+    For polymer components, require dummy attachment atoms so a small-molecule
+    precursor does not get exported as a polymer/repeat-unit SMILES.
+    """
+    smiles = _to_text(value).strip()
+    if not smiles:
+        return ""
+
+    invalid_patterns = [
+        r"\.\.\.",
+        r"\bR\d*\b",
+        r"\b(Me|Et|Ph)\b",
+        r"(?<!\[)\bCH[23]\b",
+        r"(?<!\[)[A-Z][a-z]?\+",
+        r"[{}]",
+    ]
+    if any(re.search(pattern, smiles) for pattern in invalid_patterns):
+        return ""
+    if require_polymer and "*" not in smiles:
+        return ""
+    return smiles
+
+
+def _numeric_or_none(value: Any) -> Optional[float]:
+    """Return a JSON-number-safe float, or None when no numeric value exists."""
+    normalized = _normalize_numeric_fraction(value)
+    if re.fullmatch(r"[+-]?\d+(\.\d+)?", normalized):
+        return float(normalized)
+    return None
+
+
+def _numbered_indices(row: Dict[str, Any], *prefixes: str) -> List[int]:
+    indices = set()
+    for key in row:
+        for prefix in prefixes:
+            match = re.fullmatch(rf"{re.escape(prefix)}(\d+)", str(key))
+            if match:
+                indices.add(int(match.group(1)))
+    return sorted(indices)
+
+
+def _numbered_additive_name_indices(row: Dict[str, Any]) -> List[int]:
+    indices = set()
+    for key in row:
+        match = re.fullmatch(r"additive_name_?(\d+)", str(key))
+        if match:
+            indices.add(int(match.group(1)))
+    return sorted(indices)
+
+
+def _normalize_composition_sample_row(sample: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a sample into the requested flat composition-table schema."""
+    row: Dict[str, Any] = {
+        "sample_name": _to_text(sample.get("sample_name")).strip(),
+        "notes": _to_text(sample.get("notes")).strip(),
+    }
+
+    polymer_indices = _numbered_indices(sample, "smiles", "c")
+    additive_indices = _numbered_indices(sample, "additive_smiles", "additive_c")
+    additive_name_indices = _numbered_additive_name_indices(sample)
+
+    if polymer_indices or additive_indices or additive_name_indices:
+        for idx in polymer_indices:
+            row[f"smiles{idx}"] = _normalize_smiles(
+                sample.get(f"smiles{idx}", ""),
+                require_polymer=True,
             )
+            row[f"c{idx}"] = _numeric_or_none(sample.get(f"c{idx}"))
 
-    return {"relevant_content": relevant, "samples": normalized_samples}
+        for idx in additive_indices:
+            row[f"additive_smiles{idx}"] = _normalize_smiles(
+                sample.get(f"additive_smiles{idx}", "")
+            )
+            row[f"additive_c{idx}"] = _numeric_or_none(sample.get(f"additive_c{idx}"))
+        for idx in additive_name_indices:
+            row[f"additive_name_{idx}"] = _to_text(
+                sample.get(f"additive_name_{idx}", sample.get(f"additive_name{idx}", ""))
+            ).strip()
+        return row
+
+    # Backward-compatible conversion for older LLM outputs that used nested
+    # polymer_components/additive_components.
+    for idx, component in enumerate(_normalize_polymer_components(sample), start=1):
+        row[f"smiles{idx}"] = _normalize_smiles(
+            component.get("smiles", ""),
+            require_polymer=True,
+        )
+        row[f"c{idx}"] = _numeric_or_none(
+            component.get("ratio", "") or component.get("ratio_text", "")
+        )
+
+    for idx, component in enumerate(_normalize_additive_components(sample), start=1):
+        row[f"additive_smiles{idx}"] = _normalize_smiles(component.get("smiles", ""))
+        row[f"additive_c{idx}"] = _numeric_or_none(
+            component.get("content", "") or component.get("content_text", "")
+        )
+        row[f"additive_name_{idx}"] = _to_text(component.get("name", "")).strip()
+
+    return row
+
+
+def _normalize_composition_samples(value: Any) -> List[Dict[str, Any]]:
+    """Normalize model output samples into flat composition rows."""
+    if not isinstance(value, list):
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    for sample in value:
+        if not isinstance(sample, dict):
+            continue
+        row = _normalize_composition_sample_row(sample)
+        if row.get("sample_name"):
+            rows.append(row)
+    return rows
+
+
+def _normalize_polymer_components(sample: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Normalize polymer composition entries from new or legacy model fields."""
+    raw_items = _as_dict_list(sample.get("polymer_components"))
+    if not raw_items:
+        raw_items = _as_dict_list(sample.get("co_monomers"))
+    if not raw_items:
+        # Last-resort compatibility for older component-only samples.
+        raw_items = [
+            c for c in _as_dict_list(sample.get("components"))
+            if _to_text(c.get("role")).lower()
+            in {"polymer_backbone", "functional_group", "other", ""}
+        ]
+
+    normalized: List[Dict[str, str]] = []
+    for item in raw_items:
+        ratio_value = _pick_first(item, ["ratio", "relative_ratio", "content", "amount", "composition"])
+        ratio_text = _pick_first(item, ["ratio_text", "ratio_source", "ratio_units", "composition_text"])
+        normalized.append(
+            {
+                "name": _pick_first(item, ["name", "component_name", "polymer_name", "monomer_name"]),
+                "smiles": _normalize_smiles(
+                    _pick_first(item, ["smiles", "polymer_smiles", "repeat_unit_smiles", "monomer_smiles"]),
+                    require_polymer=True,
+                ),
+                "ratio": _normalize_numeric_fraction(ratio_value),
+                "ratio_text": ratio_text or _to_text(ratio_value),
+            }
+        )
+    return normalized
+
+
+def _normalize_additive_components(sample: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Normalize additive/crosslinker/filler entries from new or legacy fields."""
+    raw_items: List[Dict[str, Any]] = []
+    for key in ("additive_components", "additives", "crosslinkers"):
+        raw_items.extend(_as_dict_list(sample.get(key)))
+
+    legacy_additive = sample.get("additive")
+    if not raw_items and isinstance(legacy_additive, dict) and any(legacy_additive.values()):
+        raw_items.append(legacy_additive)
+
+    if not raw_items:
+        raw_items = [
+            c for c in _as_dict_list(sample.get("components"))
+            if _to_text(c.get("role")).lower()
+            in {"additive", "crosslinker", "filler", "dopant"}
+        ]
+
+    normalized: List[Dict[str, str]] = []
+    for item in raw_items:
+        content_value = _pick_first(item, ["content", "relative_content", "ratio", "amount", "composition"])
+        content_text = _pick_first(item, ["content_text", "content_source", "content_units", "composition_text"])
+        normalized.append(
+            {
+                "name": _pick_first(item, ["name", "component_name", "additive_name", "crosslinker_name"]),
+                "role": _pick_first(item, ["role", "component_role"]) or "additive",
+                "smiles": _normalize_smiles(
+                    _pick_first(item, ["smiles", "additive_smiles", "crosslinker_smiles"]),
+                ),
+                "content": _normalize_numeric_fraction(content_value),
+                "content_text": content_text or _to_text(content_value),
+            }
+        )
+    return normalized
+
+
+def _normalize_components(
+    sample: Dict[str, Any],
+    polymer_components: List[Dict[str, str]],
+    additive_components: List[Dict[str, str]],
+) -> List[Dict[str, str]]:
+    """Keep legacy component rows available for older downstream code."""
+    raw_components = _as_dict_list(sample.get("components"))
+    if raw_components:
+        return [
+            {
+                "name": _pick_first(c, ["name", "component_name"]),
+                "role": _pick_first(c, ["role", "component_role"]),
+                "formula": _to_text(c.get("formula")),
+                "smiles": _to_text(c.get("smiles")),
+                "amount": _pick_first(c, ["amount", "content", "ratio", "composition"]),
+            }
+            for c in raw_components
+        ]
+
+    components: List[Dict[str, str]] = []
+    for pc in polymer_components:
+        components.append(
+            {
+                "name": pc.get("name", ""),
+                "role": "polymer_backbone",
+                "formula": "",
+                "smiles": pc.get("smiles", ""),
+                "amount": pc.get("ratio", ""),
+            }
+        )
+    for ac in additive_components:
+        components.append(
+            {
+                "name": ac.get("name", ""),
+                "role": ac.get("role", "") or "additive",
+                "formula": "",
+                "smiles": ac.get("smiles", ""),
+                "amount": ac.get("content", ""),
+            }
+        )
+    return components
+
+
+def _first_additive(additive_components: List[Dict[str, str]], legacy_additive: Any) -> Dict[str, str]:
+    """Return the legacy single-additive summary for downstream compatibility."""
+    if additive_components:
+        first = additive_components[0]
+        return {
+            "name": first.get("name", ""),
+            "content": first.get("content", ""),
+            "smiles": first.get("smiles", ""),
+        }
+    if isinstance(legacy_additive, dict):
+        return {
+            "name": _to_text(legacy_additive.get("name")),
+            "content": _to_text(legacy_additive.get("content")),
+            "smiles": _to_text(legacy_additive.get("smiles")),
+        }
+    return {"name": "", "content": "", "smiles": ""}
+
+
+def build_composition_table_rows(
+    samples: List[Dict[str, Any]],
+    *,
+    doi: str = "",
+) -> Tuple[List[Dict[str, str]], List[str]]:
+    """
+    Build the sample-level chemical composition table requested by the UI.
+
+    Columns are:
+      DOI, sample_name, smiles1..smilesN, c1..cN,
+      additive_smiles1..additive_smilesM, additive_c1..additive_cM,
+      additive_name_1..additive_name_K, notes.
+    """
+    normalized_samples = _normalize_composition_samples(samples)
+    max_polymer = 3
+    max_additive = 3
+    max_additive_names = 2
+    for sample in normalized_samples:
+        polymer_indices = _numbered_indices(sample, "smiles", "c")
+        additive_indices = _numbered_indices(sample, "additive_smiles", "additive_c")
+        additive_name_indices = _numbered_additive_name_indices(sample)
+        if polymer_indices:
+            max_polymer = max(max_polymer, max(polymer_indices))
+        if additive_indices:
+            max_additive = max(max_additive, max(additive_indices))
+        if additive_name_indices:
+            max_additive_names = max(max_additive_names, max(additive_name_indices))
+    max_additive_names = max(max_additive_names, min(max_additive, 2))
+
+    columns = (
+        ["DOI", "sample_name"]
+        + [f"smiles{i}" for i in range(1, max_polymer + 1)]
+        + [f"c{i}" for i in range(1, max_polymer + 1)]
+        + [f"additive_smiles{i}" for i in range(1, max_additive + 1)]
+        + [f"additive_c{i}" for i in range(1, max_additive + 1)]
+        + [f"additive_name_{i}" for i in range(1, max_additive_names + 1)]
+        + ["notes"]
+    )
+
+    rows: List[Dict[str, str]] = []
+    for sample in normalized_samples:
+        row = {column: "" for column in columns}
+        row["DOI"] = doi
+        row["sample_name"] = _to_text(sample.get("sample_name"))
+        row["notes"] = _to_text(sample.get("notes"))
+        for idx in range(1, max_polymer + 1):
+            row[f"smiles{idx}"] = _normalize_smiles(
+                sample.get(f"smiles{idx}", ""),
+                require_polymer=True,
+            )
+            row[f"c{idx}"] = _table_numeric_value(sample.get(f"c{idx}"))
+        for idx in range(1, max_additive + 1):
+            row[f"additive_smiles{idx}"] = _normalize_smiles(
+                sample.get(f"additive_smiles{idx}", "")
+            )
+            row[f"additive_c{idx}"] = _table_numeric_value(sample.get(f"additive_c{idx}"))
+        for idx in range(1, max_additive_names + 1):
+            row[f"additive_name_{idx}"] = _to_text(
+                sample.get(f"additive_name_{idx}", sample.get(f"additive_name{idx}", ""))
+            )
+        rows.append(row)
+
+    return rows, columns
+
+
+def _build_paper_content(parsed_text: str, tables_text: str = "", figures_text: str = "") -> str:
+    """Build the paper-context block shared by the relevance prompt."""
+    combined = ""
+    if parsed_text:
+        combined += "=== BODY TEXT ===\n" + _truncate(parsed_text) + "\n\n"
+    if tables_text:
+        combined += "=== TABLES ===\n" + _truncate(tables_text, 20000) + "\n\n"
+    if figures_text:
+        combined += "=== FIGURE CAPTIONS ===\n" + _truncate(figures_text, 10000) + "\n\n"
+    return combined
+
+
+_FIGURE_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+
+def _normalize_source_id_for_match(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _has_digit(value: str) -> bool:
+    return any(char.isdigit() for char in value)
+
+
+def _find_matching_figure_image(figures_dir: Path, source_id: str) -> Optional[Path]:
+    """Find the local figure image that corresponds to a relevant-content ID."""
+    src_norm = _normalize_source_id_for_match(source_id)
+    if not src_norm or not figures_dir.exists():
+        return None
+
+    image_files = sorted(
+        path
+        for path in figures_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in _FIGURE_IMAGE_SUFFIXES
+    )
+
+    for image_path in image_files:
+        stem_norm = _normalize_source_id_for_match(image_path.stem)
+        if stem_norm == src_norm:
+            return image_path
+
+    for image_path in image_files:
+        stem_norm = _normalize_source_id_for_match(image_path.stem)
+        if _has_digit(src_norm) and not _has_digit(stem_norm):
+            continue
+        if src_norm in stem_norm or stem_norm in src_norm:
+            return image_path
+
+    for meta_path in sorted(figures_dir.glob("*_metadata.json")):
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            continue
+
+        candidates = [
+            _to_text(meta.get("id")),
+            meta_path.stem.replace("_metadata", ""),
+        ]
+        if not any(
+            src_norm in _normalize_source_id_for_match(candidate)
+            or _normalize_source_id_for_match(candidate) in src_norm
+            for candidate in candidates
+            if candidate
+        ):
+            continue
+
+        base_stem = meta_path.stem.replace("_metadata", "")
+        for suffix in _FIGURE_IMAGE_SUFFIXES:
+            image_path = meta_path.with_name(base_stem + suffix)
+            if image_path.exists():
+                return image_path
+
+    return None
+
+
+def _is_structure_figure_for_vision(item: Dict[str, Any]) -> bool:
+    """Select chemical drawings/schemes for multimodal composition extraction."""
+    src_type = _to_text(item.get("source_type")).strip().lower()
+    if src_type not in ("figure/scheme", "figure", "scheme"):
+        return False
+
+    haystack = " ".join(
+        _to_text(item.get(key))
+        for key in ("source_id", "excerpt", "content", "relevance")
+    ).lower()
+
+    if "scheme" in haystack:
+        return True
+
+    spectroscopy_terms = (
+        "ftir",
+        "xps",
+        "nmr",
+        "spectra",
+        "spectrum",
+        "survey scan",
+        "f 1s",
+        "n 1s",
+    )
+    if any(term in haystack for term in spectroscopy_terms):
+        return False
+
+    structure_terms = (
+        "synthesis route",
+        "chemical structure",
+        "chemical drawing",
+        "molecular diagram",
+        "reaction",
+        "repeat-unit",
+        "repeat unit",
+        "microstructure",
+    )
+    return any(term in haystack for term in structure_terms)
+
+
+def _attach_relevant_figure_images(
+    relevant_content: List[Dict[str, Any]],
+    figures_dir: Optional[Path],
+) -> List[Dict[str, Any]]:
+    """Attach local image paths to relevant chemical drawing/scheme evidence."""
+    if not figures_dir or not figures_dir.exists():
+        return relevant_content
+
+    attached: List[Dict[str, Any]] = []
+    for item in relevant_content:
+        item_out = dict(item)
+        if _is_structure_figure_for_vision(item_out):
+            image_path = _find_matching_figure_image(figures_dir, _to_text(item_out.get("source_id")))
+            if image_path is not None:
+                item_out["image_filename"] = image_path.name
+                item_out["image_path"] = str(image_path)
+        attached.append(item_out)
+    return attached
+
+
+def _image_data_url(image_path: Path) -> str:
+    mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _build_composition_messages(
+    prompt: str,
+    relevant_content: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    image_items = [
+        item
+        for item in relevant_content
+        if item.get("image_path") and _is_structure_figure_for_vision(item)
+    ]
+    if not image_items:
+        return [{"role": "user", "content": prompt}]
+
+    content: List[Dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                prompt
+                + "\n\nAttached chemical drawing/scheme images correspond to the "
+                "evidence items that include image_filename/image_path. Inspect the "
+                "images directly when deriving repeat-unit SMILES and composition "
+                "fractions; do not rely on the local file path text itself."
+            ),
+        }
+    ]
+
+    for item in image_items[:3]:
+        image_path = Path(_to_text(item.get("image_path")))
+        if not image_path.exists():
+            continue
+        content.append(
+            {
+                "type": "text",
+                "text": (
+                    f"Attached image for {item.get('source_id', 'figure')}: "
+                    f"{image_path.name}"
+                ),
+            }
+        )
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": _image_data_url(image_path),
+                    "detail": "high",
+                },
+            }
+        )
+
+    return [{"role": "user", "content": content}]
+
+
+def _get_chemical_composition_client():
+    """Use the currently selected general LLM for chemical extraction."""
+    # Streamlit mutates env vars between runs, while get_llm_client() caches a
+    # global client. Force a fresh client so chemical extraction follows the
+    # currently selected general model instead of stale processing overrides.
+    return get_llm_client(force_new=True)
+
+
+def _parse_json_object(raw: str) -> Dict[str, Any]:
+    try:
+        parsed = json.loads(_clean_json_response(raw))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _relevant_content_to_prompt_text(relevant_content: List[Dict[str, Any]]) -> str:
+    """Serialize relevant content compactly for the composition prompt."""
+    normalized = _normalize_relevant_content_items(relevant_content)
+    return json.dumps(normalized, ensure_ascii=False, indent=2)
+
+
+def extract_relevant_content_llm(
+    parsed_text: str,
+    tables_text: str = "",
+    figures_text: str = "",
+    *,
+    doi: str = "",
+) -> List[Dict[str, Any]]:
+    """Identify relevant chemistry/sample evidence in a dedicated LLM call."""
+    combined = _build_paper_content(parsed_text, tables_text, figures_text)
+    if not combined.strip():
+        return []
+
+    prompt = _RELEVANT_CONTENT_PROMPT.format(content=combined)
+    client = _get_chemical_composition_client()
+    raw, meta = client.chat(
+        [{"role": "user", "content": prompt}],
+        temperature=0.0,
+        return_meta=True,
+    )
+    _log_cost(
+        meta,
+        doi=doi,
+        extra={
+            "kind": "chemical_composition_relevant_content",
+            "configured_model": client.model,
+            "used_processing_llm_override": False,
+        },
+    )
+
+    result = _parse_json_object(raw)
+    return _normalize_relevant_content_items(result.get("relevant_content", []))
+
+
+def extract_composition_from_relevant_content_llm(
+    relevant_content: List[Dict[str, Any]],
+    *,
+    doi: str = "",
+) -> List[Dict[str, Any]]:
+    """Extract flat sample composition rows from previously selected evidence."""
+    relevant_prompt_text = _relevant_content_to_prompt_text(relevant_content)
+    if not relevant_prompt_text.strip() or relevant_prompt_text.strip() == "[]":
+        return []
+
+    prompt = _COMPOSITION_EXTRACTION_PROMPT.format(
+        relevant_content=relevant_prompt_text
+    )
+    client = _get_chemical_composition_client()
+    messages = _build_composition_messages(prompt, relevant_content)
+    raw, meta = client.chat(
+        messages,
+        temperature=0.0,
+        return_meta=True,
+    )
+    _log_cost(
+        meta,
+        doi=doi,
+        extra={
+            "kind": "chemical_composition_table",
+            "configured_model": client.model,
+            "used_processing_llm_override": False,
+        },
+    )
+
+    result = _parse_json_object(raw)
+    return _normalize_composition_samples(result.get("samples", []))
 
 
 def extract_chemical_composition_combined(
@@ -226,10 +932,11 @@ def extract_chemical_composition_combined(
     figures_text: str = "",
     *,
     doi: str = "",
+    figures_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
-    Combined function that identifies relevant content AND extracts samples
-    in a single LLM call.
+    Compatibility wrapper that identifies relevant content, then extracts
+    sample-level chemical composition rows from that relevant content.
 
     Parameters
     ----------
@@ -246,46 +953,15 @@ def extract_chemical_composition_combined(
     -------
     dict with keys:
         - "relevant_content": list of dicts (source_type, source_id, excerpt, relevance)
-        - "samples": list of dicts (sample_name, components, structure_class, notes)
+        - "samples": list of flat rows with sample_name, smiles/c,
+          additive_smiles/additive_c, and notes
     """
-    combined = ""
-    if parsed_text:
-        combined += "=== BODY TEXT ===\n" + _truncate(parsed_text) + "\n\n"
-    if tables_text:
-        combined += "=== TABLES ===\n" + _truncate(tables_text, 20000) + "\n\n"
-    if figures_text:
-        combined += "=== FIGURE CAPTIONS ===\n" + _truncate(figures_text, 10000) + "\n\n"
-
-    if not combined.strip():
-        return {"relevant_content": [], "samples": []}
-
-    prompt = _COMBINED_EXTRACTION_PROMPT.format(content=combined)
-    # Use processing-specific LLM if configured, otherwise fall back to general
-    processing_override = load_processing_llm_config()
-    if processing_override is not None:
-        client = get_llm_client(override=processing_override)
-    else:
-        client = get_llm_client()
-    raw, meta = client.chat(
-        [{"role": "user", "content": prompt}],
-        temperature=0.0,
-        return_meta=True,
+    relevant = extract_relevant_content_llm(
+        parsed_text, tables_text, figures_text, doi=doi
     )
-
-    # Log cost for combined call
-    _log_cost(meta, doi=doi, extra={"kind": "chemical_composition_combined"})
-
-    try:
-        result = json.loads(_clean_json_response(raw))
-        if isinstance(result, dict):
-            # Validate structure
-            if "relevant_content" in result and "samples" in result:
-                return _normalize_result(result)
-    except json.JSONDecodeError:
-        pass
-
-    # Return empty structure if parsing failed
-    return {"relevant_content": [], "samples": []}
+    relevant = _attach_relevant_figure_images(relevant, figures_dir)
+    samples = extract_composition_from_relevant_content_llm(relevant, doi=doi)
+    return {"relevant_content": relevant, "samples": samples}
 
 
 # Legacy functions kept for backward compatibility
@@ -297,16 +973,11 @@ def identify_relevant_content(
     doi: str = "",
 ) -> List[Dict[str, Any]]:
     """
-    DEPRECATED: Use extract_chemical_composition_combined instead.
-
-    This function is kept for backward compatibility but now calls
-    the combined extraction function and returns only relevant_content.
+    Identify relevant content for chemical composition extraction.
     """
-    result = extract_chemical_composition_combined(
+    return extract_relevant_content_llm(
         parsed_text, tables_text, figures_text, doi=doi
     )
-    return result.get("relevant_content", [])
-
 
 def extract_samples_and_compositions(
     parsed_text: str,
@@ -316,16 +987,12 @@ def extract_samples_and_compositions(
     doi: str = "",
 ) -> List[Dict[str, Any]]:
     """
-    DEPRECATED: Use extract_chemical_composition_combined instead.
-
-    This function is kept for backward compatibility but now calls
-    the combined extraction function and returns only samples.
+    Extract flat sample composition rows after relevant-content selection.
     """
-    result = extract_chemical_composition_combined(
+    relevant = extract_relevant_content_llm(
         parsed_text, tables_text, figures_text, doi=doi
     )
-    return result.get("samples", [])
-
+    return extract_composition_from_relevant_content_llm(relevant, doi=doi)
 
 # ---------------------------------------------------------------------------
 # Pipeline-level runner
@@ -337,13 +1004,12 @@ def run_chemical_composition_extraction(
     parsed_json_path: Optional[Path] = None,
     tables_dir: Optional[Path] = None,
     figures_dir: Optional[Path] = None,
-    chemistry_text_config: Optional[ChemistryTextPipelineConfig] = None,
 ) -> Dict[str, Any]:
     """
     End-to-end extraction for one DOI.
 
-    Reads parsed text + tables + figures, calls LLM twice
-    (identify relevant content, then extract compositions),
+    Reads parsed text + tables + figures, calls relevance selection and then
+    composition-table extraction,
     writes results to ``<run_dir>/chemical_composition/<safe_doi>/``.
 
     Returns the combined result dict.
@@ -419,9 +1085,13 @@ def run_chemical_composition_extraction(
                 parts.append(f"### {img.stem}\n(figure image: {img.name})\n")
         figures_text = "\n".join(parts)
 
-    # --- Combined LLM call ---
+    # --- Two-stage LLM extraction: relevant evidence, then composition table ---
     extraction_result = extract_chemical_composition_combined(
-        parsed_text, tables_text, figures_text, doi=doi_str,
+        parsed_text,
+        tables_text,
+        figures_text,
+        doi=doi_str,
+        figures_dir=figures_dir,
     )
 
     result = {
@@ -502,125 +1172,10 @@ def run_chemical_composition_extraction(
         json.dumps(result, indent=2, ensure_ascii=False)
     )
 
-    # --- Optional chemistry text -> schema -> canonical text -> embedding pipeline ---
-    chemistry_text_cfg = chemistry_text_config or ChemistryTextPipelineConfig()
-    if chemistry_text_cfg.enable_chemistry_text_pipeline:
-        chem_root = run_dir / "chemistry_text" / safe_doi
-        cache_dir = run_dir / "chemistry_text" / "_cache"
-        chem_root.mkdir(parents=True, exist_ok=True)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        schema_all_path = chem_root / "chemistry_schema_all.jsonl"
-        canonical_all_path = chem_root / "canonical_text_all.jsonl"
-        emb_index_path = chem_root / "embedding_index.jsonl"
-        # reset aggregate files for this DOI run
-        schema_all_path.write_text("")
-        canonical_all_path.write_text("")
-        emb_index_path.write_text("")
-
-        for idx, sample in enumerate(samples):
-            sample_name = str(sample.get("sample_name", "")).strip() or f"sample_{idx+1}"
-            sample_dir_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", sample_name).strip("_") or f"sample_{idx+1}"
-            sample_out_dir = chem_root / sample_dir_name
-
-            try:
-                bundle = collect_sample_description_text(
-                    sample=sample,
-                    parsed_text=parsed_text,
-                    tables_text=tables_text,
-                    figures_text=figures_text,
-                    relevant_content=relevant,
-                    include_caption_text=chemistry_text_cfg.include_caption_text,
-                    include_table_context=chemistry_text_cfg.include_table_context,
-                    include_experimental_section=chemistry_text_cfg.include_experimental_section,
-                    exclude_performance_sentences=chemistry_text_cfg.exclude_performance_sentences,
-                )
-
-                if chemistry_text_cfg.chemistry_schema_extractor == "llm":
-                    schema = extract_chemistry_schema_llm(bundle.raw_text, sample_name=sample_name)
-                elif chemistry_text_cfg.chemistry_schema_extractor == "hybrid":
-                    schema = extract_chemistry_schema_llm(bundle.raw_text, sample_name=sample_name)
-                    if not schema.backbone_family and not schema.cation_type:
-                        schema = extract_chemistry_schema_rule_based(
-                            bundle.raw_text, sample_name=sample_name, extraction_method="hybrid_fallback"
-                        )
-                else:
-                    schema = extract_chemistry_schema_rule_based(
-                        bundle.raw_text, sample_name=sample_name, extraction_method="rule_based"
-                    )
-
-                schema = canonicalize_chemistry_schema(schema)
-                canonical = chemistry_schema_to_text(schema)
-
-                embedding = None
-                try:
-                    embedding = get_text_embedding(
-                        canonical.canonical_text,
-                        sample_id=sample_name,
-                        model_name=chemistry_text_cfg.chemistry_embedding_model,
-                        backend=chemistry_text_cfg.chemistry_embedding_backend,
-                        cache_dir=cache_dir,
-                    )
-                    print(
-                        f"[text chemical_composition]: embedding generated for {sample_name}"
-                    )
-                    print("====embedding====", embedding)
-                except Exception as e:
-                    print(
-                        f"[text chemical_composition] WARNING: embedding failed for {sample_name}: {e}"
-                    )
-
-                print()
-                save_chemistry_text_artifacts(sample_out_dir, bundle, schema, canonical, embedding)
-
-                with schema_all_path.open("a", encoding="utf-8") as sf:
-                    sf.write(json.dumps({"sample_id": sample_name, **schema.__dict__}, ensure_ascii=False) + "\n")
-                with canonical_all_path.open("a", encoding="utf-8") as cf:
-                    cf.write(json.dumps(canonical.__dict__, ensure_ascii=False) + "\n")
-                if embedding is not None:
-                    emb_meta = dict(embedding.__dict__)
-                    emb_meta.pop("embedding_vector", None)
-                    with emb_index_path.open("a", encoding="utf-8") as ef:
-                        ef.write(json.dumps(emb_meta, ensure_ascii=False) + "\n")
-            except Exception as e:
-                print(
-                    f"[chemical_composition] WARNING: chemistry text pipeline failed for {sample_name}: {e}"
-                )
-
-    # Also produce a flat CSV of samples for convenience
-    rows = []
-    for s in samples:
-        base = {
-            "sample_name": s.get("sample_name", ""),
-            "structure_class": s.get("structure_class", ""),
-            "notes": s.get("notes", ""),
-        }
-        for comp in s.get("components", []):
-            row = dict(base)
-            row["component_name"] = comp.get("name", "")
-            row["component_role"] = comp.get("role", "")
-            row["formula"] = comp.get("formula", "")
-            row["smiles"] = comp.get("smiles", "")
-            row["amount"] = comp.get("amount", "")
-            row["co_monomers"] = json.dumps(
-                s.get("co_monomers", []), ensure_ascii=False
-            )
-            additive = s.get("additive", {}) or {}
-            row["additive_name"] = additive.get("name", "")
-            row["additive_content"] = additive.get("content", "")
-            rows.append(row)
-        if not s.get("components"):
-            row = dict(base)
-            row["co_monomers"] = json.dumps(
-                s.get("co_monomers", []), ensure_ascii=False
-            )
-            additive = s.get("additive", {}) or {}
-            row["additive_name"] = additive.get("name", "")
-            row["additive_content"] = additive.get("content", "")
-            rows.append(row)
-
-    if rows:
-        df = pd.DataFrame(rows)
-        df.to_csv(out_dir / "samples.csv", index=False)
+    # Produce the UI-facing sample-level composition table:
+    # sample_name, smiles1..smilesN, c1..cN, additive_smiles1.., additive_c1..
+    composition_rows, composition_columns = build_composition_table_rows(samples, doi=doi_str)
+    df = pd.DataFrame(composition_rows, columns=composition_columns)
+    df.to_csv(out_dir / "samples.csv", index=False)
 
     return result

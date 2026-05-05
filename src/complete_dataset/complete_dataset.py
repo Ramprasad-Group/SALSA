@@ -20,7 +20,6 @@ from tqdm import tqdm
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
-import hashlib
 
 
 
@@ -286,10 +285,9 @@ class FigurePointDataset:
     df: pd.DataFrame
 
 def _stable_name_from_path(fp: Path) -> str:
-    # short stable id, avoids insanely long cache keys
-    h = hashlib.sha1(str(fp).encode("utf-8")).hexdigest()[:10]
-    return f"{fp.parent.parent.name}__{fp.parent.name}__{fp.stem}__{h}"
-    # Example: <some_dir>__final__final_dataset__a1b2c3d4e5
+    # Use the figure/subfigure directory as the source name so UI cache lookup
+    # and per-figure reruns can find the generated emit_rows.
+    return Path(fp.parent.parent.name).stem
 
 
 def _parse_axis_title(text: str):

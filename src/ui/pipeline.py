@@ -1,11 +1,9 @@
 # AEM_OCR/src/ui/pipeline_orchestrator.py
 from __future__ import annotations
 import csv
-import inspect
 import json
 import subprocess
 import sys
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -116,10 +114,10 @@ def run_full_pipeline(
     run_filter_figures: bool = True,
     run_filter_tables: bool = True,
     run_plextract: bool = True,
+    run_llm_figure_extraction: bool = False,
     run_complete_dataset: bool = True,
     skip_llm_figures: bool = True,
     run_chemical_composition: bool = False,
-    chemistry_text_pipeline_config: Dict[str, Any] | None = None,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
 ) -> RunResult:
@@ -131,7 +129,7 @@ def run_full_pipeline(
       4) extract_figures_tables_llm.py (extraction only)
       5) chemical composition extraction (on unfiltered figures/tables)
       6) filter figures/tables
-      7) plextract.py (digitize)
+      7) plextract.py or direct LLM figure extraction (digitize)
       8) complete-dataset.py (agglomerate + GPT row completion)
     All outputs go under run_root/<run_id>/...
     """
@@ -177,9 +175,10 @@ def run_full_pipeline(
     reparsed_dir = run_dir / "reparsed"
     figures_tables_dir = run_dir / "figures_tables"
     plextract_workdir = run_dir / "plextract"
+    llm_figure_workdir = run_dir / "llm_figure_extraction"
     complete_dataset_dir = run_dir / "complete_dataset"  # NEW
 
-    for d in [records_dir, papers_dir, reparsed_dir, figures_tables_dir, plextract_workdir, complete_dataset_dir]:
+    for d in [records_dir, papers_dir, reparsed_dir, figures_tables_dir, plextract_workdir, llm_figure_workdir, complete_dataset_dir]:
         d.mkdir(parents=True, exist_ok=True)
 
     # --- 0) write a minimal DOI CSV for records downloader ---
@@ -263,9 +262,7 @@ def run_full_pipeline(
         # Add the repository src/ directory to path for imports.
         # NOTE:
         #   If we accidentally add repo root (instead of repo/src), Python can resolve
-        #   `chemical_composition` from an installed site-packages module with an older
-        #   function signature. That causes runtime errors like:
-        #   "unexpected keyword argument 'chemistry_text_config'".
+        #   `chemical_composition` from an installed site-packages module.
         if scripts_root.name == "src":
             _src_path = str(scripts_root.resolve())
         elif (scripts_root / "src").exists():
@@ -276,18 +273,15 @@ def run_full_pipeline(
         if _src_path not in sys.path:
             sys.path.insert(0, _src_path)
 
-        from chemical_composition.extract_composition import (
-            run_chemical_composition_extraction,
-        )
-        from chemical_composition.chemistry_text_pipeline import ChemistryTextPipelineConfig
+        import importlib
+        import llm_client as _llm_client_module
+        from chemical_composition import extract_composition as _cc_module
 
-        chem_cfg = ChemistryTextPipelineConfig(
-            **(chemistry_text_pipeline_config or {})
-        )
-        chemistry_text_enabled = bool(chem_cfg.enable_chemistry_text_pipeline)
-        _cc_sig = inspect.signature(run_chemical_composition_extraction)
-        print('=====_cc_sig.parameters=====', _cc_sig.parameters)
-        _supports_chemistry_text_cfg = "chemistry_text_config" in _cc_sig.parameters
+        # Streamlit runs this orchestrator in-process, so a previously imported
+        # LLM client/extractor can otherwise keep stale model behavior alive.
+        importlib.reload(_llm_client_module)
+        _cc_module = importlib.reload(_cc_module)
+        run_chemical_composition_extraction = _cc_module.run_chemical_composition_extraction
 
         for doi in dois:
             safe = doi_to_safe(doi.strip())
@@ -303,13 +297,6 @@ def run_full_pipeline(
                     tables_dir=tables_d if tables_d.exists() else None,
                     figures_dir=figures_d if figures_d.exists() else None,
                 )
-                if _supports_chemistry_text_cfg and chemistry_text_enabled:
-                    cc_kwargs["chemistry_text_config"] = chem_cfg
-                    print("====chemistry text pipeline ENABLED====")
-                elif _supports_chemistry_text_cfg:
-                    print("====chemistry text pipeline DISABLED====")
-                else:
-                    print("====chemistry text pipeline UNSUPPORTED====")
                 run_chemical_composition_extraction(**cc_kwargs)
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
             except Exception as e:
@@ -349,6 +336,26 @@ def run_full_pipeline(
         if plextract_results_root is not None:
             _copy_figure_metadata_to_plextract(figures_tables_dir, plextract_results_root)
 
+    # --- 7b) direct LLM figure extraction ---
+    # Writes the same final_dataset.csv shape as plextract so the existing
+    # complete-dataset stage can consume it through --extracted_figures_root.
+    if run_llm_figure_extraction:
+        if not _figures_dir.exists() or not any(_figures_dir.iterdir()):
+            print(f"[Pipeline] WARNING: No figures were extracted — skipping direct LLM figure extraction "
+                  f"(figures dir missing or empty: {_figures_dir})")
+        else:
+            import importlib
+            if str(scripts_root.resolve()) not in sys.path:
+                sys.path.insert(0, str(scripts_root.resolve()))
+            from extract_figure_data import llm_direct_figure_data as _llm_fig_module
+
+            _llm_fig_module = importlib.reload(_llm_fig_module)
+            _llm_fig_module.run_llm_figure_data_extraction(
+                figures_root=_figures_dir,
+                workdir=llm_figure_workdir,
+                run_dir=run_dir,
+            )
+
     # --- 8) complete-dataset.py ---
     if run_complete_dataset:
         cmd = [
@@ -360,11 +367,15 @@ def run_full_pipeline(
             "--figures_tables_dir", str(figures_tables_dir),
             "--log_file", str(complete_dataset_dir),
         ]
-        # If plextract ran, try to pass its results directory as --extracted_figures_root
-        if run_plextract:
+        extracted_figures_root = None
+        if run_llm_figure_extraction:
+            extracted_figures_root = _plextract_results_root(llm_figure_workdir)
+        elif run_plextract:
             plextract_results_root = _plextract_results_root(plextract_workdir)
             if plextract_results_root is not None:
-                cmd += ["--extracted_figures_root", str(plextract_results_root)]
+                extracted_figures_root = plextract_results_root
+        if extracted_figures_root is not None:
+            cmd += ["--extracted_figures_root", str(extracted_figures_root)]
         if exclude_full_text:
             cmd.append("--exclude_full_text")
         if skip_llm_figures:
