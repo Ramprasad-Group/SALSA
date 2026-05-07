@@ -41,6 +41,15 @@ conda activate AEM_OCR
 make ui             # Step 4
 ```
 
+### Remote Hosting
+
+Deployment templates for a remote Linux host are in [`deploy/`](./deploy/), including:
+
+- [`deploy/DEPLOY_REMOTE.md`](./deploy/DEPLOY_REMOTE.md)
+- [`deploy/systemd/aem-ocr.service`](./deploy/systemd/aem-ocr.service)
+- [`deploy/nginx/aem-ocr.conf`](./deploy/nginx/aem-ocr.conf)
+- [`deploy/env/aem-ocr.env.example`](./deploy/env/aem-ocr.env.example)
+
 ### Prerequisites
 
 - **Git LFS** — model checkpoints are stored with LFS. Install it if not already:

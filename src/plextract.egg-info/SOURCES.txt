@@ -5,3 +5,4 @@ src/plextract.egg-info/SOURCES.txt
 src/plextract.egg-info/dependency_links.txt
 src/plextract.egg-info/requires.txt
 src/plextract.egg-info/top_level.txt
+tests/test_composition_table_schema.py

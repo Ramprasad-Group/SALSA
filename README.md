@@ -1,6 +1,6 @@
-# AEM_OCR — Extract Line Chart Data and Metadata
+# SALSA — Semi-Autonomous Literature Scraping Assistant
 
-A pipeline for extracting numerical data from line charts in scientific papers, with specialized focus on materials science and electrochemistry. Built on [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete), extending the approach from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
+SALSA (Semi-Autonomous Literature Scraping Assistant) is a pipeline for extracting numerical data and metadata from scientific literature, with specialized focus on line charts, materials science, and electrochemistry. Built on [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete), extending the approach from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
 
 ---
 
@@ -8,8 +8,8 @@ A pipeline for extracting numerical data from line charts in scientific papers, 
 
 ```bash
 # 1. Clone with submodules
-git clone --recurse-submodules https://github.com/Ramprasad-Group/AEM_OCR
-cd AEM_OCR
+git clone --recurse-submodules https://github.com/Ramprasad-Group/SALSA
+cd SALSA
 
 # 2. Create conda environment
 conda env create -f environment.yml
@@ -29,6 +29,15 @@ make setup          # Steps 2 + 3
 conda activate AEM_OCR
 make ui             # Step 4
 ```
+
+### Remote Hosting
+
+Deployment templates for a remote Linux host are in [`deploy/`](./deploy/), including:
+
+- [`deploy/DEPLOY_REMOTE.md`](./deploy/DEPLOY_REMOTE.md)
+- [`deploy/systemd/aem-ocr.service`](./deploy/systemd/aem-ocr.service)
+- [`deploy/nginx/aem-ocr.conf`](./deploy/nginx/aem-ocr.conf)
+- [`deploy/env/aem-ocr.env.example`](./deploy/env/aem-ocr.env.example)
 
 ### Prerequisites
 
@@ -73,7 +82,7 @@ The pipeline has three stages:
 ## Project Structure
 
 ```
-AEM_OCR/
+SALSA/
 ├── extern/                          # Git submodules
 │   ├── ChartDete/                   # Chart element detector (Cascade R-CNN + Swin-T)
 │   └── LineFormer/                  # Line extraction transformer
@@ -121,6 +130,8 @@ AEM_OCR/
 | `LINEFORMER_HF_DIR` | `./huggingface` | Directory for LineFormer model files |
 | `AEM_OCR_LLM_PROVIDER` | `ollama` | LLM provider (`ollama` or `openai`) |
 | `AEM_OCR_LLM_MODEL` | — | Model name (required for LLM features) |
+
+SALSA currently keeps the legacy `AEM_OCR_*` environment variable names for backwards compatibility with existing deployments and scripts.
 
 ---
 
