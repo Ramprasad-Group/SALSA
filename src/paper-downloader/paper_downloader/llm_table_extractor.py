@@ -653,7 +653,7 @@ class LLMTableExtractor:
     def _log_cost(self, text, extra: dict):
         """
         Writes a JSONL record to <run_dir>/cost/usage.jsonl
-        Requires env var AEM_OCR_RUN_DIR (or falls back to CWD).
+        Requires env var SALSA_RUN_DIR (or falls back to CWD).
         """
         append_usage(
             run_id=run_id_from_env("unknown"),

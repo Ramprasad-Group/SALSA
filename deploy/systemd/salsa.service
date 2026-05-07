@@ -1,0 +1,17 @@
+[Unit]
+Description=SALSA Streamlit application
+After=network.target
+
+[Service]
+Type=simple
+User=wschertzer
+Group=nogroup
+WorkingDirectory=/data/appls/machine_learning/SALSA
+EnvironmentFile=/data/appls/machine_learning/SALSA/.env.production
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -lc 'source /home/wschertzer/miniconda3/etc/profile.d/conda.sh && conda activate SALSA && exec python -m streamlit run src/ui/streamlit_app.py --server.address ${STREAMLIT_SERVER_ADDRESS:-127.0.0.1} --server.port ${STREAMLIT_SERVER_PORT:-8501}'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

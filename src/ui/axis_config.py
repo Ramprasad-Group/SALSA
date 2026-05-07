@@ -1,4 +1,4 @@
-# AEM_OCR/src/ui/axis_config.py
+# SALSA/src/ui/axis_config.py
 """
 Manages axis label names, unit aliases, unit dimensions, canonical targets,
 and unit conversions.  Persisted as a JSON file per workspace.

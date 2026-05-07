@@ -1,4 +1,4 @@
-# AEM_OCR/src/openai_cost_ledger.py
+# SALSA/src/openai_cost_ledger.py
 from __future__ import annotations
 
 import json
@@ -127,7 +127,7 @@ def append_usage(
     Appends one JSON line to <run_dir>/cost/usage.jsonl
     """
 
-    run_dir = Path(os.getenv("AEM_OCR_RUN_DIR", str(DEFAULT_COST_ROOT)))
+    run_dir = Path(os.getenv("SALSA_RUN_DIR", str(DEFAULT_COST_ROOT)))
     out_dir = run_dir / "cost"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "usage.jsonl"
@@ -155,4 +155,4 @@ def append_usage(
 
 
 def run_id_from_env(default: str = "unknown") -> str:
-    return os.getenv("AEM_OCR_RUN_ID", default)
+    return os.getenv("SALSA_RUN_ID", default)

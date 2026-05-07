@@ -224,12 +224,12 @@ def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int =
 
 def _jsme_bind_host() -> str:
     """Host/interface the helper HTTP server should bind to."""
-    return os.environ.get("AEM_OCR_JSME_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    return os.environ.get("SALSA_JSME_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
 
 
 def _jsme_port() -> int:
     """Port used by the helper HTTP server."""
-    raw = os.environ.get("AEM_OCR_JSME_PORT", "8765").strip()
+    raw = os.environ.get("SALSA_JSME_PORT", "8765").strip()
     try:
         return int(raw)
     except ValueError:
@@ -242,10 +242,10 @@ def _jsme_public_base_url(port: int) -> str:
 
     Important: when Streamlit is opened from another machine, `127.0.0.1`
     points to the user's browser machine, not the Streamlit server. In that
-    case set `AEM_OCR_JSME_PUBLIC_URL` to a browser-reachable URL such as
+    case set `SALSA_JSME_PUBLIC_URL` to a browser-reachable URL such as
     `http://<server-host>:8765`.
     """
-    env = os.environ.get("AEM_OCR_JSME_PUBLIC_URL", "").strip()
+    env = os.environ.get("SALSA_JSME_PUBLIC_URL", "").strip()
     if env:
         return env.rstrip("/")
     return f"http://127.0.0.1:{port}"
@@ -466,7 +466,7 @@ def render_jsme_editor_local(
         st.write("- The HTTP server may not have started correctly")
         st.write(f"- Port {port} might be in use by another process")
         st.write("- Try restarting the Streamlit app")
-        st.write("- If you opened Streamlit from another machine, set `AEM_OCR_JSME_PUBLIC_URL` to a browser-reachable address, for example `http://<server-host>:{port}`")
-        st.write("- For remote access, you may also need `AEM_OCR_JSME_BIND_HOST=0.0.0.0`")
+        st.write("- If you opened Streamlit from another machine, set `SALSA_JSME_PUBLIC_URL` to a browser-reachable address, for example `http://<server-host>:{port}`")
+        st.write("- For remote access, you may also need `SALSA_JSME_BIND_HOST=0.0.0.0`")
 
     components.iframe(iframe_url, height=height, scrolling=True)

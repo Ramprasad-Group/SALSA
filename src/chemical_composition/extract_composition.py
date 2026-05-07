@@ -1207,8 +1207,8 @@ def run_chemical_composition_extraction(
     import os
     import pandas as pd
 
-    # Set AEM_OCR_RUN_DIR so cost logging writes to the correct location
-    os.environ["AEM_OCR_RUN_DIR"] = str(run_dir)
+    # Set SALSA_RUN_DIR so cost logging writes to the correct location
+    os.environ["SALSA_RUN_DIR"] = str(run_dir)
 
     doi_str = safe_doi.replace("@", "/")
 

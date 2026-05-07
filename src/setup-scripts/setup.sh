@@ -14,7 +14,19 @@ echo "==> Initialising git submodules..."
 git -C "$REPO_ROOT" submodule update --init --recursive
 
 # ------------------------------------------------------------------
-# 2. Install MMDetection 2.x stack (mmcv-full + mmdet)
+# 2. Ensure Git LFS model artifacts are available
+# ------------------------------------------------------------------
+if ! git lfs version >/dev/null 2>&1; then
+    echo "ERROR: Git LFS is required for model checkpoints. Install Git LFS, then rerun setup."
+    exit 1
+fi
+
+echo "==> Pulling Git LFS model artifacts..."
+git -C "$REPO_ROOT" lfs install --local
+git -C "$REPO_ROOT" lfs pull
+
+# ------------------------------------------------------------------
+# 3. Install MMDetection 2.x stack (mmcv-full + mmdet)
 #    Must come before ChartDete, whose setup.py imports torch + mmdet.
 # ------------------------------------------------------------------
 CUDA_TAG="${CUDA_TAG:-cu117}"
@@ -55,7 +67,7 @@ python -m pip install -U -f "$BASE_URL" ${MMCV_PIN}
 python -m pip install -U ${MMDET_PIN}
 
 # ------------------------------------------------------------------
-# 3. Install ChartDete as editable so its custom mmdet heads are available
+# 4. Install ChartDete as editable so its custom mmdet heads are available
 #    --no-build-isolation ensures setup.py sees the env's torch/mmdet.
 # ------------------------------------------------------------------
 if [ -d "$REPO_ROOT/extern/ChartDete" ] && [ "$(ls -A "$REPO_ROOT/extern/ChartDete")" ]; then
@@ -67,7 +79,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 4. Patch configuration files
+# 5. Patch configuration files
 # ------------------------------------------------------------------
 CHARTDETE_CONFIG="$REPO_ROOT/extern/ChartDete/configs/cascade_rcnn_swin-t_fpn_LGF_VCE_PCE_coco_focalsmoothloss.py"
 if [ -f "$CHARTDETE_CONFIG" ]; then
@@ -81,7 +93,7 @@ if [ -f "$REPO_ROOT/extern/LineFormer/infer.py" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 5. Install the plextract package in editable mode
+# 6. Install the plextract package in editable mode
 # ------------------------------------------------------------------
 echo "==> Installing plextract (editable)..."
 python -m pip install -e "$REPO_ROOT"

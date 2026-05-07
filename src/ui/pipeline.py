@@ -1,4 +1,4 @@
-# AEM_OCR/src/ui/pipeline_orchestrator.py
+# SALSA/src/ui/pipeline_orchestrator.py
 from __future__ import annotations
 import csv
 import json
@@ -193,8 +193,8 @@ def run_full_pipeline(
 
     # --- Set run dir and run ID so cost logging writes to <run_dir>/cost/usage.jsonl ---
     import os
-    os.environ["AEM_OCR_RUN_DIR"] = str(run_dir)
-    os.environ["AEM_OCR_RUN_ID"] = run_id
+    os.environ["SALSA_RUN_DIR"] = str(run_dir)
+    os.environ["SALSA_RUN_ID"] = run_id
 
     # --- Reference workspace-level custom instructions ---
     # Instructions are saved in workspace/custom_instructions/default.json
@@ -207,7 +207,7 @@ def run_full_pipeline(
         ci_path = workspace_ci_dir / "default.json"
         with open(ci_path, "w") as f:
             json.dump(custom_instructions, f, indent=2)
-        os.environ["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+        os.environ["SALSA_CUSTOM_INSTRUCTIONS"] = str(ci_path)
         print(f"[Pipeline] Saved custom instructions to: {ci_path}")
         print(f"[Pipeline] Missing value defaults: {custom_instructions.get('missing_value_defaults', {})}")
     else:

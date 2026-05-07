@@ -1,7 +1,7 @@
 .PHONY: setup env torch install ui clean help
 
 
-CONDA_ENV   ?= AEM_OCR
+CONDA_ENV   ?= SALSA
 SHELL       := /bin/bash
 TORCH_VER ?= 1.13.1
 TV_VER    ?= 0.14.1

@@ -82,7 +82,7 @@ parser.add_argument('--plan_cache_dir', default='',
                     help="Optional override for plan cache directory. Default: <output_dir>/plans")
 
 parser.add_argument('--custom_instructions', default='',
-                    help="Path to custom_instructions.json (overrides AEM_OCR_CUSTOM_INSTRUCTIONS env var)")
+                    help="Path to custom_instructions.json (overrides SALSA_CUSTOM_INSTRUCTIONS env var)")
 
 parser.add_argument('--target_figure', default='',
                     help="Optional: target a specific figure/subfigure by name (e.g., 'Figure_1_subfig_0'). "
@@ -643,7 +643,7 @@ def _load_chemical_samples(modified_doi: str) -> List[Dict[str, Any]]:
     Load extracted chemical composition samples for this DOI if available.
     Returns a list of sample dicts from samples.json, or empty list.
     """
-    run_dir = os.environ.get("AEM_OCR_RUN_DIR", "").strip()
+    run_dir = os.environ.get("SALSA_RUN_DIR", "").strip()
     if not run_dir:
         return []
     samples_path = os.path.join(run_dir, "chemical_composition", modified_doi, "samples.json")
@@ -793,7 +793,7 @@ def main():
         figures = collect_figures(doi, figures_dir)
 
         # Get run_dir from environment for checking interventions_plextract
-        run_dir = os.environ.get("AEM_OCR_RUN_DIR", "").strip()
+        run_dir = os.environ.get("SALSA_RUN_DIR", "").strip()
         run_dir_path = Path(run_dir) if run_dir else None
 
         fig_datasets = load_extracted_figure_datasets(modified_doi, run_dir=run_dir_path)
