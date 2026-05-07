@@ -9,7 +9,7 @@ Requires-Dist: opencv-python>=4.7
 Requires-Dist: numpy<2,>=1.24
 Requires-Dist: pandas<3,>=2.0
 
-# AEM_OCR — Extract Line Chart Data and Metadata
+# SALSA — Extract Line Chart Data and Metadata
 
 A pipeline for extracting numerical data from line charts in scientific papers, with specialized focus on materials science and electrochemistry. Built on [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete), extending the approach from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
 
@@ -19,12 +19,12 @@ A pipeline for extracting numerical data from line charts in scientific papers, 
 
 ```bash
 # 1. Clone with submodules
-git clone --recurse-submodules https://github.com/Ramprasad-Group/AEM_OCR
-cd AEM_OCR
+git clone --recurse-submodules https://github.com/Ramprasad-Group/SALSA
+cd SALSA
 
 # 2. Create conda environment
 conda env create -f environment.yml
-conda activate AEM_OCR
+conda activate SALSA
 
 # 3. Run setup (installs submodules, mmdet stack, patches)
 bash src/setup-scripts/setup.sh
@@ -37,7 +37,7 @@ Or use `make`:
 
 ```bash
 make setup          # Steps 2 + 3
-conda activate AEM_OCR
+conda activate SALSA
 make ui             # Step 4
 ```
 
@@ -46,9 +46,9 @@ make ui             # Step 4
 Deployment templates for a remote Linux host are in [`deploy/`](./deploy/), including:
 
 - [`deploy/DEPLOY_REMOTE.md`](./deploy/DEPLOY_REMOTE.md)
-- [`deploy/systemd/aem-ocr.service`](./deploy/systemd/aem-ocr.service)
-- [`deploy/nginx/aem-ocr.conf`](./deploy/nginx/aem-ocr.conf)
-- [`deploy/env/aem-ocr.env.example`](./deploy/env/aem-ocr.env.example)
+- [`deploy/systemd/salsa.service`](./deploy/systemd/salsa.service)
+- [`deploy/nginx/salsa.conf`](./deploy/nginx/salsa.conf)
+- [`deploy/env/salsa.env.example`](./deploy/env/salsa.env.example)
 
 ### Prerequisites
 
@@ -65,8 +65,8 @@ The dataset-completion and figure-filtering stages require an LLM. Configure via
 
 | Variable | Description | Example |
 |---|---|---|
-| `AEM_OCR_LLM_PROVIDER` | `ollama` or `openai` | `openai` |
-| `AEM_OCR_LLM_MODEL` | Model name | `gpt-4o` |
+| `SALSA_LLM_PROVIDER` | `ollama` or `openai` | `openai` |
+| `SALSA_LLM_MODEL` | Model name | `gpt-4o` |
 | `OPENAI_API_KEY` | API key (OpenAI only) | `sk-...` |
 | `OLLAMA_HOST` | Ollama endpoint (Ollama only) | `http://127.0.0.1:11434` |
 
@@ -93,7 +93,7 @@ The pipeline has three stages:
 ## Project Structure
 
 ```
-AEM_OCR/
+SALSA/
 ├── extern/                          # Git submodules
 │   ├── ChartDete/                   # Chart element detector (Cascade R-CNN + Swin-T)
 │   └── LineFormer/                  # Line extraction transformer
@@ -139,8 +139,8 @@ AEM_OCR/
 | `LINEFORMER_DEVICE` | auto (cuda/cpu) | Device for LineFormer inference |
 | `CHARTDETE_HF_DIR` | `./huggingface` | Directory for ChartDete model files |
 | `LINEFORMER_HF_DIR` | `./huggingface` | Directory for LineFormer model files |
-| `AEM_OCR_LLM_PROVIDER` | `ollama` | LLM provider (`ollama` or `openai`) |
-| `AEM_OCR_LLM_MODEL` | — | Model name (required for LLM features) |
+| `SALSA_LLM_PROVIDER` | `ollama` | LLM provider (`ollama` or `openai`) |
+| `SALSA_LLM_MODEL` | — | Model name (required for LLM features) |
 
 ---
 

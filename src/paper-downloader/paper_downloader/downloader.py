@@ -716,7 +716,7 @@ def _validate_html_status(doi, publisher, title, year, download_directory, db, d
                                     extension=extension)
 
 
-# def get_acs_session(cookie_path="/home/wschertzer3/AEM_OCR/src/paper-downloader/paper_downloader/acs_cookies.pkl"):
+# def get_acs_session(cookie_path="/home/wschertzer3/SALSA/src/paper-downloader/paper_downloader/acs_cookies.pkl"):
     """Load institutional ACS cookies into a requests.Session."""
     s = requests.Session()
     try:

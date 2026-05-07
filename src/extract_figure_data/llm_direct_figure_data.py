@@ -207,7 +207,7 @@ def run_llm_figure_data_extraction(
     if run_dir is not None:
         import os
 
-        os.environ["AEM_OCR_RUN_DIR"] = str(run_dir)
+        os.environ["SALSA_RUN_DIR"] = str(run_dir)
 
     workdir.mkdir(parents=True, exist_ok=True)
     results_root = workdir / "results"

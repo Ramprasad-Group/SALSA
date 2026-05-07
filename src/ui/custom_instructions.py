@@ -1,6 +1,6 @@
 # custom_instructions.py
 """
-Manages user-customizable LLM instructions for the AEM_OCR pipeline.
+Manages user-customizable LLM instructions for the SALSA pipeline.
 
 Users can override the default prompts/rules for:
   1. Table extraction (merged cell handling, etc.)
@@ -115,12 +115,12 @@ def load_instructions_from_env_or_path(
     """
     Convenience loader used by CLI scripts.
     Reads from the path given by --custom_instructions or the
-    AEM_OCR_CUSTOM_INSTRUCTIONS environment variable.
+    SALSA_CUSTOM_INSTRUCTIONS environment variable.
     Returns defaults when neither is set.
     """
     import os
 
-    path_str = path_str or os.environ.get("AEM_OCR_CUSTOM_INSTRUCTIONS", "")
+    path_str = path_str or os.environ.get("SALSA_CUSTOM_INSTRUCTIONS", "")
     if path_str and path_str.strip():
         return load_instructions(Path(path_str.strip()))
     return default_instructions()

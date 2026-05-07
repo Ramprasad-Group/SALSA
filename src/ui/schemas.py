@@ -1,4 +1,4 @@
-# AEM_OCR/src/ui/schemas.py
+# SALSA/src/ui/schemas.py
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path

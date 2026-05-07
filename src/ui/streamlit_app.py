@@ -1,4 +1,4 @@
-# AEM_OCR/src/ui/streamlit_app.py
+# SALSA/src/ui/streamlit_app.py
 from __future__ import annotations
 import json
 import inspect
@@ -1556,16 +1556,16 @@ def apply_selected_general_llm_to_env() -> None:
         raise RuntimeError("No LLM model configured. Configure LLM settings in the sidebar first.")
 
     if provider == "Ollama":
-        os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
-        os.environ["AEM_OCR_LLM_MODEL"] = model
+        os.environ["SALSA_LLM_PROVIDER"] = "ollama"
+        os.environ["SALSA_LLM_MODEL"] = model
         os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", _default_ollama_host())
         os.environ["OLLAMA_MODELS"] = st.session_state.get(
             "ollama_models_dir",
             str(_default_ollama_models_dir()),
         )
     else:
-        os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"
-        os.environ["AEM_OCR_LLM_MODEL"] = model
+        os.environ["SALSA_LLM_PROVIDER"] = "openai"
+        os.environ["SALSA_LLM_MODEL"] = model
         os.environ["OPENAI_BASE_URL"] = st.session_state.get(
             "openai_base_url",
             "https://api.openai.com/v1",
@@ -1579,10 +1579,10 @@ def clear_processing_llm_env_if_disabled() -> None:
     if st.session_state.get("use_separate_processing_llm"):
         return
     for key in (
-        "AEM_OCR_PROCESSING_LLM_PROVIDER",
-        "AEM_OCR_PROCESSING_LLM_MODEL",
-        "AEM_OCR_PROCESSING_OPENAI_BASE_URL",
-        "AEM_OCR_PROCESSING_OPENAI_API_KEY",
+        "SALSA_PROCESSING_LLM_PROVIDER",
+        "SALSA_PROCESSING_LLM_MODEL",
+        "SALSA_PROCESSING_OPENAI_BASE_URL",
+        "SALSA_PROCESSING_OPENAI_API_KEY",
     ):
         os.environ.pop(key, None)
 
@@ -1612,8 +1612,8 @@ _openai_models = [
 
 
 
-st.set_page_config(page_title="AEM_OCR UI", layout="wide")
-st.title("AEM_OCR")
+st.set_page_config(page_title="SALSA UI", layout="wide")
+st.title("SALSA")
 
 st.markdown("""
 <style>
@@ -2167,17 +2167,17 @@ if st.button("Run pipeline", type="primary"):
                 p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
                 p_model = st.session_state.get("processing_llm_model", "")
                 if p_provider == "Ollama":
-                    os.environ["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                    os.environ["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                    os.environ["SALSA_PROCESSING_LLM_PROVIDER"] = "ollama"
+                    os.environ["SALSA_PROCESSING_LLM_MODEL"] = p_model
                 else:
-                    os.environ["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                    os.environ["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
+                    os.environ["SALSA_PROCESSING_LLM_PROVIDER"] = "openai"
+                    os.environ["SALSA_PROCESSING_LLM_MODEL"] = p_model
                     p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
                     p_key = st.session_state.get("processing_openai_api_key", "")
                     if p_base:
-                        os.environ["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
+                        os.environ["SALSA_PROCESSING_OPENAI_BASE_URL"] = p_base
                     if p_key:
-                        os.environ["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
+                        os.environ["SALSA_PROCESSING_OPENAI_API_KEY"] = p_key
             else:
                 # Clear processing-specific env vars so processing uses the general LLM
                 clear_processing_llm_env_if_disabled()
@@ -3025,15 +3025,15 @@ with tab_figs:
                                 _provider_er = st.session_state.get("llm_provider", "Ollama")
                                 _model_er = st.session_state.get("llm_model", "")
                                 if _provider_er == "Ollama":
-                                    _env_er["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                    _env_er["AEM_OCR_LLM_MODEL"] = _model_er
+                                    _env_er["SALSA_LLM_PROVIDER"] = "ollama"
+                                    _env_er["SALSA_LLM_MODEL"] = _model_er
                                     _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
                                     _om_dir_er = st.session_state.get("ollama_models_dir", "")
                                     if _om_dir_er:
                                         _env_er["OLLAMA_MODELS"] = _om_dir_er
                                 else:
-                                    _env_er["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                    _env_er["AEM_OCR_LLM_MODEL"] = _model_er
+                                    _env_er["SALSA_LLM_PROVIDER"] = "openai"
+                                    _env_er["SALSA_LLM_MODEL"] = _model_er
                                     _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
                                     if st.session_state.get("openai_api_key"):
                                         _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
@@ -3041,20 +3041,20 @@ with tab_figs:
                                     _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
                                     _pm_er = st.session_state.get("processing_llm_model", "")
                                     if _pp_er == "Ollama":
-                                        _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                        _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
+                                        _env_er["SALSA_PROCESSING_LLM_PROVIDER"] = "ollama"
+                                        _env_er["SALSA_PROCESSING_LLM_MODEL"] = _pm_er
                                     else:
-                                        _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                        _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
+                                        _env_er["SALSA_PROCESSING_LLM_PROVIDER"] = "openai"
+                                        _env_er["SALSA_PROCESSING_LLM_MODEL"] = _pm_er
                                         _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
                                         _pk_er = st.session_state.get("processing_openai_api_key", "")
                                         if _pb_er:
-                                            _env_er["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = _pb_er
+                                            _env_er["SALSA_PROCESSING_OPENAI_BASE_URL"] = _pb_er
                                         if _pk_er:
-                                            _env_er["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = _pk_er
+                                            _env_er["SALSA_PROCESSING_OPENAI_API_KEY"] = _pk_er
                                 else:
-                                    for _k_er in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                                    "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
+                                    for _k_er in ["SALSA_PROCESSING_LLM_PROVIDER", "SALSA_PROCESSING_LLM_MODEL",
+                                                    "SALSA_PROCESSING_OPENAI_BASE_URL", "SALSA_PROCESSING_OPENAI_API_KEY"]:
                                         _env_er.pop(_k_er, None)
 
                                 if not _model_er and not st.session_state.get("processing_llm_model"):
@@ -3063,9 +3063,9 @@ with tab_figs:
                                 else:
                                     _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
                                     if _ci_path_er.exists():
-                                        _env_er["AEM_OCR_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
-                                    _env_er["AEM_OCR_RUN_ID"] = rr.run_id
-                                    _env_er["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+                                        _env_er["SALSA_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
+                                    _env_er["SALSA_RUN_ID"] = rr.run_id
+                                    _env_er["SALSA_RUN_DIR"] = str(rr.run_dir)
 
                                     with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
                                         _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
@@ -3291,18 +3291,18 @@ with tab_figs:
                                     _provider_sf = st.session_state.get("llm_provider", "Ollama")
                                     _model_sf = st.session_state.get("llm_model", "")
                                     if _provider_sf == "Ollama":
-                                        _env_sf["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                        _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
+                                        _env_sf["SALSA_LLM_PROVIDER"] = "ollama"
+                                        _env_sf["SALSA_LLM_MODEL"] = _model_sf
                                         _env_sf["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
                                     else:
-                                        _env_sf["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                        _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
+                                        _env_sf["SALSA_LLM_PROVIDER"] = "openai"
+                                        _env_sf["SALSA_LLM_MODEL"] = _model_sf
                                         _env_sf["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
                                         if st.session_state.get("openai_api_key"):
                                             _env_sf["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
 
-                                    _env_sf["AEM_OCR_RUN_ID"] = rr.run_id
-                                    _env_sf["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
+                                    _env_sf["SALSA_RUN_ID"] = rr.run_id
+                                    _env_sf["SALSA_RUN_DIR"] = str(rr.run_dir)
 
                                     with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
                                         _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)

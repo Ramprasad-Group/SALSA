@@ -37,9 +37,9 @@ The setup script initializes submodules, checks Git LFS, pulls model artifacts, 
 Deployment templates for a remote Linux host are in [`deploy/`](./deploy/), including:
 
 - [`deploy/DEPLOY_REMOTE.md`](./deploy/DEPLOY_REMOTE.md)
-- [`deploy/systemd/aem-ocr.service`](./deploy/systemd/aem-ocr.service)
-- [`deploy/nginx/aem-ocr.conf`](./deploy/nginx/aem-ocr.conf)
-- [`deploy/env/aem-ocr.env.example`](./deploy/env/aem-ocr.env.example)
+- [`deploy/systemd/salsa.service`](./deploy/systemd/salsa.service)
+- [`deploy/nginx/salsa.conf`](./deploy/nginx/salsa.conf)
+- [`deploy/env/salsa.env.example`](./deploy/env/salsa.env.example)
 
 ### LLM Configuration
 
@@ -47,17 +47,15 @@ SALSA uses an LLM for figure/table filtering, chemical composition extraction, a
 
 | Variable | Description | Example |
 |---|---|---|
-| `AEM_OCR_LLM_PROVIDER` | General LLM provider: `ollama` or `openai` | `openai` |
-| `AEM_OCR_LLM_MODEL` | General LLM model | `gpt-4o-mini` |
+| `SALSA_LLM_PROVIDER` | General LLM provider: `ollama` or `openai` | `openai` |
+| `SALSA_LLM_MODEL` | General LLM model | `gpt-4o-mini` |
 | `OPENAI_API_KEY` | OpenAI API key, when using OpenAI | `sk-...` |
 | `OPENAI_BASE_URL` | Optional OpenAI-compatible API base URL | `https://api.openai.com/v1` |
 | `OLLAMA_HOST` | Ollama endpoint, when using Ollama | `http://127.0.0.1:11434` |
-| `AEM_OCR_PROCESSING_LLM_PROVIDER` | Optional provider for the processing model | `openai` |
-| `AEM_OCR_PROCESSING_LLM_MODEL` | Optional separate model for dataset and chemistry processing | `gpt-4o` |
-| `AEM_OCR_PROCESSING_OPENAI_API_KEY` | Optional OpenAI key override for processing runs | `sk-...` |
-| `AEM_OCR_PROCESSING_OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs | `https://api.openai.com/v1` |
-
-The `AEM_OCR_*` prefix is currently retained as a legacy runtime namespace so existing scripts and deployments keep working after the SALSA rename.
+| `SALSA_PROCESSING_LLM_PROVIDER` | Optional provider for the processing model | `openai` |
+| `SALSA_PROCESSING_LLM_MODEL` | Optional separate model for dataset and chemistry processing | `gpt-4o` |
+| `SALSA_PROCESSING_OPENAI_API_KEY` | Optional OpenAI key override for processing runs | `sk-...` |
+| `SALSA_PROCESSING_OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs | `https://api.openai.com/v1` |
 
 ---
 
@@ -119,18 +117,18 @@ SALSA/
 | `CHARTDETE_HF_DIR` | `./huggingface` | ChartDete config/checkpoint directory |
 | `LINEFORMER_HF_DIR` | `./huggingface` | LineFormer config/checkpoint directory |
 | `CHARTDETE_CONF_THR` | `0.9` | ChartDete confidence threshold for crops |
-| `AEM_OCR_LLM_PROVIDER` | `ollama` | General LLM provider |
-| `AEM_OCR_LLM_MODEL` | required | General LLM model |
-| `AEM_OCR_PROCESSING_LLM_PROVIDER` | general provider | Optional provider override for dataset/composition processing |
-| `AEM_OCR_PROCESSING_LLM_MODEL` | general model | Optional model override for dataset/composition processing |
-| `AEM_OCR_PROCESSING_OPENAI_API_KEY` | `OPENAI_API_KEY` | Optional OpenAI key override for processing runs |
-| `AEM_OCR_PROCESSING_OPENAI_BASE_URL` | `OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs |
-| `AEM_OCR_CUSTOM_INSTRUCTIONS` | unset | Path to custom instruction JSON for a run |
-| `AEM_OCR_RUN_DIR` | run workspace | Directory used for run-scoped outputs and cost logs |
-| `AEM_OCR_RUN_ID` | generated | Run identifier used in UI/pipeline outputs |
-| `AEM_OCR_JSME_BIND_HOST` | `127.0.0.1` | Host for the optional JSME helper service |
-| `AEM_OCR_JSME_PORT` | `8765` | Port for the optional JSME helper service |
-| `AEM_OCR_JSME_PUBLIC_URL` | unset | Browser-reachable JSME URL for remote deployments |
+| `SALSA_LLM_PROVIDER` | `ollama` | General LLM provider |
+| `SALSA_LLM_MODEL` | required | General LLM model |
+| `SALSA_PROCESSING_LLM_PROVIDER` | general provider | Optional provider override for dataset/composition processing |
+| `SALSA_PROCESSING_LLM_MODEL` | general model | Optional model override for dataset/composition processing |
+| `SALSA_PROCESSING_OPENAI_API_KEY` | `OPENAI_API_KEY` | Optional OpenAI key override for processing runs |
+| `SALSA_PROCESSING_OPENAI_BASE_URL` | `OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs |
+| `SALSA_CUSTOM_INSTRUCTIONS` | unset | Path to custom instruction JSON for a run |
+| `SALSA_RUN_DIR` | run workspace | Directory used for run-scoped outputs and cost logs |
+| `SALSA_RUN_ID` | generated | Run identifier used in UI/pipeline outputs |
+| `SALSA_JSME_BIND_HOST` | `127.0.0.1` | Host for the optional JSME helper service |
+| `SALSA_JSME_PORT` | `8765` | Port for the optional JSME helper service |
+| `SALSA_JSME_PUBLIC_URL` | unset | Browser-reachable JSME URL for remote deployments |
 
 ---
 

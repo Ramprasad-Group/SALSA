@@ -1,4 +1,4 @@
-# AEM_OCR/src/ui/discover.py
+# SALSA/src/ui/discover.py
 from __future__ import annotations
 import json
 from pathlib import Path

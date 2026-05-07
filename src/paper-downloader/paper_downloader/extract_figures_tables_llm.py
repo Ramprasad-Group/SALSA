@@ -46,7 +46,7 @@ from parsers.nature_extractor import extract_nature_figures, extract_nature_tabl
 
 client = get_llm_client()
 
-# --- Load custom instructions (set via AEM_OCR_CUSTOM_INSTRUCTIONS env var) ---
+# --- Load custom instructions (set via SALSA_CUSTOM_INSTRUCTIONS env var) ---
 _custom_instructions = load_instructions_from_env_or_path()
 
 
@@ -682,7 +682,7 @@ def filter_tables(output_dir: str):
 def _log_cost(response, extra: dict):
         """
         Writes a JSONL record to <run_dir>/cost/usage.jsonl
-        Requires env var AEM_OCR_RUN_DIR (or falls back to CWD).
+        Requires env var SALSA_RUN_DIR (or falls back to CWD).
         """
         append_usage(
             run_id=run_id_from_env("unknown"),
