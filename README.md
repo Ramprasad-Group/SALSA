@@ -1,4 +1,4 @@
-# SALSA — Semi-Autonomous Literature Scraping Assistant
+# SALSA - Semi-Autonomous Literature Scraping Assistant
 
 SALSA (Semi-Autonomous Literature Scraping Assistant) is a pipeline for extracting numerical data and metadata from scientific literature, with specialized focus on line charts, materials science, and electrochemistry. Built on [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete), extending the approach from [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data).
 
@@ -6,29 +6,31 @@ SALSA (Semi-Autonomous Literature Scraping Assistant) is a pipeline for extracti
 
 ## Quick Start
 
+Prerequisites: Conda or Miniconda, plus CUDA 11.7 for GPU acceleration. CPU-only runs are supported but slower.
+
 ```bash
 # 1. Clone with submodules
 git clone --recurse-submodules https://github.com/Ramprasad-Group/SALSA
 cd SALSA
 
-# 2. Create conda environment
+# 2. Create/update the SALSA conda environment and install model dependencies
+make setup
+conda activate SALSA
+
+# 3. Launch the UI
+make ui
+```
+
+Manual setup is also supported:
+
+```bash
 conda env create -f environment.yml
-conda activate AEM_OCR
-
-# 3. Run setup (installs submodules, mmdet stack, patches)
+conda activate SALSA
 bash src/setup-scripts/setup.sh
-
-# 4. Launch the UI
 streamlit run src/ui/streamlit_app.py
 ```
 
-Or use `make`:
-
-```bash
-make setup          # Steps 2 + 3
-conda activate AEM_OCR
-make ui             # Step 4
-```
+The setup script initializes submodules, checks Git LFS, pulls model artifacts, installs the MMDetection stack, patches bundled model configs, and installs SALSA in editable mode.
 
 ### Remote Hosting
 
@@ -39,43 +41,35 @@ Deployment templates for a remote Linux host are in [`deploy/`](./deploy/), incl
 - [`deploy/nginx/aem-ocr.conf`](./deploy/nginx/aem-ocr.conf)
 - [`deploy/env/aem-ocr.env.example`](./deploy/env/aem-ocr.env.example)
 
-### Prerequisites
-
-- **Git LFS** — model checkpoints are stored with LFS. Install it if not already:
-  ```bash
-  git lfs install
-  ```
-- **Conda** (Miniconda or Anaconda)
-- **CUDA 11.7** (optional, for GPU acceleration). CPU-only works but is slower.
-
 ### LLM Configuration
 
-The dataset-completion and figure-filtering stages require an LLM. Configure via environment variables before launching the UI:
+SALSA uses an LLM for figure/table filtering, chemical composition extraction, and final dataset completion. The Streamlit UI can set the active model for interactive runs. For scripted or deployed runs, configure the same behavior with environment variables:
 
 | Variable | Description | Example |
 |---|---|---|
-| `AEM_OCR_LLM_PROVIDER` | `ollama` or `openai` | `openai` |
-| `AEM_OCR_LLM_MODEL` | Model name | `gpt-4o` |
-| `OPENAI_API_KEY` | API key (OpenAI only) | `sk-...` |
-| `OLLAMA_HOST` | Ollama endpoint (Ollama only) | `http://127.0.0.1:11434` |
+| `AEM_OCR_LLM_PROVIDER` | General LLM provider: `ollama` or `openai` | `openai` |
+| `AEM_OCR_LLM_MODEL` | General LLM model | `gpt-4o-mini` |
+| `OPENAI_API_KEY` | OpenAI API key, when using OpenAI | `sk-...` |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible API base URL | `https://api.openai.com/v1` |
+| `OLLAMA_HOST` | Ollama endpoint, when using Ollama | `http://127.0.0.1:11434` |
+| `AEM_OCR_PROCESSING_LLM_PROVIDER` | Optional provider for the processing model | `openai` |
+| `AEM_OCR_PROCESSING_LLM_MODEL` | Optional separate model for dataset and chemistry processing | `gpt-4o` |
+| `AEM_OCR_PROCESSING_OPENAI_API_KEY` | Optional OpenAI key override for processing runs | `sk-...` |
+| `AEM_OCR_PROCESSING_OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs | `https://api.openai.com/v1` |
+
+The `AEM_OCR_*` prefix is currently retained as a legacy runtime namespace so existing scripts and deployments keep working after the SALSA rename.
 
 ---
 
 ## How It Works
 
-The pipeline has three stages:
+The primary workflow runs through the Streamlit UI and orchestrates the repo's pipeline modules:
 
-1. **Paper Acquisition** (`src/paper-downloader/`) — Download papers by DOI, extract figures and tables from structured files (XML/HTML).
-
-2. **Figure Data Extraction** (`src/extract_figure_data/plextract.py`) — For each figure:
-   - **ChartDete**: detect chart elements (axes, legends, plot areas)
-   - **LineFormer**: extract line series as polylines
-   - **TrOCR**: OCR axis labels, titles, and legend text
-   - **Legend matching**: pair legend entries to line series (Hungarian algorithm)
-   - **Coordinate correction**: transform pixel coordinates to data space
-   - Export labeled (x, y) datasets
-
-3. **Dataset Completion** (`src/complete_dataset/complete_dataset.py`) — Merge extracted figure data with table data, use an LLM to map columns to a target output schema, produce final CSVs.
+1. **Paper acquisition and parsing** (`src/paper-downloader/`) downloads or reparses literature records, structured files, figures, tables, and full text.
+2. **Relevance filtering** uses the configured LLM to decide which extracted figures and tables should move forward.
+3. **Figure data extraction** (`src/extract_figure_data/`) digitizes selected line charts with ChartDete, LineFormer, OCR, legend matching, axis correction, and optional direct LLM figure extraction.
+4. **Chemical composition extraction** (`src/chemical_composition/`) extracts and normalizes sample/composition evidence from text and tables, with optional JSME drawing support.
+5. **Dataset completion** (`src/complete_dataset/`) combines figure data, tables, composition data, user-edited instructions, and LLM-generated transformation plans into final CSV outputs.
 
 ---
 
@@ -87,27 +81,20 @@ SALSA/
 │   ├── ChartDete/                   # Chart element detector (Cascade R-CNN + Swin-T)
 │   └── LineFormer/                  # Line extraction transformer
 ├── src/
-│   ├── extract_figure_data/         # Core extraction pipeline
-│   │   ├── plextract.py             # Main orchestrator
-│   │   ├── run_chartdete.py         # ChartDete wrapper
-│   │   ├── run_lineformer.py        # LineFormer wrapper
-│   │   ├── run_ocr.py              # TrOCR wrapper
-│   │   ├── match_legend.py          # Legend-to-series matching
-│   │   ├── correct_coordinates.py   # Pixel → data coordinate transform
-│   │   └── finalize_labels.py       # Export datasets + plots
-│   ├── complete_dataset/            # LLM-driven dataset completion
-│   │   └── complete_dataset.py
-│   ├── ui/                          # Streamlit interactive UI
+│   ├── ui/                          # Streamlit app and pipeline orchestration
 │   │   └── streamlit_app.py
 │   ├── paper-downloader/            # Paper acquisition + parsing
-│   ├── llm_client.py               # Unified OpenAI / Ollama client
-│   └── setup-scripts/              # Setup and patch scripts
-│       ├── setup.sh
-│       ├── patch_config.py
-│       └── patch_lineformer.py
+│   ├── extract_figure_data/         # Chart digitization and figure extraction
+│   ├── chemical_composition/        # Chemistry/sample extraction helpers
+│   ├── complete_dataset/            # LLM-assisted final dataset builder
+│   ├── cost/                        # Usage/cost logging outputs
+│   ├── ui_runs/                     # UI workspaces and run artifacts
+│   ├── llm_client.py                # Unified OpenAI/Ollama client
+│   └── setup-scripts/               # Setup and patch scripts
 ├── huggingface/                     # Model configs + checkpoints (Git LFS)
+├── deploy/                          # Remote hosting templates
 ├── environment.yml                  # Conda environment
-├── pyproject.toml                   # Package metadata (plextract)
+├── pyproject.toml                   # Python package metadata
 ├── Makefile                         # make setup / make ui
 └── README.md
 ```
@@ -116,22 +103,34 @@ SALSA/
 
 | Command | Description |
 |---|---|
-| `streamlit run src/ui/streamlit_app.py` | Interactive web UI (recommended) |
-| `python src/extract_figure_data/plextract.py --input <dir>` | Run figure extraction standalone |
-| `python src/complete_dataset/complete_dataset.py` | Run dataset completion standalone |
+| `make setup` | Create/update the `SALSA` conda env and install runtime/model dependencies |
+| `make ui` | Launch the Streamlit UI inside the `SALSA` conda env |
+| `streamlit run src/ui/streamlit_app.py` | Launch the UI manually from an activated env |
+| `python src/extract_figure_data/plextract.py --help` | Run or inspect standalone chart digitization options |
+| `python src/complete_dataset/complete_dataset.py --help` | Run or inspect standalone dataset completion options |
+| `python src/paper-downloader/paper_downloader/download_records_multiple_dois_webofscience.py --help` | Inspect DOI/record acquisition options |
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `CHARTDETE_DEVICE` | auto (cuda/cpu) | Device for ChartDete inference |
-| `LINEFORMER_DEVICE` | auto (cuda/cpu) | Device for LineFormer inference |
-| `CHARTDETE_HF_DIR` | `./huggingface` | Directory for ChartDete model files |
-| `LINEFORMER_HF_DIR` | `./huggingface` | Directory for LineFormer model files |
-| `AEM_OCR_LLM_PROVIDER` | `ollama` | LLM provider (`ollama` or `openai`) |
-| `AEM_OCR_LLM_MODEL` | — | Model name (required for LLM features) |
-
-SALSA currently keeps the legacy `AEM_OCR_*` environment variable names for backwards compatibility with existing deployments and scripts.
+| `CHARTDETE_DEVICE` | auto | ChartDete device, for example `cuda:0` or `cpu` |
+| `LINEFORMER_DEVICE` | auto | LineFormer device, for example `cuda:0` or `cpu` |
+| `CHARTDETE_HF_DIR` | `./huggingface` | ChartDete config/checkpoint directory |
+| `LINEFORMER_HF_DIR` | `./huggingface` | LineFormer config/checkpoint directory |
+| `CHARTDETE_CONF_THR` | `0.9` | ChartDete confidence threshold for crops |
+| `AEM_OCR_LLM_PROVIDER` | `ollama` | General LLM provider |
+| `AEM_OCR_LLM_MODEL` | required | General LLM model |
+| `AEM_OCR_PROCESSING_LLM_PROVIDER` | general provider | Optional provider override for dataset/composition processing |
+| `AEM_OCR_PROCESSING_LLM_MODEL` | general model | Optional model override for dataset/composition processing |
+| `AEM_OCR_PROCESSING_OPENAI_API_KEY` | `OPENAI_API_KEY` | Optional OpenAI key override for processing runs |
+| `AEM_OCR_PROCESSING_OPENAI_BASE_URL` | `OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs |
+| `AEM_OCR_CUSTOM_INSTRUCTIONS` | unset | Path to custom instruction JSON for a run |
+| `AEM_OCR_RUN_DIR` | run workspace | Directory used for run-scoped outputs and cost logs |
+| `AEM_OCR_RUN_ID` | generated | Run identifier used in UI/pipeline outputs |
+| `AEM_OCR_JSME_BIND_HOST` | `127.0.0.1` | Host for the optional JSME helper service |
+| `AEM_OCR_JSME_PORT` | `8765` | Port for the optional JSME helper service |
+| `AEM_OCR_JSME_PUBLIC_URL` | unset | Browser-reachable JSME URL for remote deployments |
 
 ---
 

@@ -1,4 +1,4 @@
-name: AEM_OCR
+name: SALSA
 channels:
   - pytorch
   - nvidia
