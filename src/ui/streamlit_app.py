@@ -52,6 +52,20 @@ from typing import List, Optional
 import re
 from datetime import datetime
 from typing import Callable, Sequence, Optional, Any
+from llm_step_config import (
+    GENERAL_LLM_ENV_VARS,
+    LLM_STEP_CHEM_COMPOSITION,
+    LLM_STEP_CHEM_RELEVANT,
+    LLM_STEP_COMPLETE_DATASET,
+    LLM_STEP_EXTRACT_TABLES,
+    LLM_STEP_FIGURE_DATA,
+    LLM_STEP_FILTER_FIGURES,
+    LLM_STEP_FILTER_TABLES,
+    LLM_STEP_LABELS,
+    LLM_STEP_ENV_PREFIXES,
+    step_env_names,
+    step_env_to_general_env_map,
+)
 
 # Make cost module importable
 _cost_dir = os.path.join(os.path.dirname(__file__), "..", "cost")
@@ -1548,43 +1562,180 @@ def ensure_canvas_remount(*, boot_key: str, version_key: str):
         st.session_state[version_key] += 1
         st.rerun()
 
-def apply_selected_general_llm_to_env() -> None:
-    """Apply the sidebar's General LLM selection to the current process."""
-    provider = st.session_state.get("llm_provider", "Ollama")
-    model = st.session_state.get("llm_model", "")
-    if not model:
-        raise RuntimeError("No LLM model configured. Configure LLM settings in the sidebar first.")
+_STEP_LLM_RENDER_ORDER = [
+    LLM_STEP_EXTRACT_TABLES,
+    LLM_STEP_CHEM_RELEVANT,
+    LLM_STEP_CHEM_COMPOSITION,
+    LLM_STEP_FILTER_FIGURES,
+    LLM_STEP_FILTER_TABLES,
+    LLM_STEP_FIGURE_DATA,
+    LLM_STEP_COMPLETE_DATASET,
+]
 
-    if provider == "Ollama":
-        os.environ["AEM_OCR_LLM_PROVIDER"] = "ollama"
-        os.environ["AEM_OCR_LLM_MODEL"] = model
-        os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", _default_ollama_host())
-        os.environ["OLLAMA_MODELS"] = st.session_state.get(
-            "ollama_models_dir",
+
+def _ensure_shared_llm_settings_in_state() -> None:
+    if "openai_base_url" not in st.session_state:
+        st.session_state["openai_base_url"] = os.environ.get(
+            "OPENAI_BASE_URL",
+            "https://api.openai.com/v1",
+        )
+    if "openai_api_key" not in st.session_state:
+        st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+    if "ollama_host" not in st.session_state:
+        st.session_state["ollama_host"] = os.environ.get("OLLAMA_HOST", _default_ollama_host())
+    if "ollama_models_dir" not in st.session_state:
+        st.session_state["ollama_models_dir"] = os.environ.get(
+            "OLLAMA_MODELS",
             str(_default_ollama_models_dir()),
         )
+    if "ollama_num_ctx" not in st.session_state:
+        try:
+            st.session_state["ollama_num_ctx"] = int(
+                os.environ.get("AEM_OCR_OLLAMA_NUM_CTX", "16384")
+            )
+        except ValueError:
+            st.session_state["ollama_num_ctx"] = 16384
+
+
+def _step_provider_key(step_key: str) -> str:
+    return f"{step_key}_llm_provider"
+
+
+def _step_model_key(step_key: str) -> str:
+    return f"{step_key}_llm_model"
+
+
+def _step_provider_label(step_key: str) -> str:
+    return st.session_state.get(_step_provider_key(step_key), "Chat GPT")
+
+
+def _step_model_value(step_key: str) -> str:
+    return str(st.session_state.get(_step_model_key(step_key), "")).strip()
+
+
+def _clear_general_llm_env(env: dict[str, str]) -> None:
+    for key in GENERAL_LLM_ENV_VARS:
+        env.pop(key, None)
+
+
+def _clear_step_llm_env(step_key: str) -> None:
+    for key in step_env_names(step_key):
+        os.environ.pop(key, None)
+
+
+def _sync_step_llm_env_from_session(step_key: str) -> None:
+    _ensure_shared_llm_settings_in_state()
+    _clear_step_llm_env(step_key)
+
+    model = _step_model_value(step_key)
+    if not model:
+        return
+
+    provider = _step_provider_label(step_key)
+    prefix = LLM_STEP_ENV_PREFIXES[step_key]
+    if provider == "Ollama":
+        os.environ[f"{prefix}_LLM_PROVIDER"] = "ollama"
+        os.environ[f"{prefix}_LLM_MODEL"] = model
+        os.environ[f"{prefix}_OLLAMA_HOST"] = st.session_state.get("ollama_host", default_ollama_host)
+        os.environ[f"{prefix}_OLLAMA_MODELS"] = st.session_state.get(
+            "ollama_models_dir",
+            str(default_ollama_dir),
+        )
+        os.environ[f"{prefix}_OLLAMA_NUM_CTX"] = str(
+            int(st.session_state.get("ollama_num_ctx", 16384))
+        )
     else:
-        os.environ["AEM_OCR_LLM_PROVIDER"] = "openai"
-        os.environ["AEM_OCR_LLM_MODEL"] = model
-        os.environ["OPENAI_BASE_URL"] = st.session_state.get(
+        os.environ[f"{prefix}_LLM_PROVIDER"] = "openai"
+        os.environ[f"{prefix}_LLM_MODEL"] = model
+        os.environ[f"{prefix}_OPENAI_BASE_URL"] = st.session_state.get(
             "openai_base_url",
             "https://api.openai.com/v1",
         )
         if st.session_state.get("openai_api_key"):
-            os.environ["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+            os.environ[f"{prefix}_OPENAI_API_KEY"] = st.session_state["openai_api_key"]
 
 
-def clear_processing_llm_env_if_disabled() -> None:
-    """Prevent stale processing-model env vars from affecting in-process reruns."""
-    if st.session_state.get("use_separate_processing_llm"):
-        return
-    for key in (
-        "AEM_OCR_PROCESSING_LLM_PROVIDER",
-        "AEM_OCR_PROCESSING_LLM_MODEL",
-        "AEM_OCR_PROCESSING_OPENAI_BASE_URL",
-        "AEM_OCR_PROCESSING_OPENAI_API_KEY",
-    ):
-        os.environ.pop(key, None)
+def _sync_all_step_llm_envs_from_session() -> None:
+    for step_key in _STEP_LLM_RENDER_ORDER:
+        _sync_step_llm_env_from_session(step_key)
+
+
+def _general_llm_env_for_step(step_key: str) -> dict[str, str]:
+    env = os.environ.copy()
+    _clear_general_llm_env(env)
+    for step_env, general_env in step_env_to_general_env_map(step_key).items():
+        value = os.environ.get(step_env, "").strip()
+        if value:
+            env[general_env] = value
+        else:
+            env.pop(general_env, None)
+    return env
+
+
+def _step_has_configured_model(step_key: str) -> bool:
+    return bool(_step_model_value(step_key))
+
+
+def _render_step_llm_selector(step_key: str, *, caption: Optional[str] = None) -> None:
+    _ensure_shared_llm_settings_in_state()
+
+    st.subheader(LLM_STEP_LABELS[step_key])
+    if caption:
+        st.caption(caption)
+
+    provider_key = _step_provider_key(step_key)
+    model_key = _step_model_key(step_key)
+    provider = st.radio(
+        "Provider",
+        options=["Chat GPT", "Ollama"],
+        index=0,
+        key=provider_key,
+        horizontal=True,
+    )
+
+    if provider == "Ollama":
+        models = _ollama_models()
+        if models:
+            if st.session_state.get(model_key) not in models:
+                st.session_state.pop(model_key, None)
+            st.selectbox("Model", options=models, index=0, key=model_key)
+        else:
+            st.text_input("Model (no models detected)", value="", key=model_key)
+            st.caption("Tip: run `ollama pull <model>` then refresh.")
+    else:
+        if st.session_state.get(model_key) not in _openai_models:
+            st.session_state.pop(model_key, None)
+        st.selectbox("Model", options=_openai_models, index=0, key=model_key)
+
+
+def _active_llm_steps(
+    *,
+    run_extract_tables: bool,
+    run_chemical_composition: bool,
+    run_filter_figures: bool,
+    run_filter_tables: bool,
+    run_plextract: bool,
+    bypass_ocr_with_llm: bool,
+    run_complete_dataset: bool,
+) -> list[str]:
+    steps: list[str] = []
+    if run_extract_tables:
+        steps.append(LLM_STEP_EXTRACT_TABLES)
+    if run_chemical_composition:
+        steps.extend([LLM_STEP_CHEM_RELEVANT, LLM_STEP_CHEM_COMPOSITION])
+    if run_filter_figures:
+        steps.append(LLM_STEP_FILTER_FIGURES)
+    if run_filter_tables:
+        steps.append(LLM_STEP_FILTER_TABLES)
+    if run_plextract and bypass_ocr_with_llm:
+        steps.append(LLM_STEP_FIGURE_DATA)
+    if run_complete_dataset:
+        steps.append(LLM_STEP_COMPLETE_DATASET)
+    return steps
+
+
+def _missing_llm_steps(step_keys: Sequence[str]) -> list[str]:
+    return [LLM_STEP_LABELS[step_key] for step_key in step_keys if not _step_has_configured_model(step_key)]
 
 # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
 default_ollama_dir = _default_ollama_models_dir()
@@ -1709,80 +1860,49 @@ with st.sidebar:
     st.divider()
     st.header("Select LLM(s)")
     with st.expander("LLM", expanded=False):
-        # --- General LLM (used for filtering, figure planning, etc.) ---
-        st.subheader("General LLM")
-        st.caption("Used for figure/table filtering, figure planning, and other pre-processing steps.")
-
-        provider = st.radio(
-            "Provider",
-            options=["Chat GPT", "Ollama"],
-            index=0,
-            key="llm_provider",
+        _ensure_shared_llm_settings_in_state()
+        st.caption("Choose the LLM for each stage that actually uses one.")
+        st.number_input(
+            "Ollama context window (num_ctx)",
+            min_value=4096,
+            step=1024,
+            value=int(st.session_state.get("ollama_num_ctx", 16384)),
+            key="ollama_num_ctx",
+            help="Shared across all Ollama-backed steps.",
         )
 
-        if provider == "Ollama":
-            ollama_models_dir = Path(str(default_ollama_dir))
-            ollama_host = default_ollama_host
-
-            models = _ollama_models()
-            if models:
-                # Clear stale value from a previous provider so index=0 takes effect.
-                if st.session_state.get("llm_model") not in models:
-                    st.session_state.pop("llm_model", None)
-                selected_model = st.selectbox("Model", options=models, index=0, key="llm_model")
-            else:
-                selected_model = st.text_input(
-                    "Model (no models detected)",
-                    value="",
-                    key="llm_model",
-                )
-                st.caption("Tip: run `ollama pull <model>` then refresh.")
-        else:
-            # Read OpenAI config from environment (not displayed in UI)
-            if "openai_base_url" not in st.session_state:
-                st.session_state["openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-            if "openai_api_key" not in st.session_state:
-                st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
-            # Clear stale value from a previous provider so index=0 (gpt-4o) takes effect.
-            if st.session_state.get("llm_model") not in _openai_models:
-                st.session_state.pop("llm_model", None)
-            selected_model = st.selectbox("Model", options=_openai_models, index=0, key="llm_model")
-
-        # --- Data Processing LLM ---
-        st.subheader("Data Processing LLM")
-        st.caption("Used for dataset completion. Chemical composition extraction uses the selected general LLM.")
-
-        use_separate_processing_llm = st.checkbox(
-            "Use a different LLM for data processing",
-            value=False,
-            key="use_separate_processing_llm",
-        )
-
-        if use_separate_processing_llm:
-            processing_provider = st.radio(
-                "Processing provider",
-                options=["Ollama", "Chat GPT"],
-                index=1,
-                key="processing_llm_provider",
+        llm_steps_to_render: list[tuple[str, Optional[str]]] = [
+            (LLM_STEP_EXTRACT_TABLES, "Used when parsing table content with the LLM."),
+            (
+                LLM_STEP_CHEM_RELEVANT,
+                "Finds the text, tables, and schemes relevant to chemical composition.",
+            ),
+            (
+                LLM_STEP_CHEM_COMPOSITION,
+                "Uses the selected relevant evidence to extract sample compositions.",
+            ),
+            (LLM_STEP_FILTER_FIGURES, "Decides which figures are relevant downstream."),
+            (LLM_STEP_FILTER_TABLES, "Decides which tables are relevant downstream."),
+            (LLM_STEP_COMPLETE_DATASET, "Builds the final dataset rows."),
+        ]
+        if bypass_ocr_with_llm:
+            llm_steps_to_render.insert(
+                5,
+                (
+                    LLM_STEP_FIGURE_DATA,
+                    "Used only when bypassing OCR and extracting figure data directly with the LLM.",
+                ),
             )
 
-            if processing_provider == "Ollama":
-                models = _ollama_models()
-                if models:
-                    if st.session_state.get("processing_llm_model") not in models:
-                        st.session_state.pop("processing_llm_model", None)
-                    st.selectbox("Processing model", options=models, index=0, key="processing_llm_model")
-                else:
-                    st.text_input("Processing model (no models detected)", value="", key="processing_llm_model")
-            else:
-                # Read processing OpenAI config from environment (not displayed in UI)
-                if "processing_openai_base_url" not in st.session_state:
-                    st.session_state["processing_openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-                if "processing_openai_api_key" not in st.session_state:
-                    st.session_state["processing_openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
-                if st.session_state.get("processing_llm_model") not in _openai_models:
-                    st.session_state.pop("processing_llm_model", None)
-                st.selectbox("Processing model", options=_openai_models, index=0, key="processing_llm_model")
+        for idx, (step_key, caption) in enumerate(llm_steps_to_render):
+            _render_step_llm_selector(step_key, caption=caption)
+            if idx != len(llm_steps_to_render) - 1:
+                st.divider()
+
+        if not bypass_ocr_with_llm:
+            st.caption(
+                "The figure-data LLM selection is only used when 'Bypass OCR and extract figure data directly with the LLM' is enabled."
+            )
 
     st.divider()
     st.header("Custom Instructions")
@@ -2156,76 +2276,71 @@ if st.button("Run pipeline", type="primary"):
     if not dois:
         st.error("Please paste at least one DOI.")
     else:
-        with st.spinner("Running your pipeline end-to-end…"):
-            custom_run_id = run_id_input.strip() or None
-
-            # --- Apply general LLM configuration for this run ---
-            apply_selected_general_llm_to_env()
-
-            # --- Apply data processing LLM configuration ---
-            if st.session_state.get("use_separate_processing_llm"):
-                p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
-                p_model = st.session_state.get("processing_llm_model", "")
-                if p_provider == "Ollama":
-                    os.environ["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                    os.environ["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                else:
-                    os.environ["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                    os.environ["AEM_OCR_PROCESSING_LLM_MODEL"] = p_model
-                    p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                    p_key = st.session_state.get("processing_openai_api_key", "")
-                    if p_base:
-                        os.environ["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = p_base
-                    if p_key:
-                        os.environ["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = p_key
-            else:
-                # Clear processing-specific env vars so processing uses the general LLM
-                clear_processing_llm_env_if_disabled()
-
-            if custom_run_id:
-                target = run_root / custom_run_id
-                if target.exists():
-                    st.warning(f"Run directory already exists and may be overwritten: {target}")
-
-
-            # --- Save custom instructions for this run ---
-            _run_ci = st.session_state.get("custom_instructions", default_instructions())
-            # Parse output_columns if still a string
-            if isinstance(_run_ci.get("output_columns"), str):
-                _run_ci["output_columns"] = [c.strip() for c in _run_ci["output_columns"].splitlines() if c.strip()]
-            if isinstance(_run_ci.get("missing_value_defaults"), str):
-                try:
-                    _run_ci["missing_value_defaults"] = json.loads(_run_ci["missing_value_defaults"])
-                except Exception:
-                    pass
-
-            # Debug: show what preset is being used
-            preset_name = st.session_state.get("current_preset_name", "defaults")
-            st.info(f"Using custom instructions: **{preset_name}**")
-            with st.expander("View custom instructions being used", expanded=False):
-                st.json(_run_ci)
-
-            rr = run_full_pipeline(
-                dois=dois,
-                run_root=run_root,
-                scripts_root=scripts_root,
-                run_id=custom_run_id,
-                run_extract_figures=run_extract_figures,
-                run_extract_tables=run_extract_tables,
-                run_filter_figures=run_filter_figures,
-                run_filter_tables=run_filter_tables,
-                run_plextract=run_plextract and not bypass_ocr_with_llm,
-                run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
-                run_complete_dataset=run_complete_dataset,
-                skip_llm_figures=not bypass_ocr_with_llm,
-                run_chemical_composition=run_chemical_composition,
-                exclude_full_text=exclude_full_text,
-                custom_instructions=_run_ci,
+        active_llm_steps = _active_llm_steps(
+            run_extract_tables=run_extract_tables,
+            run_chemical_composition=run_chemical_composition,
+            run_filter_figures=run_filter_figures,
+            run_filter_tables=run_filter_tables,
+            run_plextract=run_plextract,
+            bypass_ocr_with_llm=bypass_ocr_with_llm,
+            run_complete_dataset=run_complete_dataset,
+        )
+        missing_llm_steps = _missing_llm_steps(active_llm_steps)
+        if missing_llm_steps:
+            st.error(
+                "Configure an LLM model for these stages before running: "
+                + ", ".join(missing_llm_steps)
             )
+        else:
+            with st.spinner("Running your pipeline end-to-end…"):
+                custom_run_id = run_id_input.strip() or None
 
-        st.session_state["rr"] = rr
-        st.success(f"Done. Run ID: {rr.run_id}")
-        _render_cost_summary(rr.run_dir)
+                _sync_all_step_llm_envs_from_session()
+
+                if custom_run_id:
+                    target = run_root / custom_run_id
+                    if target.exists():
+                        st.warning(f"Run directory already exists and may be overwritten: {target}")
+
+
+                # --- Save custom instructions for this run ---
+                _run_ci = st.session_state.get("custom_instructions", default_instructions())
+                # Parse output_columns if still a string
+                if isinstance(_run_ci.get("output_columns"), str):
+                    _run_ci["output_columns"] = [c.strip() for c in _run_ci["output_columns"].splitlines() if c.strip()]
+                if isinstance(_run_ci.get("missing_value_defaults"), str):
+                    try:
+                        _run_ci["missing_value_defaults"] = json.loads(_run_ci["missing_value_defaults"])
+                    except Exception:
+                        pass
+
+                # Debug: show what preset is being used
+                preset_name = st.session_state.get("current_preset_name", "defaults")
+                st.info(f"Using custom instructions: **{preset_name}**")
+                with st.expander("View custom instructions being used", expanded=False):
+                    st.json(_run_ci)
+
+                rr = run_full_pipeline(
+                    dois=dois,
+                    run_root=run_root,
+                    scripts_root=scripts_root,
+                    run_id=custom_run_id,
+                    run_extract_figures=run_extract_figures,
+                    run_extract_tables=run_extract_tables,
+                    run_filter_figures=run_filter_figures,
+                    run_filter_tables=run_filter_tables,
+                    run_plextract=run_plextract and not bypass_ocr_with_llm,
+                    run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
+                    run_complete_dataset=run_complete_dataset,
+                    skip_llm_figures=not bypass_ocr_with_llm,
+                    run_chemical_composition=run_chemical_composition,
+                    exclude_full_text=exclude_full_text,
+                    custom_instructions=_run_ci,
+                )
+
+            st.session_state["rr"] = rr
+            st.success(f"Done. Run ID: {rr.run_id}")
+            _render_cost_summary(rr.run_dir)
 
 rr: RunResult | None = st.session_state.get("rr")
 if not rr:
@@ -3021,44 +3136,13 @@ with tab_figs:
                                     "--target_figure", _llm_sel_er,
                                 ]
 
-                                _env_er = os.environ.copy()
-                                _provider_er = st.session_state.get("llm_provider", "Ollama")
-                                _model_er = st.session_state.get("llm_model", "")
-                                if _provider_er == "Ollama":
-                                    _env_er["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                    _env_er["AEM_OCR_LLM_MODEL"] = _model_er
-                                    _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                    _om_dir_er = st.session_state.get("ollama_models_dir", "")
-                                    if _om_dir_er:
-                                        _env_er["OLLAMA_MODELS"] = _om_dir_er
-                                else:
-                                    _env_er["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                    _env_er["AEM_OCR_LLM_MODEL"] = _model_er
-                                    _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                    if st.session_state.get("openai_api_key"):
-                                        _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-                                if st.session_state.get("use_separate_processing_llm"):
-                                    _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
-                                    _pm_er = st.session_state.get("processing_llm_model", "")
-                                    if _pp_er == "Ollama":
-                                        _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                        _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
-                                    else:
-                                        _env_er["AEM_OCR_PROCESSING_LLM_PROVIDER"] = "openai"
-                                        _env_er["AEM_OCR_PROCESSING_LLM_MODEL"] = _pm_er
-                                        _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                        _pk_er = st.session_state.get("processing_openai_api_key", "")
-                                        if _pb_er:
-                                            _env_er["AEM_OCR_PROCESSING_OPENAI_BASE_URL"] = _pb_er
-                                        if _pk_er:
-                                            _env_er["AEM_OCR_PROCESSING_OPENAI_API_KEY"] = _pk_er
-                                else:
-                                    for _k_er in ["AEM_OCR_PROCESSING_LLM_PROVIDER", "AEM_OCR_PROCESSING_LLM_MODEL",
-                                                    "AEM_OCR_PROCESSING_OPENAI_BASE_URL", "AEM_OCR_PROCESSING_OPENAI_API_KEY"]:
-                                        _env_er.pop(_k_er, None)
+                                _sync_all_step_llm_envs_from_session()
+                                _env_er = _general_llm_env_for_step(LLM_STEP_COMPLETE_DATASET)
 
-                                if not _model_er and not st.session_state.get("processing_llm_model"):
-                                    st.error("No LLM model configured. Configure LLM settings in the sidebar first.")
+                                if not _step_has_configured_model(LLM_STEP_COMPLETE_DATASET):
+                                    st.error(
+                                        "Configure an LLM for Complete dataset in the sidebar before rerunning LLM dataset generation."
+                                    )
                                     Path(_tmp_path_er).unlink(missing_ok=True)
                                 else:
                                     _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
@@ -3287,31 +3371,26 @@ with tab_figs:
                                         "--target_figure", subfig_dir.name,
                                     ]
 
-                                    _env_sf = os.environ.copy()
-                                    _provider_sf = st.session_state.get("llm_provider", "Ollama")
-                                    _model_sf = st.session_state.get("llm_model", "")
-                                    if _provider_sf == "Ollama":
-                                        _env_sf["AEM_OCR_LLM_PROVIDER"] = "ollama"
-                                        _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
-                                        _env_sf["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                    else:
-                                        _env_sf["AEM_OCR_LLM_PROVIDER"] = "openai"
-                                        _env_sf["AEM_OCR_LLM_MODEL"] = _model_sf
-                                        _env_sf["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                        if st.session_state.get("openai_api_key"):
-                                            _env_sf["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+                                    _sync_all_step_llm_envs_from_session()
+                                    _env_sf = _general_llm_env_for_step(LLM_STEP_COMPLETE_DATASET)
 
                                     _env_sf["AEM_OCR_RUN_ID"] = rr.run_id
                                     _env_sf["AEM_OCR_RUN_DIR"] = str(rr.run_dir)
 
-                                    with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
-                                        _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)
-                                    Path(_tmp_path_sf).unlink(missing_ok=True)
-                                    if _result_sf.returncode == 0:
-                                        st.success(f"LLM dataset generation complete for {subfig_dir.name}!")
-                                        st.rerun()
+                                    if not _step_has_configured_model(LLM_STEP_COMPLETE_DATASET):
+                                        st.error(
+                                            "Configure an LLM for Complete dataset in the sidebar before rerunning LLM dataset generation."
+                                        )
+                                        Path(_tmp_path_sf).unlink(missing_ok=True)
                                     else:
-                                        st.error(f"LLM dataset generation failed:\n```\n{_result_sf.stderr}\n```")
+                                        with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
+                                            _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)
+                                        Path(_tmp_path_sf).unlink(missing_ok=True)
+                                        if _result_sf.returncode == 0:
+                                            st.success(f"LLM dataset generation complete for {subfig_dir.name}!")
+                                            st.rerun()
+                                        else:
+                                            st.error(f"LLM dataset generation failed:\n```\n{_result_sf.stderr}\n```")
                                 except subprocess.TimeoutExpired:
                                     st.error("LLM dataset generation timed out (>5 minutes)")
                                 except Exception as _subfig_llm_e:
@@ -3753,8 +3832,15 @@ with tab_chem:
                     parsed_json = doi_item.parsed_json_path
                     tables_d = rr.run_dir / "figures_tables" / "tables" / _cc_safe
                     figures_d = rr.run_dir / "figures_tables" / "figures" / _cc_safe
-                    apply_selected_general_llm_to_env()
-                    clear_processing_llm_env_if_disabled()
+                    missing_chem_steps = _missing_llm_steps(
+                        [LLM_STEP_CHEM_RELEVANT, LLM_STEP_CHEM_COMPOSITION]
+                    )
+                    if missing_chem_steps:
+                        raise RuntimeError(
+                            "Configure an LLM model for these chemistry stages first: "
+                            + ", ".join(missing_chem_steps)
+                        )
+                    _sync_all_step_llm_envs_from_session()
 
                     result = _cc_run(
                         run_dir=rr.run_dir,

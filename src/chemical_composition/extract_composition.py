@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import base64
 import mimetypes
+import os
 import re
 import shutil
 import sys
@@ -24,7 +25,12 @@ _src = Path(__file__).resolve().parent.parent
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from llm_client import get_llm_client
+from llm_client import get_llm_client, load_optional_llm_config_from_env
+from ui.llm_step_config import (
+    LLM_STEP_CHEM_COMPOSITION,
+    LLM_STEP_CHEM_RELEVANT,
+    step_env_prefix,
+)
 from ui.openai_cost import append_usage, run_id_from_env
 
 
@@ -141,6 +147,28 @@ def _clean_json_response(text: str) -> str:
     return text.strip()
 
 
+def _candidate_json_payloads(text: str) -> List[str]:
+    """Yield likely JSON payload substrings from an LLM response."""
+    cleaned = _clean_json_response(text)
+    if cleaned:
+        yield cleaned
+
+    # Some local models prepend prose such as "Here is the JSON:" before the
+    # fenced payload, so look for fenced blocks anywhere in the response.
+    for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL):
+        candidate = match.group(1).strip()
+        if candidate:
+            yield candidate
+
+    # Last-resort fallback: take the outermost JSON object-looking slice.
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start : end + 1].strip()
+        if candidate:
+            yield candidate
+
+
 def _log_cost(meta: Any, *, doi: str = "", extra: Optional[Dict] = None):
     """Log LLM usage to <run_dir>/cost/usage.jsonl."""
     try:
@@ -152,6 +180,136 @@ def _log_cost(meta: Any, *, doi: str = "", extra: Optional[Dict] = None):
         )
     except Exception as e:
         print(f"[chemical_composition] WARNING: failed to log cost: {e}")
+
+
+def _safe_doi(doi: str) -> str:
+    return (doi or "unknown").replace("/", "@")
+
+
+def _debug_output_dir(doi: str) -> Optional[Path]:
+    run_dir = os.environ.get("AEM_OCR_RUN_DIR", "").strip()
+    if not run_dir:
+        return None
+    out_dir = Path(run_dir) / "chemical_composition" / _safe_doi(doi)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
+def _write_debug_text(doi: str, filename: str, content: str) -> None:
+    out_dir = _debug_output_dir(doi)
+    if out_dir is None:
+        return
+    try:
+        (out_dir / filename).write_text(content, encoding="utf-8")
+    except Exception as e:
+        print(f"[chemical_composition] WARNING: failed to write debug artifact {filename}: {e}")
+
+
+def _write_debug_json(doi: str, filename: str, payload: Any) -> None:
+    _write_debug_text(
+        doi,
+        filename,
+        json.dumps(payload, indent=2, ensure_ascii=False),
+    )
+
+
+_SKIP_PARSED_SECTION_NAMES = {
+    "introduction",
+    "conclusions",
+    "conclusion",
+    "references",
+    "bibliography",
+    "acknowledgments",
+    "acknowledgements",
+    "supporting information",
+    "supplementary material",
+}
+
+
+def _normalize_section_name(name: str) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip().lower())
+
+
+def _should_skip_parsed_section(name: str) -> bool:
+    return _normalize_section_name(name) in _SKIP_PARSED_SECTION_NAMES
+
+
+def _section_content_to_text(content: Any, depth: int = 0) -> str:
+    """Flatten nested parsed-paper sections into readable plain text."""
+    if content is None:
+        return ""
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            text = _section_content_to_text(item, depth=depth)
+            if text:
+                parts.append(text)
+        return "\n\n".join(parts)
+
+    if isinstance(content, dict):
+        name = _to_text(content.get("name")).strip()
+        if name and _should_skip_parsed_section(name):
+            return ""
+        body = _section_content_to_text(content.get("content"), depth=depth + 1)
+        if not body:
+            return ""
+        if not name:
+            return body
+        header = "#" * min(depth + 2, 6)
+        return f"{header} {name}\n{body}"
+
+    return _to_text(content).strip()
+
+
+def _parsed_json_to_text(parsed: Any) -> str:
+    """Convert structured parsed.json output into prompt-friendly paper text."""
+    if isinstance(parsed, str):
+        return parsed
+
+    if not isinstance(parsed, dict):
+        return json.dumps(parsed, indent=1, ensure_ascii=False)
+
+    direct_text = _to_text(parsed.get("text")).strip()
+    if direct_text:
+        return direct_text
+
+    parts: List[str] = []
+    title = _to_text(parsed.get("Title")).strip()
+    if title:
+        parts.append(f"# {title}")
+
+    abstract_text = _section_content_to_text(parsed.get("Abstract"))
+    if abstract_text:
+        parts.append(f"## Abstract\n{abstract_text}")
+
+    sections = parsed.get("Sections")
+    if isinstance(sections, list):
+        for section in sections:
+            if isinstance(section, dict):
+                section_name = _to_text(section.get("name")).strip()
+                if section_name and _should_skip_parsed_section(section_name):
+                    continue
+            section_text = _section_content_to_text(section, depth=0)
+            if section_text:
+                parts.append(section_text)
+    elif sections is not None:
+        section_text = _section_content_to_text(sections, depth=0)
+        if section_text:
+            parts.append(section_text)
+
+    if parts:
+        return "\n\n".join(parts)
+
+    return json.dumps(parsed, indent=1, ensure_ascii=False)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Crude token estimate for prompt-size warning logs."""
+    return max(1, len(text) // 4) if text else 0
 
 
 _PROPERTY_FIGURE_KEYWORDS = (
@@ -837,20 +995,37 @@ def _build_composition_messages(
     return [{"role": "user", "content": content}]
 
 
-def _get_chemical_composition_client():
-    """Use the currently selected general LLM for chemical extraction."""
+def _get_chemical_composition_client(step_key: str) -> tuple[Any, bool]:
+    """Use the chemistry-step LLM override when configured, else fall back."""
+    prefix = step_env_prefix(step_key)
+    override = load_optional_llm_config_from_env(
+        provider_env=f"{prefix}_LLM_PROVIDER",
+        model_env=f"{prefix}_LLM_MODEL",
+        openai_base_url_envs=(f"{prefix}_OPENAI_BASE_URL", "OPENAI_BASE_URL"),
+        openai_api_key_envs=(f"{prefix}_OPENAI_API_KEY", "OPENAI_API_KEY"),
+        ollama_host_envs=(f"{prefix}_OLLAMA_HOST", "OLLAMA_HOST"),
+        ollama_num_ctx_envs=(
+            f"{prefix}_OLLAMA_NUM_CTX",
+            "AEM_OCR_OLLAMA_NUM_CTX",
+            "OLLAMA_NUM_CTX",
+        ),
+        default_provider="openai",
+    )
     # Streamlit mutates env vars between runs, while get_llm_client() caches a
-    # global client. Force a fresh client so chemical extraction follows the
-    # currently selected general model instead of stale processing overrides.
-    return get_llm_client(force_new=True)
+    # global client. Force a fresh client so chemistry extraction follows the
+    # currently selected per-step model instead of a stale cached client.
+    return get_llm_client(force_new=True, override=override), override is not None
 
 
 def _parse_json_object(raw: str) -> Dict[str, Any]:
-    try:
-        parsed = json.loads(_clean_json_response(raw))
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    for candidate in _candidate_json_payloads(raw):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
 
 
 def _relevant_content_to_prompt_text(relevant_content: List[Dict[str, Any]]) -> str:
@@ -871,24 +1046,36 @@ def extract_relevant_content_llm(
     if not combined.strip():
         return []
 
+    estimated_tokens = _estimate_tokens(combined)
+    # if estimated_tokens > 3500:
+    #     print(
+    #         "[chemical_composition] WARNING: estimated relevant-content prompt "
+    #         f"is ~{estimated_tokens} tokens before model-side tokenization. "
+    #         "If Ollama is using a 4096-token context, it may truncate the paper. "
+    #         "Set AEM_OCR_OLLAMA_NUM_CTX to a larger value such as 16384 or 32768."
+    #     )
+
     prompt = _RELEVANT_CONTENT_PROMPT.format(content=combined)
-    client = _get_chemical_composition_client()
+    _write_debug_text(doi, "relevant_content_prompt.txt", prompt)
+    client, used_step_llm_override = _get_chemical_composition_client(LLM_STEP_CHEM_RELEVANT)
     raw, meta = client.chat(
         [{"role": "user", "content": prompt}],
         temperature=0.0,
         return_meta=True,
     )
+    _write_debug_text(doi, "relevant_content_raw.txt", raw)
     _log_cost(
         meta,
         doi=doi,
         extra={
             "kind": "chemical_composition_relevant_content",
             "configured_model": client.model,
-            "used_processing_llm_override": False,
+            "used_step_llm_override": used_step_llm_override,
         },
     )
 
     result = _parse_json_object(raw)
+    _write_debug_json(doi, "relevant_content_parsed.json", result)
     return _normalize_relevant_content_items(result.get("relevant_content", []))
 
 
@@ -905,24 +1092,27 @@ def extract_composition_from_relevant_content_llm(
     prompt = _COMPOSITION_EXTRACTION_PROMPT.format(
         relevant_content=relevant_prompt_text
     )
-    client = _get_chemical_composition_client()
+    _write_debug_text(doi, "samples_prompt.txt", prompt)
+    client, used_step_llm_override = _get_chemical_composition_client(LLM_STEP_CHEM_COMPOSITION)
     messages = _build_composition_messages(prompt, relevant_content)
     raw, meta = client.chat(
         messages,
         temperature=0.0,
         return_meta=True,
     )
+    _write_debug_text(doi, "samples_raw.txt", raw)
     _log_cost(
         meta,
         doi=doi,
         extra={
             "kind": "chemical_composition_table",
             "configured_model": client.model,
-            "used_processing_llm_override": False,
+            "used_step_llm_override": used_step_llm_override,
         },
     )
 
     result = _parse_json_object(raw)
+    _write_debug_json(doi, "samples_parsed.json", result)
     return _normalize_composition_samples(result.get("samples", []))
 
 
@@ -1027,13 +1217,7 @@ def run_chemical_composition_extraction(
     if parsed_json_path and parsed_json_path.exists():
         try:
             pj = json.loads(parsed_json_path.read_text())
-            # parsed.json typically has sections or a flat "text" key
-            if isinstance(pj, dict):
-                parsed_text = pj.get("text", "") or json.dumps(pj, indent=1)
-            elif isinstance(pj, str):
-                parsed_text = pj
-            else:
-                parsed_text = json.dumps(pj, indent=1)
+            parsed_text = _parsed_json_to_text(pj)
         except Exception:
             pass
 

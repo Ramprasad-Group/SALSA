@@ -9,13 +9,57 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from discover import discover_run
+from llm_step_config import (
+    GENERAL_LLM_ENV_VARS,
+    LLM_STEP_COMPLETE_DATASET,
+    LLM_STEP_EXTRACT_TABLES,
+    LLM_STEP_FIGURE_DATA,
+    LLM_STEP_FILTER_FIGURES,
+    LLM_STEP_FILTER_TABLES,
+    step_env_to_general_env_map,
+)
 from schemas import RunResult
 
 def doi_to_safe(doi: str) -> str:
     return doi.replace("/", "@").strip()
 
-def _run(cmd: list[str], cwd: Optional[Path] = None):
-    subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
+def _run(
+    cmd: list[str],
+    cwd: Optional[Path] = None,
+    env: Optional[Dict[str, str]] = None,
+):
+    subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, check=True)
+
+
+def _clear_general_llm_env(env: Dict[str, str]) -> None:
+    for key in GENERAL_LLM_ENV_VARS:
+        env.pop(key, None)
+
+
+def _subprocess_env_for_llm_step(step_key: str) -> Dict[str, str]:
+    import os
+
+    env = os.environ.copy()
+    _clear_general_llm_env(env)
+    for step_env, general_env in step_env_to_general_env_map(step_key).items():
+        value = os.environ.get(step_env, "").strip()
+        if value:
+            env[general_env] = value
+        else:
+            env.pop(general_env, None)
+    return env
+
+
+def _apply_llm_step_to_process_env(step_key: str) -> None:
+    import os
+
+    _clear_general_llm_env(os.environ)
+    for step_env, general_env in step_env_to_general_env_map(step_key).items():
+        value = os.environ.get(step_env, "").strip()
+        if value:
+            os.environ[general_env] = value
+        else:
+            os.environ.pop(general_env, None)
 
 def _latest_matching_csv(dir_: Path, glob_pat: str) -> Path:
     matches = sorted(dir_.glob(glob_pat), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -250,7 +294,12 @@ def run_full_pipeline(
         cmd_extract.append("--extract_figures")
     if run_extract_tables:
         cmd_extract.append("--extract_tables")
-    _run(cmd_extract)
+    _run(
+        cmd_extract,
+        env=_subprocess_env_for_llm_step(LLM_STEP_EXTRACT_TABLES)
+        if run_extract_tables
+        else None,
+    )
 
     # --- 5) chemical composition extraction (before filtering) ---
     # Run chemical composition extraction on unfiltered figures/tables so that
@@ -303,19 +352,30 @@ def run_full_pipeline(
                 print(f"[Pipeline] WARNING: Chemical composition failed for {doi}: {e}")
 
     # --- 6) filter figures/tables (after chemical composition extraction) ---
-    if run_filter_figures or run_filter_tables:
-        cmd_filter = [
-            sys.executable, str(p_extract_ft),
-            "--no_db",
-            "--csv_path", str(index_csv),
-            "--structured_files_dir", str(structured_root),
-            "--output_dir", str(figures_tables_dir),
-        ]
-        if run_filter_figures:
-            cmd_filter.append("--filter_figures")
-        if run_filter_tables:
-            cmd_filter.append("--filter_tables")
-        _run(cmd_filter)
+    if run_filter_figures:
+        _run(
+            [
+                sys.executable, str(p_extract_ft),
+                "--no_db",
+                "--csv_path", str(index_csv),
+                "--structured_files_dir", str(structured_root),
+                "--output_dir", str(figures_tables_dir),
+                "--filter_figures",
+            ],
+            env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_FIGURES),
+        )
+    if run_filter_tables:
+        _run(
+            [
+                sys.executable, str(p_extract_ft),
+                "--no_db",
+                "--csv_path", str(index_csv),
+                "--structured_files_dir", str(structured_root),
+                "--output_dir", str(figures_tables_dir),
+                "--filter_tables",
+            ],
+            env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_TABLES),
+        )
 
     # --- 7) plextract.py ---
     # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
@@ -349,6 +409,7 @@ def run_full_pipeline(
                 sys.path.insert(0, str(scripts_root.resolve()))
             from extract_figure_data import llm_direct_figure_data as _llm_fig_module
 
+            _apply_llm_step_to_process_env(LLM_STEP_FIGURE_DATA)
             _llm_fig_module = importlib.reload(_llm_fig_module)
             _llm_fig_module.run_llm_figure_data_extraction(
                 figures_root=_figures_dir,
@@ -383,7 +444,7 @@ def run_full_pipeline(
         if ci_path and ci_path.exists():
             cmd += ["--custom_instructions", str(ci_path)]
 
-        _run(cmd)
+        _run(cmd, env=_subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET))
 
     # --- discover everything for UI ---
     return discover_run(run_dir)

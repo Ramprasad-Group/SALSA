@@ -49,6 +49,7 @@ The dataset-completion and figure-filtering stages require an LLM. Configure via
 | `AEM_OCR_LLM_MODEL` | Model name | `gpt-4o` |
 | `OPENAI_API_KEY` | API key (OpenAI only) | `sk-...` |
 | `OLLAMA_HOST` | Ollama endpoint (Ollama only) | `http://127.0.0.1:11434` |
+| `AEM_OCR_OLLAMA_NUM_CTX` | Requested Ollama context window for prompts (optional) | `16384` |
 
 ---
 
