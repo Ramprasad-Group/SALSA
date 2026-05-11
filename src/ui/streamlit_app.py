@@ -53,6 +53,7 @@ from typing import List, Optional
 import re
 from datetime import datetime
 from typing import Callable, Sequence, Optional, Any
+from urllib.request import urlopen
 from llm_step_config import (
     GENERAL_LLM_ENV_VARS,
     LLM_STEP_CHEM_COMPOSITION,
@@ -271,13 +272,47 @@ def _default_ollama_host() -> str:
     # 4. Standard default
     return "http://127.0.0.1:11434"
 
-def _ollama_list_models_via_cli() -> List[str]:
+def _normalize_ollama_host(host: str) -> str:
+    value = (host or "").strip() or _default_ollama_host()
+    if not value.startswith("http"):
+        value = "http://" + value
+    return value.rstrip("/")
+
+
+@st.cache_data(show_spinner=False, ttl=5)
+def _ollama_list_models_via_api(host: str) -> Optional[List[str]]:
+    """
+    Query the Ollama HTTP API directly so the UI reflects whether the daemon is
+    actually reachable, not just whether models exist on disk.
+    """
+    normalized_host = _normalize_ollama_host(host)
+    try:
+        with urlopen(f"{normalized_host}/api/tags", timeout=3) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        models = []
+        for item in payload.get("models", []):
+            name = str(item.get("name", "")).strip()
+            if name:
+                models.append(name)
+        return models
+    except Exception:
+        return None
+
+
+def _ollama_list_models_via_cli(host: str) -> Optional[List[str]]:
     """
     Best source of truth: `ollama list` returns the models actually available to the ollama daemon.
     """
     try:
         # Note: OLLAMA_HOST can be set in env to point to a non-default daemon
-        out = subprocess.check_output(["ollama", "list"], text=True, stderr=subprocess.STDOUT)
+        cli_env = os.environ.copy()
+        cli_env["OLLAMA_HOST"] = _normalize_ollama_host(host)
+        out = subprocess.check_output(
+            ["ollama", "list"],
+            text=True,
+            stderr=subprocess.STDOUT,
+            env=cli_env,
+        )
         lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
         if not lines:
             return []
@@ -290,7 +325,15 @@ def _ollama_list_models_via_cli() -> List[str]:
                 models.append(parts[0])
         return models
     except Exception:
-        return []
+        return None
+
+
+@st.cache_data(show_spinner=False, ttl=5)
+def _ollama_server_is_available(host: str) -> bool:
+    normalized_host = _normalize_ollama_host(host)
+    if _ollama_list_models_via_api(normalized_host) is not None:
+        return True
+    return _ollama_list_models_via_cli(normalized_host) is not None
 
 def _ollama_list_models_from_dir(models_dir: Path) -> List[str]:
     """
@@ -1486,10 +1529,14 @@ def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: li
     return df
 
 def _ollama_models() -> List[str]:
-    models = _ollama_list_models_via_cli()
-    if not models:
-        models = _ollama_list_models_from_dir(Path(str(default_ollama_dir)))
-    return models
+    host = _normalize_ollama_host(st.session_state.get("ollama_host", default_ollama_host))
+    api_models = _ollama_list_models_via_api(host)
+    if api_models is not None:
+        return api_models
+    cli_models = _ollama_list_models_via_cli(host)
+    if cli_models is not None:
+        return cli_models
+    return []
 
 def iter_runs_newest_first(workdir: Path) -> list[Path]:
     results = workdir / "results"
@@ -1659,7 +1706,7 @@ def _ensure_shared_llm_settings_in_state() -> None:
             "https://api.openai.com/v1",
         )
     if "openai_api_key" not in st.session_state:
-        st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+        st.session_state["openai_api_key"] = ""
     if "ollama_host" not in st.session_state:
         st.session_state["ollama_host"] = os.environ.get(
             "OLLAMA_HOST",
@@ -1733,11 +1780,13 @@ def _sync_step_llm_env_from_session(step_key: str) -> None:
             "openai_base_url",
             "https://api.openai.com/v1",
         )
-        if st.session_state.get("openai_api_key"):
-            os.environ[f"{prefix}_OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+        api_key = str(st.session_state.get("openai_api_key", "")).strip()
+        if api_key:
+            os.environ[f"{prefix}_OPENAI_API_KEY"] = api_key
 
 
 def _sync_all_step_llm_envs_from_session() -> None:
+    _clear_general_llm_env(os.environ)
     for step_key in _STEP_LLM_RENDER_ORDER:
         _sync_step_llm_env_from_session(step_key)
 
@@ -1767,10 +1816,19 @@ def _render_step_llm_selector(step_key: str, *, caption: Optional[str] = None) -
 
     provider_key = _step_provider_key(step_key)
     model_key = _step_model_key(step_key)
+    ollama_available = _ollama_server_is_available(
+        _normalize_ollama_host(st.session_state.get("ollama_host", default_ollama_host))
+    )
+    if not ollama_available and st.session_state.get(provider_key) == "Ollama":
+        st.session_state[provider_key] = "Chat GPT"
+        st.session_state.pop(model_key, None)
+    provider_options = ["Chat GPT"] + (["Ollama"] if ollama_available else [])
     provider = st.radio(
         "Provider",
-        options=["Chat GPT", "Ollama"],
-        index=0,
+        options=provider_options,
+        index=provider_options.index(st.session_state[provider_key])
+        if st.session_state.get(provider_key) in provider_options
+        else 0,
         key=provider_key,
         horizontal=True,
     )
@@ -1826,6 +1884,16 @@ def _missing_llm_steps(step_keys: Sequence[str]) -> list[str]:
 
 def _any_step_uses_ollama(step_keys: Sequence[str]) -> bool:
     return any(_step_provider_label(step_key) == "Ollama" for step_key in step_keys)
+
+
+def _missing_openai_api_key_steps(step_keys: Sequence[str]) -> list[str]:
+    if str(st.session_state.get("openai_api_key", "")).strip():
+        return []
+    return [
+        LLM_STEP_LABELS[step_key]
+        for step_key in step_keys
+        if _step_provider_label(step_key) == "Chat GPT"
+    ]
 
 
 def clear_processing_llm_env_if_disabled() -> None:
@@ -2124,6 +2192,22 @@ with st.sidebar:
     with st.expander("LLM", expanded=False):
         _ensure_shared_llm_settings_in_state()
         st.caption("Choose the LLM for each stage that actually uses one.")
+        st.text_input(
+            "OpenAI API key",
+            key="openai_api_key",
+            type="password",
+            placeholder="sk-...",
+            help="Required for every stage that uses Chat GPT.",
+        )
+        ollama_host = _normalize_ollama_host(
+            st.session_state.get("ollama_host", default_ollama_host)
+        )
+        ollama_available = _ollama_server_is_available(ollama_host)
+        if not ollama_available:
+            st.info(
+                f"No Ollama server is running at `{ollama_host}`. "
+                "Start Ollama to enable Ollama model selection."
+            )
 
         llm_steps_to_render: list[tuple[str, Optional[str]]] = [
             (LLM_STEP_EXTRACT_TABLES, "Used when parsing table content with the LLM."),
@@ -2148,7 +2232,7 @@ with st.sidebar:
                 ),
             )
 
-        if _any_step_uses_ollama([step_key for step_key, _ in llm_steps_to_render]):
+        if ollama_available and _any_step_uses_ollama([step_key for step_key, _ in llm_steps_to_render]):
             st.number_input(
                 "Ollama context window (num_ctx)",
                 min_value=4096,
@@ -2555,10 +2639,16 @@ if st.button("Run pipeline", type="primary"):
             run_complete_dataset=run_complete_dataset,
         )
         missing_llm_steps = _missing_llm_steps(active_llm_steps)
+        missing_openai_api_key_steps = _missing_openai_api_key_steps(active_llm_steps)
         if missing_llm_steps:
             st.error(
                 "Configure an LLM model for these stages before running: "
                 + ", ".join(missing_llm_steps)
+            )
+        elif missing_openai_api_key_steps:
+            st.error(
+                "Enter an OpenAI API key in the sidebar before running these Chat GPT stages: "
+                + ", ".join(missing_openai_api_key_steps)
             )
         else:
             with st.spinner("Running your pipeline end-to-end…"):
@@ -3424,6 +3514,11 @@ with tab_figs:
                                         "Configure an LLM for Complete dataset in the sidebar before rerunning LLM dataset generation."
                                     )
                                     Path(_tmp_path_er).unlink(missing_ok=True)
+                                elif _missing_openai_api_key_steps([LLM_STEP_COMPLETE_DATASET]):
+                                    st.error(
+                                        "Enter an OpenAI API key in the sidebar before rerunning Chat GPT dataset generation."
+                                    )
+                                    Path(_tmp_path_er).unlink(missing_ok=True)
                                 else:
                                     _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
                                     if _ci_path_er.exists():
@@ -3660,6 +3755,11 @@ with tab_figs:
                                     if not _step_has_configured_model(LLM_STEP_COMPLETE_DATASET):
                                         st.error(
                                             "Configure an LLM for Complete dataset in the sidebar before rerunning LLM dataset generation."
+                                        )
+                                        Path(_tmp_path_sf).unlink(missing_ok=True)
+                                    elif _missing_openai_api_key_steps([LLM_STEP_COMPLETE_DATASET]):
+                                        st.error(
+                                            "Enter an OpenAI API key in the sidebar before rerunning Chat GPT dataset generation."
                                         )
                                         Path(_tmp_path_sf).unlink(missing_ok=True)
                                     else:
@@ -4119,6 +4219,14 @@ with tab_chem:
                         raise RuntimeError(
                             "Configure an LLM model for these chemistry stages first: "
                             + ", ".join(missing_chem_steps)
+                        )
+                    missing_openai_api_key_steps = _missing_openai_api_key_steps(
+                        [LLM_STEP_CHEM_RELEVANT, LLM_STEP_CHEM_COMPOSITION]
+                    )
+                    if missing_openai_api_key_steps:
+                        raise RuntimeError(
+                            "Enter an OpenAI API key in the sidebar before running these Chat GPT chemistry stages: "
+                            + ", ".join(missing_openai_api_key_steps)
                         )
                     _sync_all_step_llm_envs_from_session()
 
