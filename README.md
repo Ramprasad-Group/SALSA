@@ -52,10 +52,12 @@ SALSA uses an LLM for figure/table filtering, chemical composition extraction, a
 | `OPENAI_API_KEY` | OpenAI API key, when using OpenAI | `sk-...` |
 | `OPENAI_BASE_URL` | Optional OpenAI-compatible API base URL | `https://api.openai.com/v1` |
 | `OLLAMA_HOST` | Ollama endpoint, when using Ollama | `http://127.0.0.1:11434` |
+| `SALSA_OLLAMA_NUM_CTX` | Optional shared Ollama context window | `16384` |
 | `SALSA_PROCESSING_LLM_PROVIDER` | Optional provider for the processing model | `openai` |
 | `SALSA_PROCESSING_LLM_MODEL` | Optional separate model for dataset and chemistry processing | `gpt-4o` |
 | `SALSA_PROCESSING_OPENAI_API_KEY` | Optional OpenAI key override for processing runs | `sk-...` |
 | `SALSA_PROCESSING_OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override for processing runs | `https://api.openai.com/v1` |
+| `SALSA_PROCESSING_OLLAMA_NUM_CTX` | Optional Ollama context window override for processing runs | `32768` |
 
 ---
 

@@ -44,7 +44,7 @@ JSONType = Literal["string", "number", "integer", "boolean", "null", "object", "
 def build_figure_plan_json_schema(
     output_columns: List[str],
     *,
-    schema_name: str = "aem_ocr_figure_plan",
+    schema_name: str = "salsa_figure_plan",
     strict: bool = True,
 ) -> Dict[str, Any]:
     """

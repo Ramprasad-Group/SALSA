@@ -10,23 +10,22 @@ installation is required and there are no cross-origin iframe restrictions.
 """
 from __future__ import annotations
 
+import errno
 import json
 import os
+import socket
+import sys
+import threading
+import time
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import streamlit as st
 import streamlit.components.v1 as components
 
-import socket
-import threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from pathlib import Path
-from typing import Optional
-
-import streamlit.components.v1 as components
-import streamlit as st
-import sys
 
 # ---------------------------------------------------------------------------
 # JSME-based HTML component
@@ -198,26 +197,85 @@ def delete_drawn_structure(run_dir: Path, safe_doi: str, index: int) -> None:
 
 # ---------- Static server (serves your local JSME folder) ----------
 
-@st.cache_resource(show_spinner=False)
-def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int = 8765) -> str:
-    static_root = static_root.resolve()
+class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
 
+
+def _probe_host(host: str) -> str:
+    """Address the local process should use when checking the helper server."""
+    return "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+
+
+def _format_http_host(host: str) -> str:
+    """Format hosts safely for http://host:port URLs."""
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]"
+    return host
+
+
+def _local_base_url(host: str, port: int) -> str:
+    return f"http://{_format_http_host(_probe_host(host))}:{port}"
+
+
+def _probe_server(static_root: Path, host: str, port: int, timeout: float = 2.0) -> bool:
+    """
+    Return True only when the existing listener serves the same JSME root.
+
+    This avoids reusing an unrelated process that merely happens to own the
+    preferred port.
+    """
+    probe_url = f"{_local_base_url(host, port)}/jsme/jsme.nocache.js"
+    expected_path = static_root / "jsme" / "jsme.nocache.js"
+    try:
+        expected_body = expected_path.read_bytes()
+        with urllib.request.urlopen(probe_url, timeout=timeout) as response:
+            return response.read() == expected_body
+    except OSError:
+        return False
+
+
+def _start_http_server(static_root: Path, host: str, port: int) -> ThreadingHTTPServer:
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(static_root), **kwargs)
 
+    httpd = _ReusableThreadingHTTPServer((host, port), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    # Give the listener a moment to start accepting requests.
+    time.sleep(0.1)
+    return httpd
+
+
+@st.cache_resource(show_spinner=False)
+def _start_static_server(static_root: Path, host: str = "127.0.0.1", port: int = 8765) -> Dict[str, Any]:
+    static_root = static_root.resolve()
+
     try:
-        httpd = ThreadingHTTPServer((host, port), Handler)
-        t = threading.Thread(target=httpd.serve_forever, daemon=True)
-        t.start()
+        httpd = _start_http_server(static_root, host, port)
+        actual_port = httpd.server_address[1]
+        print(
+            f"Started HTTP server at {_local_base_url(host, actual_port)} serving {static_root}",
+            file=sys.stderr,
+        )
+        return {"actual_port": actual_port, "server": httpd}
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            if _probe_server(static_root, host, port):
+                print(
+                    f"Reusing existing HTTP server at {_local_base_url(host, port)} for {static_root}",
+                    file=sys.stderr,
+                )
+                return {"actual_port": port, "server": None}
 
-        # Give server a moment to start
-        import time
-        time.sleep(0.1)
-
-        print(f"Started HTTP server at http://{host}:{port} serving {static_root}", file=sys.stderr)
-        return f"http://{host}:{port}"
-    except Exception as e:
+            httpd = _start_http_server(static_root, host, 0)
+            actual_port = httpd.server_address[1]
+            print(
+                f"Preferred HTTP server port {port} is in use by another process; "
+                f"started JSME helper at {_local_base_url(host, actual_port)} instead",
+                file=sys.stderr,
+            )
+            return {"actual_port": actual_port, "server": httpd}
         print(f"Failed to start HTTP server: {e}", file=sys.stderr)
         raise
 
@@ -236,7 +294,25 @@ def _jsme_port() -> int:
         return 8765
 
 
-def _jsme_public_base_url(port: int) -> str:
+def _rewrite_url_port(base_url: str, port: int) -> str:
+    """Rewrite the port in a full URL when the helper falls back to a free port."""
+    parsed = urlsplit(base_url)
+    if not parsed.scheme or not parsed.hostname:
+        return base_url.rstrip("/")
+
+    auth = ""
+    if parsed.username:
+        auth = parsed.username
+        if parsed.password:
+            auth += f":{parsed.password}"
+        auth += "@"
+
+    host = _format_http_host(parsed.hostname)
+    netloc = f"{auth}{host}:{port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment)).rstrip("/")
+
+
+def _jsme_public_base_url(port: int, requested_port: Optional[int] = None) -> str:
     """
     URL the browser should use to reach the helper server.
 
@@ -247,7 +323,23 @@ def _jsme_public_base_url(port: int) -> str:
     """
     env = os.environ.get("SALSA_JSME_PUBLIC_URL", "").strip()
     if env:
-        return env.rstrip("/")
+        env = env.rstrip("/")
+        if requested_port is not None and port != requested_port:
+            adjusted = _rewrite_url_port(env, port)
+            if adjusted != env:
+                print(
+                    f"Adjusted SALSA_JSME_PUBLIC_URL from {env} to {adjusted} "
+                    f"because port {requested_port} was unavailable.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Preferred JSME port {requested_port} was unavailable; "
+                    f"continuing to use SALSA_JSME_PUBLIC_URL={env}.",
+                    file=sys.stderr,
+                )
+            return adjusted
+        return env
     return f"http://127.0.0.1:{port}"
 
 
@@ -436,12 +528,13 @@ def render_jsme_editor_local(
         return
 
     bind_host = _jsme_bind_host()
-    port = _jsme_port()
-    public_base_url = _jsme_public_base_url(port)
+    requested_port = _jsme_port()
 
     # Serve *the JSME root folder* (which contains the jsme subdirectory)
-    _start_static_server(jsme_root, host=bind_host, port=port)
-    local_base_url = f"http://127.0.0.1:{port}"
+    server_info = _start_static_server(jsme_root, host=bind_host, port=requested_port)
+    port = server_info["actual_port"]
+    public_base_url = _jsme_public_base_url(port, requested_port=requested_port)
+    local_base_url = _local_base_url(bind_host, port)
 
     # Write wrapper HTML into a temp dir INSIDE the served root
     wrapper_dir = jsme_dir / "_streamlit_wrapper"
@@ -456,7 +549,6 @@ def render_jsme_editor_local(
     iframe_url = f"{public_base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
 
     # Test if server is responding
-    import urllib.request
     try:
         with urllib.request.urlopen(f"{local_base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}", timeout=2) as response:
             st.write(f"**JSME Server is responding**")
@@ -464,7 +556,9 @@ def render_jsme_editor_local(
         st.error(f"**Server test failed**: {type(e).__name__}: {e}")
         st.write("**Troubleshooting:**")
         st.write("- The HTTP server may not have started correctly")
-        st.write(f"- Port {port} might be in use by another process")
+        st.write(f"- Requested port {requested_port} might be in use by another process")
+        if port != requested_port:
+            st.write(f"- SALSA switched the helper server to port {port}")
         st.write("- Try restarting the Streamlit app")
         st.write("- If you opened Streamlit from another machine, set `SALSA_JSME_PUBLIC_URL` to a browser-reachable address, for example `http://<server-host>:{port}`")
         st.write("- For remote access, you may also need `SALSA_JSME_BIND_HOST=0.0.0.0`")

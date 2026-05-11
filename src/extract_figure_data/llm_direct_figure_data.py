@@ -53,7 +53,7 @@ def _clean_json_response(raw: str) -> Dict[str, Any]:
 def _rows_schema() -> Dict[str, Any]:
     row_properties = {column: {"type": "string"} for column in FIGURE_DATA_COLUMNS}
     return {
-        "name": "aem_ocr_direct_figure_data",
+        "name": "salsa_direct_figure_data",
         "strict": True,
         "schema": {
             "type": "object",

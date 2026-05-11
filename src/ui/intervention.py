@@ -174,6 +174,25 @@ class SeriesItem:
     centroid: Tuple[float, float]
 
 
+def _resolve_series_mask_path(lineformer_dir: Path, raw_mask_path: Any) -> Path:
+    """
+    Resolve a series-catalog mask path against the current lineformer dir.
+
+    Older runs can contain absolute paths from the pre-rename AEM_OCR repo.
+    Prefer the recorded path when it still exists, otherwise fall back to a
+    same-name mask inside the current lineformer directory.
+    """
+    mask_path = Path(str(raw_mask_path))
+    if mask_path.exists():
+        return mask_path
+
+    local_candidate = lineformer_dir / mask_path.name
+    if local_candidate.exists():
+        return local_candidate
+
+    return mask_path
+
+
 def load_series_catalog(lineformer_dir: Path) -> List[SeriesItem]:
     cat = lineformer_dir / "series_catalog.json"
     if not cat.exists():
@@ -190,7 +209,7 @@ def load_series_catalog(lineformer_dir: Path) -> List[SeriesItem]:
         out.append(
             SeriesItem(
                 series_index=int(r["series_index"]),
-                mask_path=Path(r["mask_path"]),
+                mask_path=_resolve_series_mask_path(lineformer_dir, r["mask_path"]),
                 centroid=(float(r["centroid"][0]), float(r["centroid"][1])),
             )
         )

@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # ---- Config ----
 
@@ -18,14 +18,83 @@ class LLMConfig:
     ollama_num_ctx: Optional[int] = None
 
 
-def load_llm_config() -> LLMConfig:
-    provider = os.environ.get("SALSA_LLM_PROVIDER", "ollama").strip().lower()
-    model = os.environ.get("SALSA_LLM_MODEL", "").strip()
+EnvName = Union[str, Tuple[str, ...]]
+
+
+def _normalize_env_names(names: EnvName) -> tuple[str, ...]:
+    if isinstance(names, str):
+        return (names,)
+    return tuple(names)
+
+
+def _load_optional_int_env(*names: str) -> Optional[int]:
+    """Return the first valid positive integer environment variable value."""
+    for name in names:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            print(f"[llm_client] WARNING: ignoring invalid integer for {name}: {raw!r}")
+            continue
+        if value > 0:
+            return value
+        print(f"[llm_client] WARNING: ignoring non-positive integer for {name}: {raw!r}")
+    return None
+
+
+def _load_first_env(*names: str, default: str = "") -> str:
+    """Return the first non-empty environment variable value."""
+    for name in names:
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            return raw
+    return default
+
+
+def _load_llm_config_from_env(
+    *,
+    provider_env: EnvName,
+    model_env: EnvName,
+    openai_base_url_envs: tuple[str, ...],
+    openai_api_key_envs: tuple[str, ...],
+    ollama_host_envs: tuple[str, ...],
+    ollama_num_ctx_envs: tuple[str, ...],
+    default_provider: str,
+    required: bool,
+) -> Optional[LLMConfig]:
+    provider = _load_first_env(
+        *_normalize_env_names(provider_env),
+        default=default_provider,
+    ).strip().lower()
+    model_names = _normalize_env_names(model_env)
+    model = _load_first_env(*model_names).strip()
+
+    if not model:
+        if required:
+            model_list = ", ".join(model_names)
+            if provider in ("openai", "gpt"):
+                raise RuntimeError(
+                    f"No OpenAI model configured. Set one of: {model_list}"
+                )
+            raise RuntimeError(
+                f"No Ollama model configured. Set one of: {model_list}"
+            )
+        return None
 
     if provider in ("openai", "gpt"):
-        base_url = _load_first_env(*openai_base_url_envs, default="https://api.openai.com/v1").strip()
+        base_url = _load_first_env(
+            *openai_base_url_envs,
+            default="https://api.openai.com/v1",
+        ).strip()
         api_key = _load_first_env(*openai_api_key_envs).strip() or None
-        return LLMConfig(provider="openai", model=model, base_url=base_url, api_key=api_key)
+        return LLMConfig(
+            provider="openai",
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+        )
 
     host = _load_first_env(*ollama_host_envs, default="http://127.0.0.1:11434").strip()
     if not host.startswith("http"):
@@ -37,18 +106,19 @@ def load_llm_config() -> LLMConfig:
         model=model,
         base_url=base_url,
         api_key="ollama",
+        ollama_host=host,
         ollama_num_ctx=ollama_num_ctx,
     )
 
 
 def load_llm_config() -> LLMConfig:
     cfg = _load_llm_config_from_env(
-        provider_env="AEM_OCR_LLM_PROVIDER",
-        model_env="AEM_OCR_LLM_MODEL",
+        provider_env="SALSA_LLM_PROVIDER",
+        model_env="SALSA_LLM_MODEL",
         openai_base_url_envs=("OPENAI_BASE_URL",),
         openai_api_key_envs=("OPENAI_API_KEY",),
         ollama_host_envs=("OLLAMA_HOST",),
-        ollama_num_ctx_envs=("AEM_OCR_OLLAMA_NUM_CTX", "OLLAMA_NUM_CTX"),
+        ollama_num_ctx_envs=("SALSA_OLLAMA_NUM_CTX", "OLLAMA_NUM_CTX"),
         default_provider="ollama",
         required=True,
     )
@@ -58,8 +128,8 @@ def load_llm_config() -> LLMConfig:
 
 def load_optional_llm_config_from_env(
     *,
-    provider_env: str,
-    model_env: str,
+    provider_env: EnvName,
+    model_env: EnvName,
     openai_base_url_envs: tuple[str, ...],
     openai_api_key_envs: tuple[str, ...],
     ollama_host_envs: tuple[str, ...],
@@ -83,29 +153,25 @@ def load_processing_llm_config() -> Optional[LLMConfig]:
     Build an LLMConfig for data processing (dataset completion and chemical extraction) from dedicated env vars.
     Returns None if no processing-specific config is set (falls back to general LLM).
     """
-    p_provider = os.environ.get("SALSA_PROCESSING_LLM_PROVIDER", "").strip().lower()
-    p_model = os.environ.get("SALSA_PROCESSING_LLM_MODEL", "").strip()
-
-    if not p_model:
-        return None  # no override; use general LLM
-
-    if p_provider in ("openai", "gpt", ""):
-        base_url = os.environ.get(
+    return load_optional_llm_config_from_env(
+        provider_env="SALSA_PROCESSING_LLM_PROVIDER",
+        model_env="SALSA_PROCESSING_LLM_MODEL",
+        openai_base_url_envs=(
             "SALSA_PROCESSING_OPENAI_BASE_URL",
-            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        ).strip()
-        api_key = os.environ.get(
+            "OPENAI_BASE_URL",
+        ),
+        openai_api_key_envs=(
             "SALSA_PROCESSING_OPENAI_API_KEY",
-            os.environ.get("OPENAI_API_KEY", ""),
-        ).strip() or None
-        return LLMConfig(provider="openai", model=p_model, base_url=base_url, api_key=api_key)
-
-    # ollama
-    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip()
-    if not host.startswith("http"):
-        host = "http://" + host
-    base_url = host.rstrip("/") + "/v1"
-    return LLMConfig(provider="ollama", model=p_model, base_url=base_url, api_key="ollama")
+            "OPENAI_API_KEY",
+        ),
+        ollama_host_envs=("OLLAMA_HOST",),
+        ollama_num_ctx_envs=(
+            "SALSA_PROCESSING_OLLAMA_NUM_CTX",
+            "SALSA_OLLAMA_NUM_CTX",
+            "OLLAMA_NUM_CTX",
+        ),
+        default_provider="openai",
+    )
 
 
 # ---- Unified interface ----

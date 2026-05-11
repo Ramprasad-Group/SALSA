@@ -187,7 +187,7 @@ def _safe_doi(doi: str) -> str:
 
 
 def _debug_output_dir(doi: str) -> Optional[Path]:
-    run_dir = os.environ.get("AEM_OCR_RUN_DIR", "").strip()
+    run_dir = os.environ.get("SALSA_RUN_DIR", "").strip()
     if not run_dir:
         return None
     out_dir = Path(run_dir) / "chemical_composition" / _safe_doi(doi)
@@ -1006,7 +1006,7 @@ def _get_chemical_composition_client(step_key: str) -> tuple[Any, bool]:
         ollama_host_envs=(f"{prefix}_OLLAMA_HOST", "OLLAMA_HOST"),
         ollama_num_ctx_envs=(
             f"{prefix}_OLLAMA_NUM_CTX",
-            "AEM_OCR_OLLAMA_NUM_CTX",
+            "SALSA_OLLAMA_NUM_CTX",
             "OLLAMA_NUM_CTX",
         ),
         default_provider="openai",
@@ -1052,7 +1052,7 @@ def extract_relevant_content_llm(
     #         "[chemical_composition] WARNING: estimated relevant-content prompt "
     #         f"is ~{estimated_tokens} tokens before model-side tokenization. "
     #         "If Ollama is using a 4096-token context, it may truncate the paper. "
-    #         "Set AEM_OCR_OLLAMA_NUM_CTX to a larger value such as 16384 or 32768."
+    #         "Set SALSA_OLLAMA_NUM_CTX to a larger value such as 16384 or 32768."
     #     )
 
     prompt = _RELEVANT_CONTENT_PROMPT.format(content=combined)

@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+DEFAULT_PRESET_NAME = "aem_all"
 
 # ---------------------------------------------------------------------------
 # Default values — these match the current hardcoded behaviour
@@ -73,8 +74,8 @@ DEFAULT_MISSING_VALUE_DEFAULTS = {
 }
 
 
-def default_instructions() -> Dict[str, Any]:
-    """Return the full default custom-instructions dict."""
+def _fallback_default_instructions() -> Dict[str, Any]:
+    """Return the built-in fallback instructions dict."""
     return {
         "table_extraction_rules": DEFAULT_TABLE_EXTRACTION_RULES,
         "figure_filter_criteria": DEFAULT_FIGURE_FILTER_CRITERIA,
@@ -83,6 +84,33 @@ def default_instructions() -> Dict[str, Any]:
         "output_columns": list(DEFAULT_OUTPUT_COLUMNS),
         "missing_value_defaults": dict(DEFAULT_MISSING_VALUE_DEFAULTS),
     }
+
+
+def _bundled_default_preset_path() -> Path:
+    return (
+        Path(__file__).resolve().parent.parent
+        / "ui_runs"
+        / "instruction_presets"
+        / f"{DEFAULT_PRESET_NAME}.json"
+    )
+
+
+def default_instructions() -> Dict[str, Any]:
+    """Return the full default custom-instructions dict."""
+    defaults = _fallback_default_instructions()
+    preset_path = _bundled_default_preset_path()
+    if not preset_path.exists():
+        return defaults
+
+    try:
+        with open(preset_path, "r") as f:
+            data = json.load(f)
+        for key, value in defaults.items():
+            if key not in data:
+                data[key] = value
+        return data
+    except Exception:
+        return defaults
 
 
 def load_instructions(path: Path) -> Dict[str, Any]:

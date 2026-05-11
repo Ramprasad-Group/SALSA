@@ -180,7 +180,7 @@ JSONType = Literal["string", "number", "integer", "boolean", "null", "object", "
 def build_rows_json_schema(
     output_columns: List[str],
     *,
-    schema_name: str = "aem_ocr_rows",
+    schema_name: str = "salsa_rows",
     strict: bool = True,
     field_type: JSONType = "string",
     allow_nulls: bool = False) -> Dict:
@@ -350,7 +350,7 @@ def infer_rows_for_table(
 
     json_schema = build_rows_json_schema(
         cols,
-        schema_name="aem_ocr_rows",
+        schema_name="salsa_rows",
         field_type="string",
         allow_nulls=False,
     )
@@ -523,7 +523,7 @@ def infer_rows_for_figure_dataset(
 
     json_schema = build_rows_json_schema(
         cols,
-        schema_name="aem_ocr_rows",
+        schema_name="salsa_rows",
         field_type="string",
         allow_nulls=False,
     )

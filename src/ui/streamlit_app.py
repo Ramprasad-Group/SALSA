@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from streamlit_drawable_canvas import st_canvas
 from pipeline import run_full_pipeline
 from discover import discover_run
@@ -25,6 +25,7 @@ from intervention import (
 )
 from run_plextract_manual import run_plextract_on_crops as _run_plextract_on_crops
 from custom_instructions import (
+    DEFAULT_PRESET_NAME,
     default_instructions,
     list_presets,
     save_preset,
@@ -330,6 +331,33 @@ def st_image_auto(img, *, full_width=True, **kwargs):
         return st.image(img, use_container_width=full_width, **kwargs)
     return st.image(img, use_column_width=full_width, **kwargs)
 
+
+def _is_valid_image_path(path: Optional[Path]) -> bool:
+    if path is None:
+        return False
+    try:
+        if not path.exists() or path.stat().st_size <= 0:
+            return False
+    except OSError:
+        return False
+
+    try:
+        with Image.open(path) as img:
+            img.verify()
+        return True
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False
+
+
+def _open_image_safe(path: Path, *, mode: Optional[str] = None) -> Optional[Image.Image]:
+    if not _is_valid_image_path(path):
+        return None
+    try:
+        with Image.open(path) as img:
+            return img.convert(mode) if mode else img.copy()
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+
 def section_dropdown(title: str, *, expanded: bool = False):
     """
     Small UI helper so both main figures and subfigures create section
@@ -392,7 +420,7 @@ def render_figure_image_dropdown(
     with section_dropdown(title, expanded=expanded):
         if figure_caption:
             st.markdown(f"**Caption:** {figure_caption}")
-        if image and image.exists():
+        if image and _is_valid_image_path(image):
             st_resizable_image(image, caption=image_caption, key=key)
         else:
             st.warning("No source image found for this figure.")
@@ -480,7 +508,7 @@ def render_axis_configuration_dropdown(
         # Axis Calibration
         # ========================
         st.markdown("**Axis Calibration**")
-        if source_img is None or not source_img.exists():
+        if not _is_valid_image_path(source_img):
             st.info("No source image available for axis calibration.")
             return
 
@@ -505,7 +533,10 @@ def render_axis_configuration_dropdown(
                 "You can still calibrate from clicks; domain will use your entered min/max."
             )
 
-        pil_img = Image.open(source_img).convert("RGB")
+        pil_img = _open_image_safe(source_img, mode="RGB")
+        if pil_img is None:
+            st.warning(f"Could not open source image for axis calibration: {source_img}")
+            return
         img_w, img_h = pil_img.size
 
         width_key = f"{key_prefix}_ax_calib_w"
@@ -778,7 +809,9 @@ def render_series_management_dropdown(
         for idx, mask_path in sorted(override_masks.items()):
             if idx not in orig_indices:
                 try:
-                    mimg = Image.open(mask_path).convert("L")
+                    mimg = _open_image_safe(Path(mask_path), mode="L")
+                    if mimg is None:
+                        raise ValueError(f"Could not open series mask: {mask_path}")
                     marr = np.array(mimg)
                     ys, xs = np.where(marr > 0)
                     cx = float(np.mean(xs)) if len(xs) > 0 else 0.0
@@ -819,9 +852,14 @@ def render_series_management_dropdown(
                 return plextract_labels[idx]
             return f"Series {idx}"
 
-        if source_img and source_img.exists():
-            base_img = Image.open(source_img).convert("RGBA")
-            w, h = base_img.size
+        if _is_valid_image_path(source_img):
+            base_img = _open_image_safe(source_img, mode="RGBA")
+            if base_img is None:
+                st.warning(f"Could not open source image for series overlay: {source_img}")
+                base_img = None
+                w, h = 600, 400
+            else:
+                w, h = base_img.size
         else:
             st.warning("No source image for series overlay.")
             base_img = None
@@ -868,7 +906,9 @@ def render_series_management_dropdown(
             color = SERIES_COLORS[i % len(SERIES_COLORS)]
             mp = override_masks.get(i, s.mask_path)
             try:
-                mask = Image.open(mp).convert("L")
+                mask = _open_image_safe(Path(mp), mode="L")
+                if mask is None:
+                    raise ValueError(f"Could not open overlay mask: {mp}")
                 marr2 = np.array(mask)
                 cl = np.zeros((*marr2.shape, 4), dtype=np.uint8)
                 cl[marr2 > 0] = (*color, 140)
@@ -920,7 +960,20 @@ def render_series_management_dropdown(
                 series_name = _display_name(selected_idx)
                 orig_mask_path = next(s.mask_path for s in series_items if s.series_index == selected_idx)
                 cur_mask_path = override_masks.get(selected_idx, orig_mask_path)
-                cur_mask_img = Image.open(cur_mask_path).convert("L").resize((disp_w, disp_h))
+                if _is_valid_image_path(Path(cur_mask_path)):
+                    _mask_img = _open_image_safe(Path(cur_mask_path), mode="L")
+                    if _mask_img is not None:
+                        cur_mask_img = _mask_img.resize((disp_w, disp_h))
+                    else:
+                        st.warning(
+                            f"Series mask could not be opened for {series_name}: {cur_mask_path}. "
+                            "You can still draw a replacement mask and save it."
+                        )
+                else:
+                    st.warning(
+                        f"Series mask not found for {series_name}: {cur_mask_path}. "
+                        "You can still draw a replacement mask and save it."
+                    )
 
         if selected_idx is not None:
             sel_color = SERIES_COLORS[selected_idx % len(SERIES_COLORS)]
@@ -1130,7 +1183,7 @@ def st_resizable_image(image_path: Path, *, caption: Optional[str] = None, key: 
     Render an image inside a container that can be resized by dragging
     the bottom-right corner. This removes the need for explicit width sliders.
     """
-    if not image_path.exists():
+    if not _is_valid_image_path(image_path):
         st.warning(f"Image not found: {image_path}")
         return
     try:
@@ -1472,28 +1525,52 @@ def resolve_source_img_for_subfig_dir(subfig_dir: Path, safe_doi: str):
     """
     run_dir = subfig_dir.parents[2]  # .../results/<run_id>
     input_dir = run_dir / "input" / safe_doi
+
+    def _valid_candidate(path: Path, caption: str):
+        if _is_valid_image_path(path):
+            return path, caption
+        return None
+
     if input_dir.exists():
         # Try exact name first (in case it includes extension)
         p = input_dir / subfig_dir.name
-        if p.exists():
-            return p, "Cropped image"
+        found = _valid_candidate(p, "Cropped image")
+        if found:
+            return found
 
         # Try matching by stem (handles missing/extra extension)
         stem = Path(subfig_dir.name).stem
         for ext in (".png", ".jpg", ".jpeg", ".webp"):
             p2 = input_dir / f"{stem}{ext}"
-            if p2.exists():
-                return p2, "Cropped image (run input)"
+            found = _valid_candidate(p2, "Cropped image (run input)")
+            if found:
+                return found
 
         # Last resort: scan for any file with matching stem
         for fp in input_dir.iterdir():
             if fp.is_file() and Path(fp.name).stem == stem:
-                return fp, "Cropped image (run input)"
+                found = _valid_candidate(fp, "Cropped image (run input)")
+                if found:
+                    return found
+
+    # Intervention runs often keep the original crop as a sibling image next to
+    # the intervention directory. Prefer that over empty placeholder files in
+    # results/<n>/input/.
+    if "plextract_interventions" in subfig_dir.parts:
+        intervention_crop_base = subfig_dir.parents[5]
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            found = _valid_candidate(
+                intervention_crop_base.with_suffix(ext),
+                "Intervention source crop",
+            )
+            if found:
+                return found
 
     # Fallback: recreated image
     final_img = subfig_dir / "final" / "final_image.png"
-    if final_img.exists():
-        return final_img, "Recreated image (crop not found)"
+    found = _valid_candidate(final_img, "Recreated image (crop not found)")
+    if found:
+        return found
 
     return None, None
 
@@ -1526,7 +1603,7 @@ def select_with_preview(
 
     # Preview renders immediately because `sel` is never None now
     p = preview_path_for_option(sel)
-    if p and Path(p).exists():
+    if p and _is_valid_image_path(Path(p)):
         st.image(str(p), width=preview_width)
         st.caption(Path(p).name)
     else:
@@ -1536,7 +1613,9 @@ def select_with_preview(
 
 @st.cache_data(show_spinner=False)
 def load_and_resize_rgba(path: str, disp_w: int):
-    img = Image.open(path).convert("RGB")
+    img = _open_image_safe(Path(path), mode="RGB")
+    if img is None:
+        raise ValueError(f"Could not open image: {path}")
     ow, oh = img.size
     dh = int(round(oh * (disp_w / ow)))
     bg = img.resize((disp_w, dh), Image.Resampling.LANCZOS).convert("RGBA")
@@ -1572,18 +1651,29 @@ _STEP_LLM_RENDER_ORDER = [
     LLM_STEP_COMPLETE_DATASET,
 ]
 
-    if provider == "Ollama":
-        os.environ["SALSA_LLM_PROVIDER"] = "ollama"
-        os.environ["SALSA_LLM_MODEL"] = model
-        os.environ["OLLAMA_HOST"] = st.session_state.get("ollama_host", _default_ollama_host())
-        os.environ["OLLAMA_MODELS"] = st.session_state.get(
-            "ollama_models_dir",
+
+def _ensure_shared_llm_settings_in_state() -> None:
+    if "openai_base_url" not in st.session_state:
+        st.session_state["openai_base_url"] = os.environ.get(
+            "OPENAI_BASE_URL",
+            "https://api.openai.com/v1",
+        )
+    if "openai_api_key" not in st.session_state:
+        st.session_state["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+    if "ollama_host" not in st.session_state:
+        st.session_state["ollama_host"] = os.environ.get(
+            "OLLAMA_HOST",
+            _default_ollama_host(),
+        )
+    if "ollama_models_dir" not in st.session_state:
+        st.session_state["ollama_models_dir"] = os.environ.get(
+            "OLLAMA_MODELS",
             str(_default_ollama_models_dir()),
         )
     if "ollama_num_ctx" not in st.session_state:
         try:
             st.session_state["ollama_num_ctx"] = int(
-                os.environ.get("AEM_OCR_OLLAMA_NUM_CTX", "16384")
+                os.environ.get("SALSA_OLLAMA_NUM_CTX", "16384")
             )
         except ValueError:
             st.session_state["ollama_num_ctx"] = 16384
@@ -1637,14 +1727,105 @@ def _sync_step_llm_env_from_session(step_key: str) -> None:
             int(st.session_state.get("ollama_num_ctx", 16384))
         )
     else:
-        os.environ["SALSA_LLM_PROVIDER"] = "openai"
-        os.environ["SALSA_LLM_MODEL"] = model
-        os.environ["OPENAI_BASE_URL"] = st.session_state.get(
+        os.environ[f"{prefix}_LLM_PROVIDER"] = "openai"
+        os.environ[f"{prefix}_LLM_MODEL"] = model
+        os.environ[f"{prefix}_OPENAI_BASE_URL"] = st.session_state.get(
             "openai_base_url",
             "https://api.openai.com/v1",
         )
         if st.session_state.get("openai_api_key"):
             os.environ[f"{prefix}_OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+
+
+def _sync_all_step_llm_envs_from_session() -> None:
+    for step_key in _STEP_LLM_RENDER_ORDER:
+        _sync_step_llm_env_from_session(step_key)
+
+
+def _general_llm_env_for_step(step_key: str) -> dict[str, str]:
+    env = os.environ.copy()
+    _clear_general_llm_env(env)
+    for step_env, general_env in step_env_to_general_env_map(step_key).items():
+        value = os.environ.get(step_env, "").strip()
+        if value:
+            env[general_env] = value
+        else:
+            env.pop(general_env, None)
+    return env
+
+
+def _step_has_configured_model(step_key: str) -> bool:
+    return bool(_step_model_value(step_key))
+
+
+def _render_step_llm_selector(step_key: str, *, caption: Optional[str] = None) -> None:
+    _ensure_shared_llm_settings_in_state()
+
+    st.subheader(LLM_STEP_LABELS[step_key])
+    if caption:
+        st.caption(caption)
+
+    provider_key = _step_provider_key(step_key)
+    model_key = _step_model_key(step_key)
+    provider = st.radio(
+        "Provider",
+        options=["Chat GPT", "Ollama"],
+        index=0,
+        key=provider_key,
+        horizontal=True,
+    )
+
+    if provider == "Ollama":
+        models = _ollama_models()
+        if models:
+            if st.session_state.get(model_key) not in models:
+                st.session_state.pop(model_key, None)
+            st.selectbox("Model", options=models, index=0, key=model_key)
+        else:
+            st.text_input("Model (no models detected)", value="", key=model_key)
+            st.caption("Tip: run `ollama pull <model>` then refresh.")
+    else:
+        if st.session_state.get(model_key) not in _openai_models:
+            st.session_state.pop(model_key, None)
+        st.selectbox("Model", options=_openai_models, index=0, key=model_key)
+
+
+def _active_llm_steps(
+    *,
+    run_extract_tables: bool,
+    run_chemical_composition: bool,
+    run_filter_figures: bool,
+    run_filter_tables: bool,
+    run_plextract: bool,
+    bypass_ocr_with_llm: bool,
+    run_complete_dataset: bool,
+) -> list[str]:
+    steps: list[str] = []
+    if run_extract_tables:
+        steps.append(LLM_STEP_EXTRACT_TABLES)
+    if run_chemical_composition:
+        steps.extend([LLM_STEP_CHEM_RELEVANT, LLM_STEP_CHEM_COMPOSITION])
+    if run_filter_figures:
+        steps.append(LLM_STEP_FILTER_FIGURES)
+    if run_filter_tables:
+        steps.append(LLM_STEP_FILTER_TABLES)
+    if run_plextract and bypass_ocr_with_llm:
+        steps.append(LLM_STEP_FIGURE_DATA)
+    if run_complete_dataset:
+        steps.append(LLM_STEP_COMPLETE_DATASET)
+    return steps
+
+
+def _missing_llm_steps(step_keys: Sequence[str]) -> list[str]:
+    return [
+        LLM_STEP_LABELS[step_key]
+        for step_key in step_keys
+        if not _step_has_configured_model(step_key)
+    ]
+
+
+def _any_step_uses_ollama(step_keys: Sequence[str]) -> bool:
+    return any(_step_provider_label(step_key) == "Ollama" for step_key in step_keys)
 
 
 def clear_processing_llm_env_if_disabled() -> None:
@@ -1658,6 +1839,165 @@ def clear_processing_llm_env_if_disabled() -> None:
         "SALSA_PROCESSING_OPENAI_API_KEY",
     ):
         os.environ.pop(key, None)
+
+
+_CI_COLUMN_NAME = "column name"
+_CI_DEFAULT_VALUE = "default value"
+_CI_COLUMN_DEFAULTS_SOURCE_KEY = "ci_column_defaults_table_source"
+_CI_COLUMN_DEFAULTS_VERSION_KEY = "ci_column_defaults_table_version"
+_CI_PENDING_APPLY_KEY = "ci_pending_apply"
+_CI_FLASH_MESSAGE_KEY = "ci_flash_message"
+_CI_EDITOR_KEYS = (
+    "ci_table_extraction",
+    "ci_figure_filter",
+    "ci_table_filter",
+    "ci_data_processing",
+    _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+    _CI_COLUMN_DEFAULTS_VERSION_KEY,
+)
+
+
+def _column_defaults_table_from_instructions(ci: dict[str, Any]) -> pd.DataFrame:
+    output_columns = ci.get("output_columns", [])
+    if isinstance(output_columns, str):
+        output_columns = [c.strip() for c in output_columns.splitlines() if c.strip()]
+
+    missing_defaults = ci.get("missing_value_defaults", {})
+    if isinstance(missing_defaults, str):
+        try:
+            missing_defaults = json.loads(missing_defaults)
+        except Exception:
+            missing_defaults = {}
+
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for raw_column in output_columns or []:
+        column_name = str(raw_column).strip()
+        if not column_name or column_name in seen:
+            continue
+        seen.add(column_name)
+        default_value = ""
+        if isinstance(missing_defaults, dict):
+            raw_default = missing_defaults.get(column_name, "")
+            default_value = "" if raw_default is None else str(raw_default)
+        rows.append(
+            {
+                _CI_COLUMN_NAME: column_name,
+                _CI_DEFAULT_VALUE: default_value,
+            }
+        )
+
+    if isinstance(missing_defaults, dict):
+        for raw_column, raw_default in missing_defaults.items():
+            column_name = str(raw_column).strip()
+            if not column_name or column_name in seen:
+                continue
+            seen.add(column_name)
+            rows.append(
+                {
+                    _CI_COLUMN_NAME: column_name,
+                    _CI_DEFAULT_VALUE: "" if raw_default is None else str(raw_default),
+                }
+            )
+
+    return pd.DataFrame(rows, columns=[_CI_COLUMN_NAME, _CI_DEFAULT_VALUE])
+
+
+def _normalize_column_defaults_table(
+    table_value: Any,
+) -> tuple[list[str], dict[str, str]]:
+    if isinstance(table_value, pd.DataFrame):
+        records = table_value.to_dict(orient="records")
+    elif isinstance(table_value, list):
+        records = table_value
+    else:
+        records = []
+
+    output_columns: list[str] = []
+    missing_defaults: dict[str, str] = {}
+    seen: set[str] = set()
+
+    for record in records:
+        raw_column = record.get(_CI_COLUMN_NAME, "")
+        raw_default = record.get(_CI_DEFAULT_VALUE, "")
+
+        column_name = "" if pd.isna(raw_column) else str(raw_column).strip()
+        if not column_name:
+            continue
+
+        if column_name not in seen:
+            output_columns.append(column_name)
+            seen.add(column_name)
+
+        default_value = "" if pd.isna(raw_default) else str(raw_default).strip()
+        if default_value:
+            missing_defaults[column_name] = default_value
+        else:
+            missing_defaults.pop(column_name, None)
+
+    return output_columns, missing_defaults
+
+
+def _custom_instructions_from_editor_state(column_defaults_table: Any) -> dict[str, Any]:
+    output_columns, missing_defaults = _normalize_column_defaults_table(column_defaults_table)
+    return {
+        "table_extraction_rules": st.session_state.get("ci_table_extraction", ""),
+        "figure_filter_criteria": st.session_state.get("ci_figure_filter", ""),
+        "table_filter_criteria": st.session_state.get("ci_table_filter", ""),
+        "data_processing_rules": st.session_state.get("ci_data_processing", ""),
+        "output_columns": output_columns,
+        "missing_value_defaults": missing_defaults,
+    }
+
+
+def _ci_column_defaults_widget_key() -> str:
+    version = int(st.session_state.get(_CI_COLUMN_DEFAULTS_VERSION_KEY, 0))
+    return f"ci_column_defaults_table_widget_{version}"
+
+
+def _apply_custom_instruction_state(
+    ci: dict[str, Any],
+    *,
+    preset_name: Optional[str],
+) -> None:
+    st.session_state["custom_instructions"] = ci
+    st.session_state["current_preset_name"] = preset_name
+    st.session_state["ci_table_extraction"] = ci.get("table_extraction_rules", "")
+    st.session_state["ci_figure_filter"] = ci.get("figure_filter_criteria", "")
+    st.session_state["ci_table_filter"] = ci.get("table_filter_criteria", "")
+    st.session_state["ci_data_processing"] = ci.get("data_processing_rules", "")
+    if _CI_COLUMN_DEFAULTS_VERSION_KEY not in st.session_state:
+        st.session_state[_CI_COLUMN_DEFAULTS_VERSION_KEY] = 0
+    else:
+        st.session_state[_CI_COLUMN_DEFAULTS_VERSION_KEY] += 1
+    st.session_state[_CI_COLUMN_DEFAULTS_SOURCE_KEY] = _column_defaults_table_from_instructions(ci)
+    st.session_state["ci_new_preset_name"] = preset_name or ""
+
+
+def _queue_custom_instruction_state(
+    ci: dict[str, Any],
+    *,
+    preset_name: Optional[str],
+    flash_message: Optional[str] = None,
+) -> None:
+    st.session_state[_CI_PENDING_APPLY_KEY] = {
+        "ci": ci,
+        "preset_name": preset_name,
+    }
+    if flash_message:
+        st.session_state[_CI_FLASH_MESSAGE_KEY] = flash_message
+
+
+def _apply_pending_custom_instruction_state() -> Optional[str]:
+    pending = st.session_state.pop(_CI_PENDING_APPLY_KEY, None)
+    if isinstance(pending, dict):
+        ci = pending.get("ci")
+        if isinstance(ci, dict):
+            _apply_custom_instruction_state(
+                ci,
+                preset_name=pending.get("preset_name"),
+            )
+    return st.session_state.pop(_CI_FLASH_MESSAGE_KEY, None)
 
 # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
 default_ollama_dir = _default_ollama_models_dir()
@@ -1686,7 +2026,7 @@ _openai_models = [
 
 
 st.set_page_config(page_title="SALSA UI", layout="wide")
-st.title("SALSA")
+st.title("SALSA - Semi-Autonomous Literature Scraping Assistant")
 
 st.markdown("""
 <style>
@@ -1784,14 +2124,6 @@ with st.sidebar:
     with st.expander("LLM", expanded=False):
         _ensure_shared_llm_settings_in_state()
         st.caption("Choose the LLM for each stage that actually uses one.")
-        st.number_input(
-            "Ollama context window (num_ctx)",
-            min_value=4096,
-            step=1024,
-            value=int(st.session_state.get("ollama_num_ctx", 16384)),
-            key="ollama_num_ctx",
-            help="Shared across all Ollama-backed steps.",
-        )
 
         llm_steps_to_render: list[tuple[str, Optional[str]]] = [
             (LLM_STEP_EXTRACT_TABLES, "Used when parsing table content with the LLM."),
@@ -1816,6 +2148,16 @@ with st.sidebar:
                 ),
             )
 
+        if _any_step_uses_ollama([step_key for step_key, _ in llm_steps_to_render]):
+            st.number_input(
+                "Ollama context window (num_ctx)",
+                min_value=4096,
+                step=1024,
+                value=int(st.session_state.get("ollama_num_ctx", 16384)),
+                key="ollama_num_ctx",
+                help="Shared across all Ollama-backed steps.",
+            )
+
         for idx, (step_key, caption) in enumerate(llm_steps_to_render):
             _render_step_llm_selector(step_key, caption=caption)
             if idx != len(llm_steps_to_render) - 1:
@@ -1828,9 +2170,19 @@ with st.sidebar:
 
     st.divider()
     st.header("Custom Instructions")
+    ci_flash_message = _apply_pending_custom_instruction_state()
     if "custom_instructions" not in st.session_state:
-        st.session_state["custom_instructions"] = default_instructions()
-        st.session_state["current_preset_name"] = None
+        _apply_custom_instruction_state(
+            default_instructions(),
+            preset_name=DEFAULT_PRESET_NAME,
+        )
+    elif any(key not in st.session_state for key in _CI_EDITOR_KEYS):
+        _apply_custom_instruction_state(
+            st.session_state["custom_instructions"],
+            preset_name=st.session_state.get("current_preset_name"),
+        )
+    if ci_flash_message:
+        st.success(ci_flash_message)
 
     ci = st.session_state["custom_instructions"]
 
@@ -1848,9 +2200,11 @@ with st.sidebar:
             with col_load_b:
                 if st.button("Load", type="secondary") and preset_choice:
                     loaded = load_preset(workspaces_root, preset_choice)
-                    st.session_state["custom_instructions"] = loaded
-                    st.session_state["current_preset_name"] = preset_choice
-                    st.success(f"Loaded preset: {preset_choice}")
+                    _queue_custom_instruction_state(
+                        loaded,
+                        preset_name=preset_choice,
+                        flash_message=f"Loaded preset: {preset_choice}",
+                    )
                     st.rerun()
         else:
             st.info("No presets saved yet. Create your first preset below.")
@@ -1909,28 +2263,25 @@ with st.sidebar:
             key="ci_data_processing",
         )
 
-    with st.expander("Output columns", expanded=False):
+    with st.expander("Output columns & missing-value defaults", expanded=False):
         st.caption(
-            "One column name per line for the final dataset. "
-            "Change this to capture different properties."
+            "Each row defines one output column. Leave the default value blank if that column should not receive a fallback when the value is missing."
         )
-        st.text_area(
-            "Output columns (one per line)",
-            value="\n".join(ci.get("output_columns", [])),
-            height=160,
-            key="ci_output_columns",
+        ci_column_defaults_table = st.data_editor(
+            st.session_state.get(
+                _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+                _column_defaults_table_from_instructions(ci),
+            ),
+            hide_index=True,
+            num_rows="dynamic",
+            use_container_width=True,
+            key=_ci_column_defaults_widget_key(),
         )
-
-    with st.expander("Missing-value defaults", expanded=False):
-        st.caption(
-            "JSON dict of column name to default value when not found. "
-            "E.g. {\"time(h)\": \"0 Not Found\"}"
-        )
-        st.text_area(
-            "Missing-value defaults (JSON)",
-            value=json.dumps(ci.get("missing_value_defaults", {}), indent=2),
-            height=160,
-            key="ci_missing_defaults",
+    current_ci = _custom_instructions_from_editor_state(ci_column_defaults_table)
+    st.session_state["custom_instructions"] = current_ci
+    if current_ci == default_instructions():
+        st.write(
+            "Default LLM instructions are being used (Anion Exchange Membrane degaradation data extraction). Please create or load a custom ruleset for your application."
         )
 
     with st.expander("Save Custom Instructions", expanded=False):
@@ -1952,197 +2303,193 @@ with st.sidebar:
             st.write("")  # spacing
             st.write("")  # spacing
             if st.button("Save", type="primary") and preset_name.strip():
-                # Read all fields from session state
-                _ci_to_save = {}
-                _ci_to_save["table_extraction_rules"] = st.session_state.get("ci_table_extraction", "")
-                _ci_to_save["figure_filter_criteria"] = st.session_state.get("ci_figure_filter", "")
-                _ci_to_save["table_filter_criteria"] = st.session_state.get("ci_table_filter", "")
-                _ci_to_save["data_processing_rules"] = st.session_state.get("ci_data_processing", "")
-
-                raw_cols = st.session_state.get("ci_output_columns", "")
-                _ci_to_save["output_columns"] = [c.strip() for c in raw_cols.splitlines() if c.strip()]
-                try:
-                    _ci_to_save["missing_value_defaults"] = json.loads(
-                        st.session_state.get("ci_missing_defaults", "{}")
-                    )
-                except json.JSONDecodeError:
-                    st.error("Missing-value defaults must be valid JSON.")
-                    _ci_to_save["missing_value_defaults"] = {}
-
-                save_preset(workspaces_root, preset_name.strip(), _ci_to_save)
-                st.session_state["current_preset_name"] = preset_name.strip()
-                st.success(f"Saved preset: {preset_name.strip()}")
+                clean_preset_name = preset_name.strip()
+                save_preset(workspaces_root, clean_preset_name, current_ci)
+                _queue_custom_instruction_state(
+                    current_ci,
+                    preset_name=clean_preset_name,
+                    flash_message=f"Saved preset: {clean_preset_name}",
+                )
                 st.rerun()
 
         with col_del_btn:
             st.write("")  # spacing
             st.write("")  # spacing
             if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
-                delete_preset(workspaces_root, st.session_state["ci_preset_choice"])
-                if st.session_state.get("current_preset_name") == st.session_state["ci_preset_choice"]:
-                    st.session_state["current_preset_name"] = None
-                st.success(f"Deleted preset: {st.session_state['ci_preset_choice']}")
+                deleted_preset_name = st.session_state["ci_preset_choice"]
+                delete_preset(workspaces_root, deleted_preset_name)
+                next_preset_name = st.session_state.get("current_preset_name")
+                if next_preset_name == deleted_preset_name:
+                    next_preset_name = None
+                _queue_custom_instruction_state(
+                    current_ci,
+                    preset_name=next_preset_name,
+                    flash_message=f"Deleted preset: {deleted_preset_name}",
+                )
                 st.rerun()
 
         # --- Reset to defaults button ---
         if st.button("Reset to defaults", type="secondary"):
-            st.session_state["custom_instructions"] = default_instructions()
-            st.session_state["current_preset_name"] = None
-            st.rerun()
-
-    st.divider()
-    st.header("Axis & Units Configuration")
-
-    # Initialize axis config in session state
-    if "axis_config" not in st.session_state:
-        # Try to load from active workspace if available from session state
-        _active_rr = st.session_state.get("rr")
-        if _active_rr and hasattr(_active_rr, 'run_dir') and _active_rr.run_dir:
-            st.session_state["axis_config"] = load_axis_config(_active_rr.run_dir)
-        else:
-            st.session_state["axis_config"] = load_axis_config(workspaces_root)
-        st.session_state["current_axis_preset_name"] = None
-
-    _ax_cfg = st.session_state["axis_config"]
-
-    # --- Load axis presets ---
-    _active_rr = st.session_state.get("rr")
-    workspace_for_axis = (_active_rr.run_dir if (_active_rr and hasattr(_active_rr, 'run_dir') and _active_rr.run_dir)
-                          else workspaces_root)
-    existing_axis_presets = list_axis_presets(workspace_for_axis)
-
-    with st.expander("Load Axis Preset", expanded=False):
-        if existing_axis_presets:
-            col_ax_load_a, col_ax_load_b = st.columns([3, 1])
-            with col_ax_load_a:
-                axis_preset_choice = st.selectbox(
-                    "Select axis preset to load",
-                    options=[""] + existing_axis_presets,
-                    key="axis_preset_choice",
-                )
-            with col_ax_load_b:
-                if st.button("Load", type="secondary", key="load_axis_preset_btn") and axis_preset_choice:
-                    loaded = load_axis_preset(workspace_for_axis, axis_preset_choice)
-                    if loaded:
-                        st.session_state["axis_config"] = loaded
-                        st.session_state["current_axis_preset_name"] = axis_preset_choice
-                        st.success(f"Loaded axis preset: {axis_preset_choice}")
-                        st.rerun()
-        else:
-            st.info("No axis presets saved yet. Create your first preset below.")
-
-        # Show currently loaded preset
-        if st.session_state.get("current_axis_preset_name"):
-            st.caption(f"Currently editing: **{st.session_state['current_axis_preset_name']}**")
-        else:
-            st.caption("Currently editing: **Unsaved changes (default)**")
-
-    # --- Axis config editors in expanders ---
-    with st.expander("Unit Aliases", expanded=False):
-        st.caption("Map raw unit strings (e.g. `sec`, `hrs`) to their canonical form (e.g. `s`, `h`).")
-        _ua = _ax_cfg.get("unit_aliases", {})
-        _ua_rows = [{"raw": k, "canonical": v} for k, v in sorted(_ua.items())]
-        _ua_df = pd.DataFrame(_ua_rows) if _ua_rows else pd.DataFrame(columns=["raw", "canonical"])
-        _ua_edited = st.data_editor(
-            _ua_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="sidebar_ax_unit_aliases_editor",
-        )
-        # Store edited data in session state
-        if st.button("Apply changes", key="apply_unit_aliases"):
-            new_ua = {}
-            for _, row in _ua_edited.iterrows():
-                raw = str(row.get("raw", "")).strip()
-                can = str(row.get("canonical", "")).strip()
-                if raw and can:
-                    new_ua[raw] = can
-            st.session_state["axis_config"]["unit_aliases"] = new_ua
-            st.success("Applied unit alias changes")
-
-    with st.expander("Unit Dimensions", expanded=False):
-        st.caption("Map canonical unit strings to a dimension name (e.g. `s` -> `time`, `mS/cm` -> `conductivity`).")
-        _ud = _ax_cfg.get("unit_dimensions", {})
-        _ud_rows = [{"unit": k, "dimension": v} for k, v in sorted(_ud.items())]
-        _ud_df = pd.DataFrame(_ud_rows) if _ud_rows else pd.DataFrame(columns=["unit", "dimension"])
-        _ud_edited = st.data_editor(
-            _ud_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="sidebar_ax_unit_dims_editor",
-        )
-        if st.button("Apply changes", key="apply_unit_dims"):
-            new_ud = {}
-            for _, row in _ud_edited.iterrows():
-                unit = str(row.get("unit", "")).strip()
-                dim = str(row.get("dimension", "")).strip()
-                if unit and dim:
-                    new_ud[unit] = dim
-            st.session_state["axis_config"]["unit_dimensions"] = new_ud
-            st.success("Applied unit dimension changes")
-
-    with st.expander("Canonical Targets", expanded=False):
-        st.caption("For each dimension, choose the canonical target unit that values are converted to.")
-        _ct = _ax_cfg.get("canonical_targets", {})
-        _ct_rows = [{"dimension": k, "target_unit": v} for k, v in sorted(_ct.items())]
-        _ct_df = pd.DataFrame(_ct_rows) if _ct_rows else pd.DataFrame(columns=["dimension", "target_unit"])
-        _ct_edited = st.data_editor(
-            _ct_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="sidebar_ax_canon_targets_editor",
-        )
-        if st.button("Apply changes", key="apply_canon_targets"):
-            new_ct = {}
-            for _, row in _ct_edited.iterrows():
-                dim = str(row.get("dimension", "")).strip()
-                target = str(row.get("target_unit", "")).strip()
-                if dim and target:
-                    new_ct[dim] = target
-            st.session_state["axis_config"]["canonical_targets"] = new_ct
-            st.success("Applied canonical target changes")
-
-    # --- Save axis preset ---
-    with st.expander("Save Axis Preset", expanded=False):
-        st.subheader("Save Preset")
-        col_ax_name, col_ax_save, col_ax_del = st.columns([3, 1, 1])
-
-        with col_ax_name:
-            default_ax_name = st.session_state.get("current_axis_preset_name", "")
-            axis_preset_name = st.text_input(
-                "Axis preset name",
-                value=default_ax_name,
-                key="axis_new_preset_name",
-                placeholder="Enter a name for this axis preset"
+            _queue_custom_instruction_state(
+                default_instructions(),
+                preset_name=DEFAULT_PRESET_NAME,
+                flash_message="Reset custom instructions to defaults.",
             )
-
-        with col_ax_save:
-            st.write("")  # spacing
-            st.write("")  # spacing
-            if st.button("Save", type="primary", key="save_axis_preset_btn") and axis_preset_name.strip():
-                save_axis_preset(workspace_for_axis, axis_preset_name.strip(), st.session_state["axis_config"])
-                # Also save to the workspace
-                save_axis_config(workspace_for_axis, st.session_state["axis_config"])
-                st.session_state["current_axis_preset_name"] = axis_preset_name.strip()
-                st.success(f"Saved axis preset: {axis_preset_name.strip()}")
-                st.rerun()
-
-        with col_ax_del:
-            st.write("")  # spacing
-            st.write("")  # spacing
-            if existing_axis_presets and st.button("Delete", type="secondary", key="delete_axis_preset_btn") and st.session_state.get("axis_preset_choice"):
-                delete_axis_preset(workspace_for_axis, st.session_state["axis_preset_choice"])
-                if st.session_state.get("current_axis_preset_name") == st.session_state["axis_preset_choice"]:
-                    st.session_state["current_axis_preset_name"] = None
-                st.success(f"Deleted axis preset: {st.session_state['axis_preset_choice']}")
-                st.rerun()
-
-        # --- Reset to defaults button ---
-        if st.button("Reset axis config to defaults", type="secondary", key="reset_axis_btn"):
-            st.session_state["axis_config"] = reset_axis_config(workspace_for_axis)
-            st.session_state["current_axis_preset_name"] = None
-            st.success("Reset axis configuration to defaults")
             st.rerun()
+
+    # st.divider()
+    # st.header("Axis & Units Configuration")
+
+    # # Initialize axis config in session state
+    # if "axis_config" not in st.session_state:
+    #     # Try to load from active workspace if available from session state
+    #     _active_rr = st.session_state.get("rr")
+    #     if _active_rr and hasattr(_active_rr, 'run_dir') and _active_rr.run_dir:
+    #         st.session_state["axis_config"] = load_axis_config(_active_rr.run_dir)
+    #     else:
+    #         st.session_state["axis_config"] = load_axis_config(workspaces_root)
+    #     st.session_state["current_axis_preset_name"] = None
+
+    # _ax_cfg = st.session_state["axis_config"]
+
+    # # --- Load axis presets ---
+    # _active_rr = st.session_state.get("rr")
+    # workspace_for_axis = (_active_rr.run_dir if (_active_rr and hasattr(_active_rr, 'run_dir') and _active_rr.run_dir)
+    #                       else workspaces_root)
+    # existing_axis_presets = list_axis_presets(workspace_for_axis)
+
+    # with st.expander("Load Axis Preset", expanded=False):
+    #     if existing_axis_presets:
+    #         col_ax_load_a, col_ax_load_b = st.columns([3, 1])
+    #         with col_ax_load_a:
+    #             axis_preset_choice = st.selectbox(
+    #                 "Select axis preset to load",
+    #                 options=[""] + existing_axis_presets,
+    #                 key="axis_preset_choice",
+    #             )
+    #         with col_ax_load_b:
+    #             if st.button("Load", type="secondary", key="load_axis_preset_btn") and axis_preset_choice:
+    #                 loaded = load_axis_preset(workspace_for_axis, axis_preset_choice)
+    #                 if loaded:
+    #                     st.session_state["axis_config"] = loaded
+    #                     st.session_state["current_axis_preset_name"] = axis_preset_choice
+    #                     st.success(f"Loaded axis preset: {axis_preset_choice}")
+    #                     st.rerun()
+    #     else:
+    #         st.info("No axis presets saved yet. Create your first preset below.")
+
+    #     # Show currently loaded preset
+    #     if st.session_state.get("current_axis_preset_name"):
+    #         st.caption(f"Currently editing: **{st.session_state['current_axis_preset_name']}**")
+    #     else:
+    #         st.caption("Currently editing: **Unsaved changes (default)**")
+
+    # # --- Axis config editors in expanders ---
+    # with st.expander("Unit Aliases", expanded=False):
+    #     st.caption("Map raw unit strings (e.g. `sec`, `hrs`) to their canonical form (e.g. `s`, `h`).")
+    #     _ua = _ax_cfg.get("unit_aliases", {})
+    #     _ua_rows = [{"raw": k, "canonical": v} for k, v in sorted(_ua.items())]
+    #     _ua_df = pd.DataFrame(_ua_rows) if _ua_rows else pd.DataFrame(columns=["raw", "canonical"])
+    #     _ua_edited = st.data_editor(
+    #         _ua_df,
+    #         num_rows="dynamic",
+    #         use_container_width=True,
+    #         key="sidebar_ax_unit_aliases_editor",
+    #     )
+    #     # Store edited data in session state
+    #     if st.button("Apply changes", key="apply_unit_aliases"):
+    #         new_ua = {}
+    #         for _, row in _ua_edited.iterrows():
+    #             raw = str(row.get("raw", "")).strip()
+    #             can = str(row.get("canonical", "")).strip()
+    #             if raw and can:
+    #                 new_ua[raw] = can
+    #         st.session_state["axis_config"]["unit_aliases"] = new_ua
+    #         st.success("Applied unit alias changes")
+
+    # with st.expander("Unit Dimensions", expanded=False):
+    #     st.caption("Map canonical unit strings to a dimension name (e.g. `s` -> `time`, `mS/cm` -> `conductivity`).")
+    #     _ud = _ax_cfg.get("unit_dimensions", {})
+    #     _ud_rows = [{"unit": k, "dimension": v} for k, v in sorted(_ud.items())]
+    #     _ud_df = pd.DataFrame(_ud_rows) if _ud_rows else pd.DataFrame(columns=["unit", "dimension"])
+    #     _ud_edited = st.data_editor(
+    #         _ud_df,
+    #         num_rows="dynamic",
+    #         use_container_width=True,
+    #         key="sidebar_ax_unit_dims_editor",
+    #     )
+    #     if st.button("Apply changes", key="apply_unit_dims"):
+    #         new_ud = {}
+    #         for _, row in _ud_edited.iterrows():
+    #             unit = str(row.get("unit", "")).strip()
+    #             dim = str(row.get("dimension", "")).strip()
+    #             if unit and dim:
+    #                 new_ud[unit] = dim
+    #         st.session_state["axis_config"]["unit_dimensions"] = new_ud
+    #         st.success("Applied unit dimension changes")
+
+    # with st.expander("Canonical Targets", expanded=False):
+    #     st.caption("For each dimension, choose the canonical target unit that values are converted to.")
+    #     _ct = _ax_cfg.get("canonical_targets", {})
+    #     _ct_rows = [{"dimension": k, "target_unit": v} for k, v in sorted(_ct.items())]
+    #     _ct_df = pd.DataFrame(_ct_rows) if _ct_rows else pd.DataFrame(columns=["dimension", "target_unit"])
+    #     _ct_edited = st.data_editor(
+    #         _ct_df,
+    #         num_rows="dynamic",
+    #         use_container_width=True,
+    #         key="sidebar_ax_canon_targets_editor",
+    #     )
+    #     if st.button("Apply changes", key="apply_canon_targets"):
+    #         new_ct = {}
+    #         for _, row in _ct_edited.iterrows():
+    #             dim = str(row.get("dimension", "")).strip()
+    #             target = str(row.get("target_unit", "")).strip()
+    #             if dim and target:
+    #                 new_ct[dim] = target
+    #         st.session_state["axis_config"]["canonical_targets"] = new_ct
+    #         st.success("Applied canonical target changes")
+
+    # # --- Save axis preset ---
+    # with st.expander("Save Axis Preset", expanded=False):
+    #     st.subheader("Save Preset")
+    #     col_ax_name, col_ax_save, col_ax_del = st.columns([3, 1, 1])
+
+    #     with col_ax_name:
+    #         default_ax_name = st.session_state.get("current_axis_preset_name", "")
+    #         axis_preset_name = st.text_input(
+    #             "Axis preset name",
+    #             value=default_ax_name,
+    #             key="axis_new_preset_name",
+    #             placeholder="Enter a name for this axis preset"
+    #         )
+
+    #     with col_ax_save:
+    #         st.write("")  # spacing
+    #         st.write("")  # spacing
+    #         if st.button("Save", type="primary", key="save_axis_preset_btn") and axis_preset_name.strip():
+    #             save_axis_preset(workspace_for_axis, axis_preset_name.strip(), st.session_state["axis_config"])
+    #             # Also save to the workspace
+    #             save_axis_config(workspace_for_axis, st.session_state["axis_config"])
+    #             st.session_state["current_axis_preset_name"] = axis_preset_name.strip()
+    #             st.success(f"Saved axis preset: {axis_preset_name.strip()}")
+    #             st.rerun()
+
+    #     with col_ax_del:
+    #         st.write("")  # spacing
+    #         st.write("")  # spacing
+    #         if existing_axis_presets and st.button("Delete", type="secondary", key="delete_axis_preset_btn") and st.session_state.get("axis_preset_choice"):
+    #             delete_axis_preset(workspace_for_axis, st.session_state["axis_preset_choice"])
+    #             if st.session_state.get("current_axis_preset_name") == st.session_state["axis_preset_choice"]:
+    #                 st.session_state["current_axis_preset_name"] = None
+    #             st.success(f"Deleted axis preset: {st.session_state['axis_preset_choice']}")
+    #             st.rerun()
+
+    #     # --- Reset to defaults button ---
+    #     if st.button("Reset axis config to defaults", type="secondary", key="reset_axis_btn"):
+    #         st.session_state["axis_config"] = reset_axis_config(workspace_for_axis)
+    #         st.session_state["current_axis_preset_name"] = None
+    #         st.success("Reset axis configuration to defaults")
+    #         st.rerun()
 
     st.divider()
     with st.expander("Load an existing run", expanded=False):
@@ -2198,71 +2545,20 @@ if st.button("Run pipeline", type="primary"):
     if not dois:
         st.error("Please paste at least one DOI.")
     else:
-        with st.spinner("Running your pipeline end-to-end…"):
-            custom_run_id = run_id_input.strip() or None
-
-            # --- Apply general LLM configuration for this run ---
-            apply_selected_general_llm_to_env()
-
-            # --- Apply data processing LLM configuration ---
-            if st.session_state.get("use_separate_processing_llm"):
-                p_provider = st.session_state.get("processing_llm_provider", "Chat GPT")
-                p_model = st.session_state.get("processing_llm_model", "")
-                if p_provider == "Ollama":
-                    os.environ["SALSA_PROCESSING_LLM_PROVIDER"] = "ollama"
-                    os.environ["SALSA_PROCESSING_LLM_MODEL"] = p_model
-                else:
-                    os.environ["SALSA_PROCESSING_LLM_PROVIDER"] = "openai"
-                    os.environ["SALSA_PROCESSING_LLM_MODEL"] = p_model
-                    p_base = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                    p_key = st.session_state.get("processing_openai_api_key", "")
-                    if p_base:
-                        os.environ["SALSA_PROCESSING_OPENAI_BASE_URL"] = p_base
-                    if p_key:
-                        os.environ["SALSA_PROCESSING_OPENAI_API_KEY"] = p_key
-            else:
-                # Clear processing-specific env vars so processing uses the general LLM
-                clear_processing_llm_env_if_disabled()
-
-            if custom_run_id:
-                target = run_root / custom_run_id
-                if target.exists():
-                    st.warning(f"Run directory already exists and may be overwritten: {target}")
-
-
-            # --- Save custom instructions for this run ---
-            _run_ci = st.session_state.get("custom_instructions", default_instructions())
-            # Parse output_columns if still a string
-            if isinstance(_run_ci.get("output_columns"), str):
-                _run_ci["output_columns"] = [c.strip() for c in _run_ci["output_columns"].splitlines() if c.strip()]
-            if isinstance(_run_ci.get("missing_value_defaults"), str):
-                try:
-                    _run_ci["missing_value_defaults"] = json.loads(_run_ci["missing_value_defaults"])
-                except Exception:
-                    pass
-
-            # Debug: show what preset is being used
-            preset_name = st.session_state.get("current_preset_name", "defaults")
-            st.info(f"Using custom instructions: **{preset_name}**")
-            with st.expander("View custom instructions being used", expanded=False):
-                st.json(_run_ci)
-
-            rr = run_full_pipeline(
-                dois=dois,
-                run_root=run_root,
-                scripts_root=scripts_root,
-                run_id=custom_run_id,
-                run_extract_figures=run_extract_figures,
-                run_extract_tables=run_extract_tables,
-                run_filter_figures=run_filter_figures,
-                run_filter_tables=run_filter_tables,
-                run_plextract=run_plextract and not bypass_ocr_with_llm,
-                run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
-                run_complete_dataset=run_complete_dataset,
-                skip_llm_figures=not bypass_ocr_with_llm,
-                run_chemical_composition=run_chemical_composition,
-                exclude_full_text=exclude_full_text,
-                custom_instructions=_run_ci,
+        active_llm_steps = _active_llm_steps(
+            run_extract_tables=run_extract_tables,
+            run_chemical_composition=run_chemical_composition,
+            run_filter_figures=run_filter_figures,
+            run_filter_tables=run_filter_tables,
+            run_plextract=run_plextract,
+            bypass_ocr_with_llm=bypass_ocr_with_llm,
+            run_complete_dataset=run_complete_dataset,
+        )
+        missing_llm_steps = _missing_llm_steps(active_llm_steps)
+        if missing_llm_steps:
+            st.error(
+                "Configure an LLM model for these stages before running: "
+                + ", ".join(missing_llm_steps)
             )
         else:
             with st.spinner("Running your pipeline end-to-end…"):
@@ -2340,6 +2636,8 @@ df_stats = build_doi_stats(rr, include_interventions=compute_interventions)
 
 # Render as interactive table (row click -> selects DOI when supported)
 df_view = df_stats.drop(columns=["_doi_safe"], errors="ignore")
+_doi_table_key = "doi_summary_table"
+_doi_table_applied_key = "_doi_summary_table_applied_doi"
 
 # Streamlit row selection support varies by version; use feature detection.
 df_selected_doi = None
@@ -2352,6 +2650,7 @@ try:
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
+            key=_doi_table_key,
         )
         if evt and "selection" in evt and evt["selection"].get("rows"):
             i = evt["selection"]["rows"][0]
@@ -2368,18 +2667,23 @@ if not doi_options:
     st.warning("No DOIs found in the loaded run. The run may be empty or incomplete.")
     st.stop()
 
-if "selected_doi" not in st.session_state:
+if st.session_state.get("selected_doi") not in doi_options:
     st.session_state["selected_doi"] = doi_options[0]
 
-if df_selected_doi:
+if df_selected_doi in doi_options and st.session_state.get(_doi_table_applied_key) != df_selected_doi:
+    # Only let the summary table drive selection when the clicked row changes.
+    # Otherwise a stale selected row can overwrite the dropdown's first change
+    # on the next rerun.
     st.session_state["selected_doi"] = df_selected_doi
+    st.session_state[_doi_table_applied_key] = df_selected_doi
+elif not df_selected_doi:
+    st.session_state.pop(_doi_table_applied_key, None)
 
 selected_doi = st.selectbox(
     "Select DOI",
     options=doi_options,
-    index=doi_options.index(st.session_state["selected_doi"]) if st.session_state["selected_doi"] in doi_options else 0,
+    key="selected_doi",
 )
-st.session_state["selected_doi"] = selected_doi
 
 doi_item = next((d for d in rr.dois if d.doi == selected_doi), None)
 
@@ -2554,9 +2858,9 @@ with tab_figs:
         # ========================
         _fig_display_img = None
         _fig_display_img_caption = None
-        if _source_img_er and _source_img_er.exists():
+        if _is_valid_image_path(_source_img_er):
             _fig_display_img = _source_img_er
-        elif f.figure_path and f.figure_path.exists():
+        elif _is_valid_image_path(f.figure_path):
             _fig_display_img = f.figure_path
             _fig_display_img_caption = str(f.figure_path)
         # Collapse parent figure dropdown if subfigures exist
@@ -2626,7 +2930,7 @@ with tab_figs:
             st.rerun()
 
         if st.session_state[_show_interventions_key]:
-            if not (_source_img_er and _source_img_er.exists()):
+            if not _is_valid_image_path(_source_img_er):
                 st.warning("No source image found for this figure.")
             else:
                 # ========================
@@ -2642,77 +2946,80 @@ with tab_figs:
                 if _crop_start_expanded:
                     st.session_state[_cv_boot_key] = True  # mark as initialised
                 with st.expander("Crop Figure", expanded=_crop_start_expanded):
-                    if not (_source_img_er and _source_img_er.exists()):
+                    if not _is_valid_image_path(_source_img_er):
                         st.warning("No source image found for this figure.")
                     else:
                         # ---- Load image ----
-                        _pil_img_er = Image.open(_source_img_er).convert("RGB")
-                        _orig_w_er, _orig_h_er = _pil_img_er.size
+                        _pil_img_er = _open_image_safe(_source_img_er, mode="RGB")
+                        if _pil_img_er is None:
+                            st.warning(f"Could not open source image for cropping: {_source_img_er}")
+                        else:
+                            _orig_w_er, _orig_h_er = _pil_img_er.size
+                        if _pil_img_er is not None:
+                            # ---- Display width slider (Crop view) ----
+                            _width_key_er = f"er_crop_view_w_{_safe_doi_er}_{_fig_id_er}"
+                            if _width_key_er not in st.session_state:
+                                st.session_state[_width_key_er] = min(1100, _orig_w_er)
 
-                        # ---- Display width slider (Crop view) ----
-                        _width_key_er = f"er_crop_view_w_{_safe_doi_er}_{_fig_id_er}"
-                        if _width_key_er not in st.session_state:
-                            st.session_state[_width_key_er] = min(1100, _orig_w_er)
+                            _disp_w_target_er = st.slider(
+                                "Crop view width (px)",
+                                min_value=400,
+                                max_value=1800,
+                                value=int(st.session_state[_width_key_er]),
+                                step=50,
+                                key=_width_key_er,
+                            )
 
-                        _disp_w_target_er = st.slider(
-                            "Crop view width (px)",
-                            min_value=400,
-                            max_value=1800,
-                            value=int(st.session_state[_width_key_er]),
-                            step=50,
-                            key=_width_key_er,
-                        )
+                            _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
 
-                        _mode_key_er = f"er_canvas_mode_{_safe_doi_er}_{_fig_id_er}"
+                            _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
+                                str(_source_img_er),
+                                int(_disp_w_target_er),
+                            )
 
-                        _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
-                            str(_source_img_er),
-                            int(_disp_w_target_er),
-                        )
-                        
-                        _draw_mode_er = st.radio(
-                            "Mode",
-                            ["rect", "transform"],
-                            format_func=lambda x: "Draw rectangles" if x == "rect" else "Move/resize rectangles",
-                            key=_mode_key_er,
-                            horizontal=True,
-                        )
+                            _draw_mode_er = st.radio(
+                                "Mode",
+                                ["rect", "transform"],
+                                format_func=lambda x: "Draw rectangles" if x == "rect" else "Move/resize rectangles",
+                                key=_mode_key_er,
+                                horizontal=True,
+                            )
 
-                        # ---- Controls ----
-                        _clear_canvas_clicked = st.button(
-                            "Clear drawn rectangles",
-                            key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}",
-                        )
+                            # ---- Controls ----
+                            _clear_canvas_clicked = st.button(
+                                "Clear drawn rectangles",
+                                key=f"er_clear_canvas_{_safe_doi_er}_{_fig_id_er}",
+                            )
 
-                        if _clear_canvas_clicked:
-                            st.session_state[_cv_ver_key] += 1
-
-                        # ---- Build a stable canvas key ----
-                        # Width/height must NOT be in the key: changing the
-                        # slider would mint a new key each run and leave orphaned
-                        # entries in st.session_state, causing "dictionary changed
-                        # size during iteration" in Streamlit's _call_callbacks.
-                        # Instead, bump the version counter when the width changes
-                        # so the canvas remounts cleanly with the right dimensions.
-                        _er_last_w_key = f"er_canvas_last_w_{_safe_doi_er}_{_fig_id_er}"
-                        if st.session_state.get(_er_last_w_key) != _disp_w_er:
-                            if _er_last_w_key in st.session_state:
+                            if _clear_canvas_clicked:
                                 st.session_state[_cv_ver_key] += 1
-                            st.session_state[_er_last_w_key] = _disp_w_er
-                        _canvas_key_er = (
-                            f"er_canvas_{_safe_doi_er}_{_fig_id_er}"
-                            f"_v{st.session_state[_cv_ver_key]}"
-                        )
 
-                        # ---- Canvas ----
-                        _canvas_er = st_canvas(
-                            background_image=_bg_img_er,
-                            drawing_mode=_draw_mode_er,          # "rect" draws; "transform" edits
-                            update_streamlit=True,
-                            height=_disp_h_er,
-                            width=_disp_w_er,
-                            stroke_width=3,
-                            stroke_color="#ff0000",
+                            # ---- Build a stable canvas key ----
+                            # Width/height must NOT be in the key: changing the
+                            # slider would mint a new key each run and leave orphaned
+                            # entries in st.session_state, causing "dictionary changed
+                            # size during iteration" in Streamlit's _call_callbacks.
+                            # Instead, bump the version counter when the width changes
+                            # so the canvas remounts cleanly with the right dimensions.
+                            _er_last_w_key = f"er_canvas_last_w_{_safe_doi_er}_{_fig_id_er}"
+                            if st.session_state.get(_er_last_w_key) != _disp_w_er:
+                                if _er_last_w_key in st.session_state:
+                                    st.session_state[_cv_ver_key] += 1
+                                st.session_state[_er_last_w_key] = _disp_w_er
+                            _canvas_key_er = (
+                                f"er_canvas_{_safe_doi_er}_{_fig_id_er}"
+                                f"_v{st.session_state[_cv_ver_key]}"
+                            )
+
+                            # ---- Canvas ----
+                            _canvas_er = st_canvas(
+                                background_image=_bg_img_er,
+                                drawing_mode=_draw_mode_er,          # "rect" draws; "transform" edits
+                                update_streamlit=True,
+                                height=_disp_h_er,
+                                width=_disp_w_er,
+                                stroke_width=3,
+                                stroke_color="#ff0000",
                             fill_color="rgba(255, 0, 0, 0.20)",
                             key=_canvas_key_er,
                         )
@@ -3109,41 +3416,8 @@ with tab_figs:
                                     "--target_figure", _llm_sel_er,
                                 ]
 
-                                _env_er = os.environ.copy()
-                                _provider_er = st.session_state.get("llm_provider", "Ollama")
-                                _model_er = st.session_state.get("llm_model", "")
-                                if _provider_er == "Ollama":
-                                    _env_er["SALSA_LLM_PROVIDER"] = "ollama"
-                                    _env_er["SALSA_LLM_MODEL"] = _model_er
-                                    _env_er["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                    _om_dir_er = st.session_state.get("ollama_models_dir", "")
-                                    if _om_dir_er:
-                                        _env_er["OLLAMA_MODELS"] = _om_dir_er
-                                else:
-                                    _env_er["SALSA_LLM_PROVIDER"] = "openai"
-                                    _env_er["SALSA_LLM_MODEL"] = _model_er
-                                    _env_er["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                    if st.session_state.get("openai_api_key"):
-                                        _env_er["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
-                                if st.session_state.get("use_separate_processing_llm"):
-                                    _pp_er = st.session_state.get("processing_llm_provider", "Chat GPT")
-                                    _pm_er = st.session_state.get("processing_llm_model", "")
-                                    if _pp_er == "Ollama":
-                                        _env_er["SALSA_PROCESSING_LLM_PROVIDER"] = "ollama"
-                                        _env_er["SALSA_PROCESSING_LLM_MODEL"] = _pm_er
-                                    else:
-                                        _env_er["SALSA_PROCESSING_LLM_PROVIDER"] = "openai"
-                                        _env_er["SALSA_PROCESSING_LLM_MODEL"] = _pm_er
-                                        _pb_er = st.session_state.get("processing_openai_base_url", "https://api.openai.com/v1")
-                                        _pk_er = st.session_state.get("processing_openai_api_key", "")
-                                        if _pb_er:
-                                            _env_er["SALSA_PROCESSING_OPENAI_BASE_URL"] = _pb_er
-                                        if _pk_er:
-                                            _env_er["SALSA_PROCESSING_OPENAI_API_KEY"] = _pk_er
-                                else:
-                                    for _k_er in ["SALSA_PROCESSING_LLM_PROVIDER", "SALSA_PROCESSING_LLM_MODEL",
-                                                    "SALSA_PROCESSING_OPENAI_BASE_URL", "SALSA_PROCESSING_OPENAI_API_KEY"]:
-                                        _env_er.pop(_k_er, None)
+                                _sync_all_step_llm_envs_from_session()
+                                _env_er = _general_llm_env_for_step(LLM_STEP_COMPLETE_DATASET)
 
                                 if not _step_has_configured_model(LLM_STEP_COMPLETE_DATASET):
                                     st.error(
@@ -3255,7 +3529,7 @@ with tab_figs:
                         _subfig_final_dir = subfig_dir / "final"
                         if _subfig_final_dir.exists():
                             _subfig_final_img = _subfig_final_dir / "final_image.png"
-                            if _subfig_final_img.exists():
+                            if _is_valid_image_path(_subfig_final_img):
                                 _subfig_source_img = _subfig_final_img
                                 _subfig_image_caption = "Recreated image (crop not found)"
                     render_figure_image_dropdown(
@@ -3377,19 +3651,8 @@ with tab_figs:
                                         "--target_figure", subfig_dir.name,
                                     ]
 
-                                    _env_sf = os.environ.copy()
-                                    _provider_sf = st.session_state.get("llm_provider", "Ollama")
-                                    _model_sf = st.session_state.get("llm_model", "")
-                                    if _provider_sf == "Ollama":
-                                        _env_sf["SALSA_LLM_PROVIDER"] = "ollama"
-                                        _env_sf["SALSA_LLM_MODEL"] = _model_sf
-                                        _env_sf["OLLAMA_HOST"] = st.session_state.get("ollama_host", "http://127.0.0.1:11434")
-                                    else:
-                                        _env_sf["SALSA_LLM_PROVIDER"] = "openai"
-                                        _env_sf["SALSA_LLM_MODEL"] = _model_sf
-                                        _env_sf["OPENAI_BASE_URL"] = st.session_state.get("openai_base_url", "https://api.openai.com/v1")
-                                        if st.session_state.get("openai_api_key"):
-                                            _env_sf["OPENAI_API_KEY"] = st.session_state["openai_api_key"]
+                                    _sync_all_step_llm_envs_from_session()
+                                    _env_sf = _general_llm_env_for_step(LLM_STEP_COMPLETE_DATASET)
 
                                     _env_sf["SALSA_RUN_ID"] = rr.run_id
                                     _env_sf["SALSA_RUN_DIR"] = str(rr.run_dir)

@@ -521,8 +521,6 @@ def figure_test(meta: dict, use_image: bool = True) -> bool:
             temperature=0.0,
             return_meta=True
         )
-        # print('=====FIGURE CONTENT=====', content)
-        print("====FIGURE_TEST====", text, meta)
         try:
             _log_cost(meta,
                 extra={
@@ -533,7 +531,6 @@ def figure_test(meta: dict, use_image: bool = True) -> bool:
         except Exception as e:
             print(f"[cost] cost could not be calculated: {e}")
         result = text.strip().upper()
-        print("===TEXT, RESULT===", text, result)
         return result.startswith("YES")
     except Exception as e:
         print(f"[error filtering figure]: {e}")
@@ -597,18 +594,15 @@ def table_test(meta: dict) -> bool:
             temperature=0.0,
             return_meta=True,
         )
-        print('=====TABLE CONTENT=====', content)
-        print("====TABLE_TEST====", text, meta)
         try:
             _log_cost(meta,
                 extra={
-                    "kind": "filter_figure",
+                    "kind": "filter_table",
                 },
             )
         except Exception as e:
             print(f"[cost] cost could not be calculated: {e}")
         result = text.strip().upper()
-        print("===TEXT, RESULT===", text, result)
         return result.startswith("YES")
     except Exception as e:
         print(f"[error filtering table]: {e}")
