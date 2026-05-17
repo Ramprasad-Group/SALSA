@@ -2,11 +2,14 @@
 from __future__ import annotations
 import csv
 import json
+import os
+import signal
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from discover import discover_run
 from llm_step_config import (
@@ -20,6 +23,12 @@ from llm_step_config import (
 )
 from schemas import RunResult
 
+StatusCallback = Callable[[str, Optional[str]], None]
+
+
+class PipelineCancelled(Exception):
+    """Raised when a user cancels an in-progress UI pipeline run."""
+
 def doi_to_safe(doi: str) -> str:
     return doi.replace("/", "@").strip()
 
@@ -27,8 +36,60 @@ def _run(
     cmd: list[str],
     cwd: Optional[Path] = None,
     env: Optional[Dict[str, str]] = None,
+    cancel_event: Any = None,
 ):
-    subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, check=True)
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        start_new_session=True,
+    )
+    while True:
+        returncode = proc.poll()
+        if returncode is not None:
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, cmd)
+            return
+
+        if cancel_event is not None and cancel_event.is_set():
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except Exception:
+                proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except Exception:
+                    proc.kill()
+                proc.wait()
+            raise PipelineCancelled("Pipeline run cancelled by user.")
+
+        time.sleep(0.5)
+
+
+def _raise_if_cancelled(cancel_event: Any = None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise PipelineCancelled("Pipeline run cancelled by user.")
+
+
+def _doi_scope(dois: list[str]) -> str:
+    clean = [d.strip() for d in dois if d.strip()]
+    if len(clean) == 1:
+        return clean[0]
+    return f"{len(clean)} DOIs"
+
+
+def _report_status(
+    status_callback: Optional[StatusCallback],
+    stage: str,
+    doi: str | None,
+    cancel_event: Any = None,
+) -> None:
+    _raise_if_cancelled(cancel_event)
+    if status_callback is not None:
+        status_callback(stage, doi)
 
 
 def _clear_general_llm_env(env: Dict[str, str]) -> None:
@@ -164,6 +225,8 @@ def run_full_pipeline(
     run_chemical_composition: bool = False,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
+    status_callback: Optional[StatusCallback] = None,
+    cancel_event: Any = None,
 ) -> RunResult:
     """
     Orchestrates:
@@ -182,6 +245,8 @@ def run_full_pipeline(
     else:
         run_id = run_id.strip()
     run_dir = (run_root / run_id).resolve()
+    doi_scope = _doi_scope(dois)
+    _report_status(status_callback, "Preparing run workspace", doi_scope, cancel_event)
 
     if run_dir.exists():
         raise FileExistsError(
@@ -246,6 +311,7 @@ def run_full_pipeline(
 
     # --- 1) download_records_multiple_dois_webofscience.py ---
     # writes download_results_*.csv into --log_file directory.
+    _report_status(status_callback, "Downloading DOI records", doi_scope, cancel_event)
     _run([
         sys.executable, str(p_download_records),
         "--file_path", str(doi_csv),
@@ -253,12 +319,13 @@ def run_full_pipeline(
         "--no_db",
         "--log_file", str(records_dir),
         "--output_dir", str(records_dir),
-    ])
+    ], cancel_event=cancel_event)
 
     results_csv = _latest_matching_csv(records_dir, "download_results_*.csv")
 
     # --- 2) download_papers.py (no_db) ---
     # Writes structured_files under --download_dir/structured_files
+    _report_status(status_callback, "Downloading papers", doi_scope, cancel_event)
     _run([
         sys.executable, str(p_download_papers),
         "--no_db",
@@ -266,19 +333,20 @@ def run_full_pipeline(
         "--download_dir", str(papers_dir),
         "--log_file", str(papers_dir / "logs"),
         "--sample_size", "None",
-    ])
+    ], cancel_event=cancel_event)
 
     structured_root = papers_dir / "structured_files"
 
     # --- 3) reparse_filtered_dois.py ---
     # Produces reparsed/index.csv and per-doi parsed.json
+    _report_status(status_callback, "Re-parsing downloaded papers", doi_scope, cancel_event)
     _run([
         sys.executable, str(p_reparse),
         "--csv_path", str(results_csv),
         "--structured_root", str(structured_root),
         "--output_dir", str(reparsed_dir),
         "--doi_column", "doi",   # output from download_records is lower 'doi'
-    ])
+    ], cancel_event=cancel_event)
 
     index_csv = reparsed_dir / "index.csv"
 
@@ -294,11 +362,13 @@ def run_full_pipeline(
         cmd_extract.append("--extract_figures")
     if run_extract_tables:
         cmd_extract.append("--extract_tables")
+    _report_status(status_callback, "Extracting figures and tables", doi_scope, cancel_event)
     _run(
         cmd_extract,
         env=_subprocess_env_for_llm_step(LLM_STEP_EXTRACT_TABLES)
         if run_extract_tables
         else None,
+        cancel_event=cancel_event,
     )
 
     # --- 5) chemical composition extraction (before filtering) ---
@@ -333,6 +403,7 @@ def run_full_pipeline(
         run_chemical_composition_extraction = _cc_module.run_chemical_composition_extraction
 
         for doi in dois:
+            _report_status(status_callback, "Extracting chemical composition", doi.strip(), cancel_event)
             safe = doi_to_safe(doi.strip())
             parsed_json = reparsed_dir / safe / "parsed.json"
             tables_d = figures_tables_dir / "tables" / safe
@@ -353,6 +424,7 @@ def run_full_pipeline(
 
     # --- 6) filter figures/tables (after chemical composition extraction) ---
     if run_filter_figures:
+        _report_status(status_callback, "Filtering figures", doi_scope, cancel_event)
         _run(
             [
                 sys.executable, str(p_extract_ft),
@@ -363,8 +435,10 @@ def run_full_pipeline(
                 "--filter_figures",
             ],
             env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_FIGURES),
+            cancel_event=cancel_event,
         )
     if run_filter_tables:
+        _report_status(status_callback, "Filtering tables", doi_scope, cancel_event)
         _run(
             [
                 sys.executable, str(p_extract_ft),
@@ -375,12 +449,14 @@ def run_full_pipeline(
                 "--filter_tables",
             ],
             env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_TABLES),
+            cancel_event=cancel_event,
         )
 
     # --- 7) plextract.py ---
     # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
     _figures_dir = figures_tables_dir / "figures"
     if run_plextract:
+        _report_status(status_callback, "Extracting figure data with OCR", doi_scope, cancel_event)
         if not _figures_dir.exists() or not any(_figures_dir.iterdir()):
             print(f"[Pipeline] WARNING: No figures were extracted — skipping plextract "
                   f"(figures dir missing or empty: {_figures_dir})")
@@ -389,7 +465,7 @@ def run_full_pipeline(
                 sys.executable, str(p_plextract),
                 "--input", str(_figures_dir),
                 "--workdir", str(plextract_workdir),
-            ])
+            ], cancel_event=cancel_event)
 
     if run_plextract and _figures_dir.exists() and any(_figures_dir.iterdir()):
         plextract_results_root = _plextract_results_root(plextract_workdir)
@@ -400,6 +476,7 @@ def run_full_pipeline(
     # Writes the same final_dataset.csv shape as plextract so the existing
     # complete-dataset stage can consume it through --extracted_figures_root.
     if run_llm_figure_extraction:
+        _report_status(status_callback, "Extracting figure data with LLM", doi_scope, cancel_event)
         if not _figures_dir.exists() or not any(_figures_dir.iterdir()):
             print(f"[Pipeline] WARNING: No figures were extracted — skipping direct LLM figure extraction "
                   f"(figures dir missing or empty: {_figures_dir})")
@@ -416,9 +493,11 @@ def run_full_pipeline(
                 workdir=llm_figure_workdir,
                 run_dir=run_dir,
             )
+            _raise_if_cancelled(cancel_event)
 
     # --- 8) complete-dataset.py ---
     if run_complete_dataset:
+        _report_status(status_callback, "Completing dataset rows", doi_scope, cancel_event)
         cmd = [
             sys.executable, str(p_complete_dataset),
             "--file_path", str(doi_csv),
@@ -444,7 +523,8 @@ def run_full_pipeline(
         if ci_path and ci_path.exists():
             cmd += ["--custom_instructions", str(ci_path)]
 
-        _run(cmd, env=_subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET))
+        _run(cmd, env=_subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET), cancel_event=cancel_event)
 
     # --- discover everything for UI ---
+    _report_status(status_callback, "Loading run results", doi_scope, cancel_event)
     return discover_run(run_dir)

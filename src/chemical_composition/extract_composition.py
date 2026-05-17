@@ -117,6 +117,13 @@ Strict requirements:
   crosslinkers that remain in the measured sample.
 - Use as many numbered columns as needed for the paper. Omit unused numbered
   fields from a row or set them to ""/null.
+- Every smilesN field must have a matching cN field, and every cN field must
+  have a matching smilesN field. The numbering must stay aligned (smiles1 ↔ c1,
+  smiles2 ↔ c2, etc.). Do not create orphaned smiles or c fields.
+- Treat graft, branched, block, and random copolymers as collections of distinct
+  repeat-unit components. Represent each chemically distinct polymer repeat unit
+  as its own smilesN entry with a corresponding cN value describing its relative
+  fraction in the final polymer composition.
 
 Return ONLY a JSON object with the "samples" key. No markdown fences.
 

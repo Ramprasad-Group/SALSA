@@ -2,13 +2,18 @@
 from __future__ import annotations
 import json
 import inspect
+import threading
+import time
+import traceback
+from hashlib import md5
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+import streamlit.elements.image as st_image
 import plotly.express as px
 from PIL import Image, UnidentifiedImageError
-from streamlit_drawable_canvas import st_canvas
-from pipeline import run_full_pipeline
+from streamlit_drawable_canvas import CanvasResult, _component_func, _data_url_to_image
+from pipeline import PipelineCancelled, run_full_pipeline
 from discover import discover_run
 from schemas import RunResult
 from intervention import find_interventions, latest_plextract_run_dir
@@ -401,6 +406,81 @@ def _open_image_safe(path: Path, *, mode: Optional[str] = None) -> Optional[Imag
     except (UnidentifiedImageError, OSError, ValueError):
         return None
 
+
+def _canvas_media_url(url: str) -> str:
+    """Normalize Streamlit media URLs for the drawable-canvas iframe."""
+    if not url or url.startswith(("http://", "https://", "data:")):
+        return url
+
+    base_path = str(st._config.get_option("server.baseUrlPath") or "").strip("/")
+    if base_path:
+        base_path = f"/{base_path}"
+
+    if not url.startswith("/"):
+        url = f"/{url}"
+    if base_path and url.startswith(f"{base_path}/"):
+        return url
+    return f"{base_path}{url}"
+
+
+def st_canvas(
+    fill_color: str = "#eee",
+    stroke_width: int = 20,
+    stroke_color: str = "black",
+    background_color: str = "",
+    background_image: Image.Image = None,
+    update_streamlit: bool = True,
+    height: int = 400,
+    width: int = 600,
+    drawing_mode: str = "freedraw",
+    initial_drawing: dict = None,
+    display_toolbar: bool = True,
+    point_display_radius: int = 3,
+    key=None,
+) -> CanvasResult:
+    """Drawable canvas wrapper with robust background image URLs."""
+    background_image_url = None
+    if background_image:
+        background_image = background_image.resize((int(width), int(height)), Image.Resampling.LANCZOS)
+        raw_url = st_image.image_to_url(
+            background_image,
+            width,
+            True,
+            "RGB",
+            "PNG",
+            f"drawable-canvas-bg-{md5(background_image.tobytes()).hexdigest()}-{key}",
+        )
+        background_image_url = _canvas_media_url(raw_url)
+        background_color = ""
+
+    initial_drawing = {"version": "4.4.0"} if initial_drawing is None else dict(initial_drawing)
+    initial_drawing["background"] = background_color
+
+    component_value = _component_func(
+        fillColor=fill_color,
+        strokeWidth=stroke_width,
+        strokeColor=stroke_color,
+        backgroundColor=background_color,
+        backgroundImageURL=background_image_url,
+        realtimeUpdateStreamlit=update_streamlit and (drawing_mode != "polygon"),
+        canvasHeight=height,
+        canvasWidth=width,
+        drawingMode=drawing_mode,
+        initialDrawing=initial_drawing,
+        displayToolbar=display_toolbar,
+        displayRadius=point_display_radius,
+        key=key,
+        default=None,
+    )
+    if component_value is None:
+        return CanvasResult()
+
+    return CanvasResult(
+        np.asarray(_data_url_to_image(component_value["data"])),
+        component_value["raw"],
+    )
+
+
 def section_dropdown(title: str, *, expanded: bool = False):
     """
     Small UI helper so both main figures and subfigures create section
@@ -473,7 +553,7 @@ def render_axis_configuration_dropdown(
     chartdete_dir: Optional[Path],
     source_img: Optional[Path],
     key_prefix: str,
-    expanded: bool = False,
+    expanded: bool = True,
     override_dir: Optional[Path] = None,
 ):
     """Render the full Axis Configuration dropdown, shared between figures and subfigures.
@@ -490,62 +570,63 @@ def render_axis_configuration_dropdown(
 
     with section_dropdown("Axis Configuration", expanded=expanded):
         if chartdete_dir is None:
-            st.info("No plextract output found for this figure. Run plextract extraction first.")
-            return
+            if _override_base is None:
+                st.info("No plextract output found for this figure. Run plextract extraction first.")
+                return
+            chartdete_dir = _override_base
+            st.info("No plextract axis output found yet. You can still calibrate from clicks below.")
         chartdete_dir.mkdir(parents=True, exist_ok=True)
         if _override_base is not None:
             _override_base.mkdir(parents=True, exist_ok=True)
 
-        # ========================
-        # Axis Titles
-        # ========================
-        st.markdown("**Axis Titles**")
-        title_override_path = _override_base / "axis_title_override.json"
-        title_ocr_path = chartdete_dir / "axis_title_texts.json"
+        def _render_axis_titles() -> None:
+            st.markdown("**Axis Titles**")
+            title_override_path = _override_base / "axis_title_override.json"
+            title_ocr_path = chartdete_dir / "axis_title_texts.json"
 
-        def _load_axis_titles_default() -> tuple[str, str]:
-            if title_override_path.exists():
-                try:
-                    d = json.loads(title_override_path.read_text())
-                    return d.get("x_title", "") or "", d.get("y_title", "") or ""
-                except Exception:
-                    return "", ""
-            if title_ocr_path.exists():
-                try:
-                    d = json.loads(title_ocr_path.read_text())
-                    x_title, y_title = "", ""
-                    for ap, txt in d.items():
-                        bn = Path(ap).name.lower()
-                        if any(t in bn for t in ("x_", "x-", "_x.", "xtitle", "xlabel")):
-                            x_title = txt
-                        elif any(t in bn for t in ("y_", "y-", "_y.", "ytitle", "ylabel")):
-                            y_title = txt
-                    if not x_title and not y_title and len(d) == 2:
-                        vals = list(d.values())
-                        x_title, y_title = vals[0], vals[1]
-                    return x_title or "", y_title or ""
-                except Exception:
-                    return "", ""
-            return "", ""
+            def _load_axis_titles_default() -> tuple[str, str]:
+                if title_override_path.exists():
+                    try:
+                        d = json.loads(title_override_path.read_text())
+                        return d.get("x_title", "") or "", d.get("y_title", "") or ""
+                    except Exception:
+                        return "", ""
+                if title_ocr_path.exists():
+                    try:
+                        d = json.loads(title_ocr_path.read_text())
+                        x_title, y_title = "", ""
+                        for ap, txt in d.items():
+                            bn = Path(ap).name.lower()
+                            if any(t in bn for t in ("x_", "x-", "_x.", "xtitle", "xlabel")):
+                                x_title = txt
+                            elif any(t in bn for t in ("y_", "y-", "_y.", "ytitle", "ylabel")):
+                                y_title = txt
+                        if not x_title and not y_title and len(d) == 2:
+                            vals = list(d.values())
+                            x_title, y_title = vals[0], vals[1]
+                        return x_title or "", y_title or ""
+                    except Exception:
+                        return "", ""
+                return "", ""
 
-        x_title_default, y_title_default = _load_axis_titles_default()
-        x_title_key = f"{key_prefix}_ax_x_title"
-        y_title_key = f"{key_prefix}_ax_y_title"
-        if x_title_key not in st.session_state:
-            st.session_state[x_title_key] = x_title_default
-        if y_title_key not in st.session_state:
-            st.session_state[y_title_key] = y_title_default
+            x_title_default, y_title_default = _load_axis_titles_default()
+            x_title_key = f"{key_prefix}_ax_x_title"
+            y_title_key = f"{key_prefix}_ax_y_title"
+            if x_title_key not in st.session_state:
+                st.session_state[x_title_key] = x_title_default
+            if y_title_key not in st.session_state:
+                st.session_state[y_title_key] = y_title_default
 
-        col_xt, col_yt = st.columns(2)
-        with col_xt:
-            new_x_title = st.text_input("X axis title", key=x_title_key)
-        with col_yt:
-            new_y_title = st.text_input("Y axis title", key=y_title_key)
+            col_xt, col_yt = st.columns(2)
+            with col_xt:
+                new_x_title = st.text_input("X axis title", key=x_title_key)
+            with col_yt:
+                new_y_title = st.text_input("Y axis title", key=y_title_key)
 
-        if st.button("Save axis titles", key=f"{key_prefix}_ax_save_titles"):
-            title_override_path.write_text(json.dumps({"x_title": new_x_title, "y_title": new_y_title}, indent=2))
-            st.success("Axis title overrides saved.")
-            st.rerun()
+            if st.button("Save axis titles", key=f"{key_prefix}_ax_save_titles"):
+                title_override_path.write_text(json.dumps({"x_title": new_x_title, "y_title": new_y_title}, indent=2))
+                st.success("Axis title overrides saved.")
+                st.rerun()
 
         # ========================
         # Axis Calibration
@@ -553,6 +634,7 @@ def render_axis_configuration_dropdown(
         st.markdown("**Axis Calibration**")
         if not _is_valid_image_path(source_img):
             st.info("No source image available for axis calibration.")
+            _render_axis_titles()
             return
 
         pix2val_override_path = _override_base / "pix2val_override.json"
@@ -579,19 +661,26 @@ def render_axis_configuration_dropdown(
         pil_img = _open_image_safe(source_img, mode="RGB")
         if pil_img is None:
             st.warning(f"Could not open source image for axis calibration: {source_img}")
+            _render_axis_titles()
             return
         img_w, img_h = pil_img.size
 
         width_key = f"{key_prefix}_ax_calib_w"
         if width_key not in st.session_state:
             st.session_state[width_key] = min(1100, img_w)
+        _slider_min = min(400, max(1, img_w))
+        _slider_max = max(_slider_min, 1800)
+        st.session_state[width_key] = max(
+            _slider_min,
+            min(_slider_max, int(st.session_state[width_key])),
+        )
         disp_w = st.slider(
-            "Calibration view width (px)", min_value=400, max_value=1800,
+            "Calibration view width (px)", min_value=_slider_min, max_value=_slider_max,
             value=int(st.session_state[width_key]), step=50, key=width_key,
         )
         disp_h = int(round(img_h * (disp_w / img_w)))
 
-        bg = pil_img.resize((disp_w, disp_h), Image.Resampling.LANCZOS).convert("RGBA")
+        bg = pil_img.resize((disp_w, disp_h), Image.Resampling.LANCZOS).convert("RGB")
         scale_x = img_w / disp_w
         scale_y = img_h / disp_h
 
@@ -601,6 +690,10 @@ def render_axis_configuration_dropdown(
         cv_ver_key = f"{key_prefix}_ax_calib_ver"
         if cv_ver_key not in st.session_state:
             st.session_state[cv_ver_key] = 0
+        ensure_canvas_remount(
+            boot_key=f"{key_prefix}_ax_calib_boot",
+            version_key=cv_ver_key,
+        )
 
         # Bump the canvas version when the display width changes so the canvas
         # remounts with the correct background dimensions.  The width must NOT
@@ -634,6 +727,13 @@ def render_axis_configuration_dropdown(
             height=disp_h, width=disp_w,
             stroke_width=2, stroke_color="#00ff00", fill_color="rgba(0,255,0,0.35)",
             key=canvas_key,
+        )
+        ensure_canvas_post_mount_remount(
+            mount_key=(
+                f"{key_prefix}_ax_calib_mounted_"
+                f"{Path(source_img).name}_{disp_w}x{disp_h}"
+            ),
+            version_key=cv_ver_key,
         )
 
         def _last_circle_center(json_data):
@@ -818,6 +918,65 @@ def render_axis_configuration_dropdown(
                 else:
                     st.info("No pix2val JSON exists yet. Save calibration from clicks first.")
 
+        st.divider()
+        _render_axis_titles()
+
+def _resolve_series_source_image(
+    *,
+    run_dir: Path,
+    safe_doi: str,
+    fig_id: str,
+    fig_dir: Optional[Path],
+    source_img: Optional[Path],
+) -> Optional[Path]:
+    """Find a renderable image for Series Management from UI, plextract, or fallback outputs."""
+    candidates: list[Path] = []
+
+    def _add(path: Optional[Path]) -> None:
+        if path is not None:
+            candidates.append(Path(path))
+
+    _add(source_img)
+
+    figures_root = run_dir / "figures_tables" / "figures" / safe_doi
+    if figures_root.exists():
+        fig_stem = Path(fig_id).stem
+        for ext in ("", ".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            _add(figures_root / f"{fig_id}{ext}")
+            _add(figures_root / f"{fig_stem}{ext}")
+        for fp in figures_root.iterdir():
+            if fp.is_file() and Path(fp.name).stem == fig_stem:
+                _add(fp)
+
+    if fig_dir is not None:
+        fig_dir = Path(fig_dir)
+        _add(fig_dir / "final" / "final_image.png")
+
+        if fig_dir.parent.name == safe_doi and fig_dir.parent.parent.name == "output":
+            plextract_run_dir = fig_dir.parent.parent.parent
+            input_dir = plextract_run_dir / "input" / safe_doi
+            if input_dir.exists():
+                fig_stem = Path(fig_dir.name).stem
+                _add(input_dir / fig_dir.name)
+                for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+                    _add(input_dir / f"{fig_stem}{ext}")
+                for fp in input_dir.iterdir():
+                    if fp.is_file() and Path(fp.name).stem == fig_stem:
+                        _add(fp)
+
+        if "plextract_interventions" in fig_dir.parts:
+            try:
+                intervention_crop_base = fig_dir.parents[5]
+                for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+                    _add(intervention_crop_base.with_suffix(ext))
+            except IndexError:
+                pass
+
+    for candidate in candidates:
+        if _is_valid_image_path(candidate):
+            return candidate
+    return None
+
 def render_series_management_dropdown(
     *,
     run_dir: Path,
@@ -828,10 +987,18 @@ def render_series_management_dropdown(
     lf_override_dir: Path,
     source_img: Optional[Path],
     key_prefix: str,
-    expanded: bool = False,
+    expanded: bool = True,
 ):
     """Render the full Series Management dropdown, shared between figures and subfigures."""
     with section_dropdown("Series Management", expanded=expanded):
+        source_img = _resolve_series_source_image(
+            run_dir=run_dir,
+            safe_doi=safe_doi,
+            fig_id=fig_id,
+            fig_dir=fig_dir,
+            source_img=source_img,
+        )
+
         # Ensure we have a usable lineformer dir
         if lf_dir is None or not lf_dir.exists():
             lf_override_dir.mkdir(parents=True, exist_ok=True)
@@ -911,17 +1078,27 @@ def render_series_management_dropdown(
         cv_ver_key_sm = f"{key_prefix}_series_canvas_ver"
         if cv_ver_key_sm not in st.session_state:
             st.session_state[cv_ver_key_sm] = 0
+        ensure_canvas_remount(
+            boot_key=f"{key_prefix}_series_canvas_boot",
+            version_key=cv_ver_key_sm,
+        )
 
         # --- Display width slider ---
         width_key_sm = f"{key_prefix}_series_view_w"
         if width_key_sm not in st.session_state:
             # default to something reasonable for the figure, capped like before
             st.session_state[width_key_sm] = min(900, w)
+        _slider_min_sm = min(400, max(1, w))
+        _slider_max_sm = max(_slider_min_sm, 1800)
+        st.session_state[width_key_sm] = max(
+            _slider_min_sm,
+            min(_slider_max_sm, int(st.session_state[width_key_sm])),
+        )
 
         disp_w = st.slider(
             "Series view width (px)",
-            min_value=400,
-            max_value=1800,
+            min_value=_slider_min_sm,
+            max_value=_slider_max_sm,
             value=int(st.session_state[width_key_sm]),
             step=50,
             key=width_key_sm,
@@ -974,7 +1151,12 @@ def render_series_management_dropdown(
         next_idx = max(existing_indices) + 1 if existing_indices else 0
 
         mode_options = ["Edit existing series", "Create new series"]
-        mode = st.radio("Mode", mode_options, key=f"{key_prefix}_series_mode", horizontal=True)
+        mode_key = f"{key_prefix}_series_mode"
+        if not active_series:
+            st.session_state[mode_key] = "Create new series"
+        elif st.session_state.get(mode_key) not in mode_options:
+            st.session_state[mode_key] = mode_options[0]
+        mode = st.radio("Mode", mode_options, key=mode_key, horizontal=True)
         is_creating = (mode == "Create new series")
         cur_mask_img = None
 
@@ -1029,10 +1211,18 @@ def render_series_management_dropdown(
             scale_x_s = w / disp_w
             scale_y_s = h / disp_h
 
+            input_mode_key = f"{key_prefix}_input_mode_{selected_idx}_{mode}"
+            if input_mode_key not in st.session_state:
+                st.session_state[input_mode_key] = "Pick exact points"
             input_mode = st.radio(
                 "Input mode", ["Freehand drawing", "Pick exact points"],
                 horizontal=True,
-                key=f"{key_prefix}_input_mode_{selected_idx}_{mode}",
+                key=input_mode_key,
+            )
+            _series_img_token = Path(source_img).name if source_img else "no_source"
+            _series_canvas_mount_key = (
+                f"{key_prefix}_series_canvas_mounted_{selected_idx}_{mode}_"
+                f"{input_mode}_{_series_img_token}_{disp_w}x{disp_h}"
             )
             c1_sm, c2_sm = st.columns([2.2, 1.5])
 
@@ -1052,21 +1242,29 @@ def render_series_management_dropdown(
                         f"_v{st.session_state[cv_ver_key_sm]}"
                     )
 
-                    mask_canvas = st_canvas(
-                        background_image=composite_disp,
-                        drawing_mode="freedraw",
-                        stroke_width=5,
-                        stroke_color=stroke_rgba,
-                        fill_color=stroke_rgba,
-                        update_streamlit=True,
-                        height=disp_h,
-                        width=disp_w,
-                        key=canvas_key_freehand,
-                    )
+                    mask_canvas = None
+                    if composite_disp is None:
+                        st.warning("Series image could not be rendered.")
+                    else:
+                        mask_canvas = st_canvas(
+                            background_image=composite_disp,
+                            drawing_mode="freedraw",
+                            stroke_width=5,
+                            stroke_color=stroke_rgba,
+                            fill_color=stroke_rgba,
+                            update_streamlit=True,
+                            height=disp_h,
+                            width=disp_w,
+                            key=canvas_key_freehand,
+                        )
+                        ensure_canvas_post_mount_remount(
+                            mount_key=_series_canvas_mount_key,
+                            version_key=cv_ver_key_sm,
+                        )
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
 
-                if mask_canvas.image_data is not None:
+                if mask_canvas is not None and mask_canvas.image_data is not None:
                     rgba = mask_canvas.image_data.astype(np.uint8)
                     r, g, b = sel_color
                     color_match = (
@@ -1136,12 +1334,19 @@ def render_series_management_dropdown(
                         height=disp_h,
                         width=disp_w,
                         key=canvas_key_points,
-                    )
+                    ) if composite_disp is not None else None
+                    if point_canvas is not None:
+                        ensure_canvas_post_mount_remount(
+                            mount_key=_series_canvas_mount_key,
+                            version_key=cv_ver_key_sm,
+                        )
+                    if composite_disp is None:
+                        st.warning("Series image could not be rendered.")
                 if legend_lines:
                     st.markdown(" &nbsp; ".join(legend_lines), unsafe_allow_html=True)
 
                 new_pts: list = []
-                if point_canvas.json_data and "objects" in point_canvas.json_data:
+                if point_canvas is not None and point_canvas.json_data and "objects" in point_canvas.json_data:
                     for obj2 in point_canvas.json_data["objects"]:
                         if obj2.get("type") == "circle":
                             r2 = float(obj2.get("radius", dot_size))
@@ -1665,7 +1870,7 @@ def load_and_resize_rgba(path: str, disp_w: int):
         raise ValueError(f"Could not open image: {path}")
     ow, oh = img.size
     dh = int(round(oh * (disp_w / ow)))
-    bg = img.resize((disp_w, dh), Image.Resampling.LANCZOS).convert("RGBA")
+    bg = img.resize((disp_w, dh), Image.Resampling.LANCZOS).convert("RGB")
     return ow, oh, disp_w, dh, bg
 
 def ensure_canvas_remount(*, boot_key: str, version_key: str):
@@ -1685,6 +1890,19 @@ def ensure_canvas_remount(*, boot_key: str, version_key: str):
 
     if st.session_state[boot_key]:
         st.session_state[boot_key] = False
+        st.session_state[version_key] += 1
+        st.rerun()
+
+def ensure_canvas_post_mount_remount(*, mount_key: str, version_key: str):
+    """
+    Remount a canvas once after it has been created.
+
+    The drawable-canvas iframe sometimes paints before its background image is
+    ready. A single post-mount key bump gives the component a fresh mount with
+    the image already registered in Streamlit's media store.
+    """
+    if mount_key not in st.session_state:
+        st.session_state[mount_key] = True
         st.session_state[version_key] += 1
         st.rerun()
 
@@ -2608,7 +2826,127 @@ with st.sidebar:
         else:
             st.info("No workspaces exist yet. Create one above, then run the pipeline.")
 
+_ACTIVE_PIPELINE_RUN_KEY = "active_pipeline_run"
+
+
+def _rerun_app() -> None:
+    rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun")
+    rerun()
+
+
+def _pipeline_status_snapshot(worker: dict[str, Any]) -> dict[str, Any]:
+    with worker["lock"]:
+        return dict(worker["status"])
+
+
+def _set_pipeline_status(worker: dict[str, Any], **updates: Any) -> None:
+    with worker["lock"]:
+        worker["status"].update(updates)
+
+
+def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> dict[str, Any]:
+    lock = threading.Lock()
+    cancel_event = threading.Event()
+    status: dict[str, Any] = {
+        "state": "running",
+        "stage": "Starting pipeline",
+        "doi": dois[0] if len(dois) == 1 else f"{len(dois)} DOIs",
+        "result": None,
+        "error": None,
+        "traceback": None,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    worker: dict[str, Any] = {
+        "lock": lock,
+        "cancel_event": cancel_event,
+        "status": status,
+        "dois": list(dois),
+    }
+
+    def on_status(stage: str, doi: Optional[str] = None) -> None:
+        _set_pipeline_status(
+            worker,
+            state="running",
+            stage=stage,
+            doi=doi or status.get("doi"),
+            updated_at=datetime.now().isoformat(timespec="seconds"),
+        )
+
+    def run_worker() -> None:
+        try:
+            rr = run_full_pipeline(
+                **pipeline_kwargs,
+                status_callback=on_status,
+                cancel_event=cancel_event,
+            )
+            _set_pipeline_status(worker, state="done", result=rr, stage="Done")
+        except PipelineCancelled as exc:
+            _set_pipeline_status(
+                worker,
+                state="cancelled",
+                error=str(exc),
+                stage="Cancelled",
+            )
+        except Exception as exc:
+            _set_pipeline_status(
+                worker,
+                state="error",
+                error=str(exc),
+                traceback=traceback.format_exc(),
+                stage="Failed",
+            )
+
+    thread = threading.Thread(target=run_worker, name="salsa-pipeline-run", daemon=True)
+    worker["thread"] = thread
+    thread.start()
+    return worker
+
+
+def _render_active_pipeline_run() -> None:
+    worker = st.session_state.get(_ACTIVE_PIPELINE_RUN_KEY)
+    if not worker:
+        return
+
+    snapshot = _pipeline_status_snapshot(worker)
+    thread = worker["thread"]
+    state = snapshot.get("state", "running")
+
+    if thread.is_alive():
+        stage = snapshot.get("stage") or "Running"
+        doi = snapshot.get("doi") or "Current DOI"
+        st.info(f"Running stage: **{stage}**\n\nDOI: `{doi}`")
+
+        if worker["cancel_event"].is_set():
+            st.warning("Cancellation requested. Stopping the active pipeline step...")
+        elif st.button("Cancel Run", type="secondary"):
+            worker["cancel_event"].set()
+            _set_pipeline_status(worker, state="cancelling", stage="Cancelling")
+            st.warning("Cancellation requested. Stopping the active pipeline step...")
+
+        time.sleep(1)
+        _rerun_app()
+        st.stop()
+
+    snapshot = _pipeline_status_snapshot(worker)
+    state = snapshot.get("state", state)
+    st.session_state.pop(_ACTIVE_PIPELINE_RUN_KEY, None)
+    if state == "done":
+        rr_done = snapshot.get("result")
+        if rr_done is not None:
+            st.session_state["rr"] = rr_done
+            st.success(f"Done. Run ID: {rr_done.run_id}")
+            _render_cost_summary(rr_done.run_dir)
+    elif state == "cancelled":
+        st.warning("Run cancelled.")
+    elif state == "error":
+        st.error(f"Pipeline failed: {snapshot.get('error')}")
+        with st.expander("Traceback", expanded=False):
+            st.code(snapshot.get("traceback") or "", language="text")
+
+
 # ---------------- Run pipeline ----------------
+_render_active_pipeline_run()
+
 st.subheader("Input DOIs")
 doi_text = st.text_area("One DOI per line", height=140)
 
@@ -2651,55 +2989,54 @@ if st.button("Run pipeline", type="primary"):
                 + ", ".join(missing_openai_api_key_steps)
             )
         else:
-            with st.spinner("Running your pipeline end-to-end…"):
-                custom_run_id = run_id_input.strip() or None
+            custom_run_id = run_id_input.strip() or None
 
-                _sync_all_step_llm_envs_from_session()
+            _sync_all_step_llm_envs_from_session()
 
-                if custom_run_id:
-                    target = run_root / custom_run_id
-                    if target.exists():
-                        st.warning(f"Run directory already exists and may be overwritten: {target}")
+            if custom_run_id:
+                target = run_root / custom_run_id
+                if target.exists():
+                    st.warning(f"Run directory already exists and may be overwritten: {target}")
 
+            # --- Save custom instructions for this run ---
+            _run_ci = st.session_state.get("custom_instructions", default_instructions())
+            # Parse output_columns if still a string
+            if isinstance(_run_ci.get("output_columns"), str):
+                _run_ci["output_columns"] = [c.strip() for c in _run_ci["output_columns"].splitlines() if c.strip()]
+            if isinstance(_run_ci.get("missing_value_defaults"), str):
+                try:
+                    _run_ci["missing_value_defaults"] = json.loads(_run_ci["missing_value_defaults"])
+                except Exception:
+                    pass
 
-                # --- Save custom instructions for this run ---
-                _run_ci = st.session_state.get("custom_instructions", default_instructions())
-                # Parse output_columns if still a string
-                if isinstance(_run_ci.get("output_columns"), str):
-                    _run_ci["output_columns"] = [c.strip() for c in _run_ci["output_columns"].splitlines() if c.strip()]
-                if isinstance(_run_ci.get("missing_value_defaults"), str):
-                    try:
-                        _run_ci["missing_value_defaults"] = json.loads(_run_ci["missing_value_defaults"])
-                    except Exception:
-                        pass
+            # Debug: show what preset is being used
+            preset_name = st.session_state.get("current_preset_name", "defaults")
+            st.info(f"Using custom instructions: **{preset_name}**")
+            with st.expander("View custom instructions being used", expanded=False):
+                st.json(_run_ci)
 
-                # Debug: show what preset is being used
-                preset_name = st.session_state.get("current_preset_name", "defaults")
-                st.info(f"Using custom instructions: **{preset_name}**")
-                with st.expander("View custom instructions being used", expanded=False):
-                    st.json(_run_ci)
-
-                rr = run_full_pipeline(
-                    dois=dois,
-                    run_root=run_root,
-                    scripts_root=scripts_root,
-                    run_id=custom_run_id,
-                    run_extract_figures=run_extract_figures,
-                    run_extract_tables=run_extract_tables,
-                    run_filter_figures=run_filter_figures,
-                    run_filter_tables=run_filter_tables,
-                    run_plextract=run_plextract and not bypass_ocr_with_llm,
-                    run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
-                    run_complete_dataset=run_complete_dataset,
-                    skip_llm_figures=not bypass_ocr_with_llm,
-                    run_chemical_composition=run_chemical_composition,
-                    exclude_full_text=exclude_full_text,
-                    custom_instructions=_run_ci,
-                )
-
-            st.session_state["rr"] = rr
-            st.success(f"Done. Run ID: {rr.run_id}")
-            _render_cost_summary(rr.run_dir)
+            pipeline_kwargs = dict(
+                dois=dois,
+                run_root=run_root,
+                scripts_root=scripts_root,
+                run_id=custom_run_id,
+                run_extract_figures=run_extract_figures,
+                run_extract_tables=run_extract_tables,
+                run_filter_figures=run_filter_figures,
+                run_filter_tables=run_filter_tables,
+                run_plextract=run_plextract and not bypass_ocr_with_llm,
+                run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
+                run_complete_dataset=run_complete_dataset,
+                skip_llm_figures=not bypass_ocr_with_llm,
+                run_chemical_composition=run_chemical_composition,
+                exclude_full_text=exclude_full_text,
+                custom_instructions=_run_ci,
+            )
+            st.session_state[_ACTIVE_PIPELINE_RUN_KEY] = _start_pipeline_worker(
+                pipeline_kwargs,
+                dois,
+            )
+            _rerun_app()
 
 rr: RunResult | None = st.session_state.get("rr")
 if not rr:
@@ -2781,18 +3118,36 @@ if doi_item is None:
     st.error(f"Could not find DOI '{selected_doi}' in the loaded run. The data may have changed since this session was saved.")
     st.stop()
 
-# ---------------- Tabs (under DOI dropdown) ----------------
-tab_text, tab_tables, tab_figs, tab_chem, tab_xy = st.tabs(
-    ["Parsed text", "Tables", "Figures", "Chemical Composition", "Dataset"]
-)
+# ---------------- DOI detail view (under DOI dropdown) ----------------
+_doi_view_options = ["Parsed text", "Tables", "Figures", "Chemical Composition", "Dataset"]
+_doi_view_key = "selected_doi_detail_view"
+if st.session_state.get(_doi_view_key) not in _doi_view_options:
+    st.session_state[_doi_view_key] = _doi_view_options[0]
 
-with tab_text:
+if hasattr(st, "segmented_control"):
+    selected_doi_view = st.segmented_control(
+        "View",
+        options=_doi_view_options,
+        key=_doi_view_key,
+        label_visibility="collapsed",
+    )
+else:
+    selected_doi_view = st.radio(
+        "View",
+        options=_doi_view_options,
+        key=_doi_view_key,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+selected_doi_view = selected_doi_view or st.session_state[_doi_view_key]
+
+if selected_doi_view == "Parsed text":
     if doi_item.parsed_json_path and doi_item.parsed_json_path.exists():
         st.json(json.loads(doi_item.parsed_json_path.read_text()))
     else:
         st.warning("No parsed.json found for this DOI in the run workspace.")
 
-with tab_tables:
+if selected_doi_view == "Tables":
     if not doi_item.tables:
         st.warning("No tables found.")
     for idx, t in enumerate(doi_item.tables):
@@ -2844,7 +3199,7 @@ with tab_tables:
             with st.expander("Metadata", expanded=False):
                 st.json(json.loads(t.metadata_path.read_text()))
 
-with tab_figs:
+if selected_doi_view == "Figures":
     # When the loaded run changes, clear any cached axis-config widget values from the
     # previous run so the new run's override files (titles, calibration) are displayed.
     _ax_run_dir_key = "_axis_cfg_last_run_dir"
@@ -3017,6 +3372,22 @@ with tab_figs:
         intervene_button = "Load Interventions" if st.session_state[_show_interventions_key] else "Load Interventions"
         if st.button(intervene_button, type="primary", key=f"er_intervene_toggle_{_safe_doi_er}_{_fig_id_er}"):
             st.session_state[_show_interventions_key] = not st.session_state[_show_interventions_key]
+            if st.session_state[_show_interventions_key]:
+                _intervention_prefixes = (
+                    f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}",
+                    f"er_{_safe_doi_er}_{_fig_id_er}_series_canvas_boot",
+                )
+                for _k in list(st.session_state.keys()):
+                    if _k in _intervention_prefixes or (
+                        _k.startswith(f"er_{_safe_doi_er}_") and _k.endswith("_ax_calib_boot")
+                    ) or _k.startswith(f"er_canvas_mounted_{_safe_doi_er}_{_fig_id_er}_") or (
+                        _k.startswith(f"er_{_safe_doi_er}_")
+                        and (
+                            "_ax_calib_mounted_" in _k
+                            or "_series_canvas_mounted_" in _k
+                        )
+                    ):
+                        st.session_state.pop(_k, None)
             st.rerun()
 
         if st.session_state[_show_interventions_key]:
@@ -3031,10 +3402,7 @@ with tab_figs:
                 _cv_boot_key = f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}"
                 if _cv_ver_key not in st.session_state:
                     st.session_state[_cv_ver_key] = 0
-                _crop_start_expanded = _cv_boot_key not in st.session_state
-                _crop_start_expanded = False ## HERE
-                if _crop_start_expanded:
-                    st.session_state[_cv_boot_key] = True  # mark as initialised
+                _crop_start_expanded = True
                 with st.expander("Crop Figure", expanded=_crop_start_expanded):
                     if not _is_valid_image_path(_source_img_er):
                         st.warning("No source image found for this figure.")
@@ -3050,11 +3418,17 @@ with tab_figs:
                             _width_key_er = f"er_crop_view_w_{_safe_doi_er}_{_fig_id_er}"
                             if _width_key_er not in st.session_state:
                                 st.session_state[_width_key_er] = min(1100, _orig_w_er)
+                            _slider_min_er = min(400, max(1, _orig_w_er))
+                            _slider_max_er = max(_slider_min_er, 1800)
+                            st.session_state[_width_key_er] = max(
+                                _slider_min_er,
+                                min(_slider_max_er, int(st.session_state[_width_key_er])),
+                            )
 
                             _disp_w_target_er = st.slider(
                                 "Crop view width (px)",
-                                min_value=400,
-                                max_value=1800,
+                                min_value=_slider_min_er,
+                                max_value=_slider_max_er,
                                 value=int(st.session_state[_width_key_er]),
                                 step=50,
                                 key=_width_key_er,
@@ -3065,6 +3439,10 @@ with tab_figs:
                             _orig_w_er, _orig_h_er, _disp_w_er, _disp_h_er, _bg_img_er = load_and_resize_rgba(
                                 str(_source_img_er),
                                 int(_disp_w_target_er),
+                            )
+                            ensure_canvas_remount(
+                                boot_key=_cv_boot_key,
+                                version_key=_cv_ver_key,
                             )
 
                             _draw_mode_er = st.radio(
@@ -3110,9 +3488,16 @@ with tab_figs:
                                 width=_disp_w_er,
                                 stroke_width=3,
                                 stroke_color="#ff0000",
-                            fill_color="rgba(255, 0, 0, 0.20)",
-                            key=_canvas_key_er,
-                        )
+                                fill_color="rgba(255, 0, 0, 0.20)",
+                                key=_canvas_key_er,
+                            )
+                            ensure_canvas_post_mount_remount(
+                                mount_key=(
+                                    f"er_canvas_mounted_{_safe_doi_er}_{_fig_id_er}_"
+                                    f"{Path(_source_img_er).name}_{_disp_w_er}x{_disp_h_er}"
+                                ),
+                                version_key=_cv_ver_key,
+                            )
 
                         # ---- Extract rectangles from canvas JSON ----
                         def _rect_to_bbox_canvas(obj: dict):
@@ -3658,7 +4043,6 @@ with tab_figs:
                         st.session_state[_subfig_show_int_key] = False
                     if st.button("Load Interventions", type="primary", key=f"subfig_intervene_toggle_{safe_doi}_{subfig_dir.name}"):
                         st.session_state[_subfig_show_int_key] = not st.session_state[_subfig_show_int_key]
-                        st.rerun()
 
                     if st.session_state[_subfig_show_int_key]:
                         render_axis_configuration_dropdown(
@@ -3809,7 +4193,7 @@ with tab_figs:
                     if subfig_dir != subfig_dirs[-1]:
                         st.markdown("---")
 
-with tab_xy:
+if selected_doi_view == "Dataset":
     st.subheader("Completed dataset")
 
     # Collect all emit_rows from row_cache (reactive to changes)
@@ -3847,7 +4231,7 @@ with tab_xy:
             except Exception as e:
                 st.warning(f"Failed to load legacy dataset CSV: {e}")
 
-with tab_chem:
+if selected_doi_view == "Chemical Composition":
     st.subheader("Chemical Composition")
 
     # --- Add src/ to path for chemical_composition imports ---

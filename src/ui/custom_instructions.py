@@ -28,26 +28,28 @@ that contains labels such as "Before" / "After", "30°C" / "80°C", \
 final column headers."""
 
 DEFAULT_FIGURE_FILTER_CRITERIA = """\
-A figure qualifies ONLY if ALL of the following are true:
-- It shows conductivity / ionic conductivity / hydroxide conductivity \
-OR alkaline stability / retention.
-- The x-axis (or time dimension) is clearly time \
-(e.g. s, min, h, hr, day, d, time).
-- It is not just before/after comparisons, spectra (e.g. FTIR, NMR, XRD), \
-SEM/TEM images, photographs, IEC-dependence, RH-dependence, \
-temperature-dependence, or other non-time axes."""
+A figure qualifies if ANY of the following are true:
+- It shows ionic/hydroxide/alkaline conductivity versus time OR ionic/hydroxide/alkaline/ conductivity retention versus time
+- It shows IEC versus time OR IEC retention versus time
+- It shows water uptake, swelling, IEC, or conductivity as a function of temperature
+- It shows water uptake, swelling, IEC, or conductivity as a function of inverse temperature
+- It shows an Arrhenius relationship
+"""
+
+
 
 DEFAULT_TABLE_FILTER_CRITERIA = """\
-Return "YES" if:
-(a) the quantity is conductivity / ionic conductivity / hydroxide conductivity \
-or alkaline/chemical stability/retention, AND
-(b) the table contains a clear time dimension \
-(e.g. time, h, hr, hours, days, d, etc.).
-Return "NO" otherwise."""
+Return "YES" if the table  contains data related to:
+(a) ionic/hydroxide/alkaline conductivity versus time OR ionic/hydroxide/alkaline/ conductivity retention versus time
+(b) water uptake
+(c) swelling ratio
+(d) ion exchange capacity
+(e) mechanical properties
+Return "NO" otherwise."
+"""
 
 DEFAULT_DATA_PROCESSING_RULES = """\
-- Measurements taken before or at the beginning of stability tests \
-MUST have time(h) = 0"""
+- Measurements taken before or at the beginning of stability tests MUST have time(h) = 0"""
 
 DEFAULT_OUTPUT_COLUMNS = [
     "Sample Name",
@@ -65,12 +67,14 @@ DEFAULT_OUTPUT_COLUMNS = [
 ]
 
 DEFAULT_MISSING_VALUE_DEFAULTS = {
-    "prop test temp (C)": "25 Not Found",
-    "degradation test temp (C)": "None Not Found",
+    "Sample Name": "None Not Found",
     "time(h)": "0 Not Found",
     "relative humidity(%)": "100 Not Found",
     "solvent type": "None Not Found",
     "solvent molarity (M)": "None Not Found",
+    "degradation test temp (C)": "None Not Found",
+    "prop test temp (C)": "25 Not Found",
+    "property": "None Not Found"
 }
 
 

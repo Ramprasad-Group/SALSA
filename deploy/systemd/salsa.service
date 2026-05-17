@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=wschertzer
+User=wschertzer3
 Group=nogroup
-WorkingDirectory=/data/appls/machine_learning/SALSA
-EnvironmentFile=/data/appls/machine_learning/SALSA/.env.production
+WorkingDirectory=/home/wschertzer3/SALSA
+EnvironmentFile=/home/wschertzer3/SALSA/.env.production
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/bin/bash -lc 'source /home/wschertzer/miniconda3/etc/profile.d/conda.sh && conda activate SALSA && exec python -m streamlit run src/ui/streamlit_app.py --server.address ${STREAMLIT_SERVER_ADDRESS:-127.0.0.1} --server.port ${STREAMLIT_SERVER_PORT:-8501}'
+ExecStart=/bin/bash -lc 'source /home/wschertzer3/miniconda3/etc/profile.d/conda.sh && conda activate SALSA && exec python -m streamlit run src/ui/streamlit_app.py --server.address ${STREAMLIT_SERVER_ADDRESS:-127.0.0.1} --server.port ${STREAMLIT_SERVER_PORT:-8601}'
 Restart=always
 RestartSec=5
 
