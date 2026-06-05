@@ -117,24 +117,6 @@ SALSA's main workflow is orchestrated by the Streamlit UI:
 - OCR and LLM reruns
 - Cost and usage summaries
 
-## LLM Configuration
-
-SALSA uses LLMs for figure/table filtering, chemical composition extraction, table extraction, figure extraction, and final dataset completion. The UI can set model choices for interactive runs. Scripted or deployed runs can use environment variables:
-
-| Variable | Description | Example |
-|---|---|---|
-| `SALSA_LLM_PROVIDER` | General LLM provider: `ollama` or `openai` | `openai` |
-| `SALSA_LLM_MODEL` | General LLM model | `gpt-4o-mini` |
-| `OPENAI_API_KEY` | OpenAI API key, when using OpenAI | `sk-...` |
-| `OPENAI_BASE_URL` | Optional OpenAI-compatible API base URL | `https://api.openai.com/v1` |
-| `OLLAMA_HOST` | Ollama endpoint, when using Ollama | `http://127.0.0.1:11434` |
-| `SALSA_OLLAMA_NUM_CTX` | Optional shared Ollama context window | `16384` |
-| `SALSA_PROCESSING_LLM_PROVIDER` | Optional provider for dataset and chemistry processing | `openai` |
-| `SALSA_PROCESSING_LLM_MODEL` | Optional separate processing model | `gpt-4o` |
-| `SALSA_PROCESSING_OPENAI_API_KEY` | Optional OpenAI key override for processing runs | `sk-...` |
-| `SALSA_PROCESSING_OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override | `https://api.openai.com/v1` |
-| `SALSA_PROCESSING_OLLAMA_NUM_CTX` | Optional Ollama context window override | `32768` |
-
 ## Project Structure
 
 ```text
@@ -164,17 +146,6 @@ SALSA/
 └── README.md
 ```
 
-## Main Entry Points
-
-| Command | Description |
-|---|---|
-| `make setup` | Create or update the `SALSA` conda environment and install runtime/model dependencies |
-| `make ui` | Launch the Streamlit UI inside the `SALSA` conda environment |
-| `streamlit run src/ui/streamlit_app.py` | Launch the UI manually from an activated environment |
-| `python src/extract_figure_data/plextract.py --help` | Inspect standalone chart digitization options |
-| `python src/complete_dataset/complete_dataset.py --help` | Inspect standalone dataset completion options |
-| `python src/paper-downloader/paper_downloader/download_records_multiple_dois_webofscience.py --help` | Inspect DOI/record acquisition options |
-
 ## Deployment
 
 Remote hosting templates are available in [`deploy/`](./deploy/):
@@ -183,28 +154,6 @@ Remote hosting templates are available in [`deploy/`](./deploy/):
 - [`deploy/systemd/salsa.service`](./deploy/systemd/salsa.service)
 - [`deploy/nginx/salsa.conf`](./deploy/nginx/salsa.conf)
 - [`deploy/env/salsa.env.example`](./deploy/env/salsa.env.example)
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `CHARTDETE_DEVICE` | auto | ChartDete device, for example `cuda:0` or `cpu` |
-| `LINEFORMER_DEVICE` | auto | LineFormer device, for example `cuda:0` or `cpu` |
-| `CHARTDETE_HF_DIR` | `./huggingface` | ChartDete config/checkpoint directory |
-| `LINEFORMER_HF_DIR` | `./huggingface` | LineFormer config/checkpoint directory |
-| `CHARTDETE_CONF_THR` | `0.9` | ChartDete confidence threshold for crops |
-| `SALSA_LLM_PROVIDER` | `ollama` | General LLM provider |
-| `SALSA_LLM_MODEL` | required | General LLM model |
-| `SALSA_PROCESSING_LLM_PROVIDER` | general provider | Optional provider override for dataset/composition processing |
-| `SALSA_PROCESSING_LLM_MODEL` | general model | Optional model override for dataset/composition processing |
-| `SALSA_PROCESSING_OPENAI_API_KEY` | `OPENAI_API_KEY` | Optional OpenAI key override for processing runs |
-| `SALSA_PROCESSING_OPENAI_BASE_URL` | `OPENAI_BASE_URL` | Optional OpenAI-compatible base URL override |
-| `SALSA_CUSTOM_INSTRUCTIONS` | unset | Path to custom instruction JSON for a run |
-| `SALSA_RUN_DIR` | run workspace | Directory used for run-scoped outputs and cost logs |
-| `SALSA_RUN_ID` | generated | Run identifier used in UI/pipeline outputs |
-| `SALSA_JSME_BIND_HOST` | `127.0.0.1` | Host for the optional JSME helper service |
-| `SALSA_JSME_PORT` | `8765` | Port for the optional JSME helper service |
-| `SALSA_JSME_PUBLIC_URL` | unset | Browser-reachable JSME URL for remote deployments |
 
 ## Acknowledgements
 
