@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -12,6 +13,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from discover import discover_run
+from docling_pdf import PdfUpload, extract_uploaded_pdfs_with_docling
+from run_progress import RUN_STATUS_FILE_ENV, RUN_STATUS_FILE_NAME, write_run_status
+from uploaded_figures import FigureUpload, stage_uploaded_figures
 from llm_step_config import (
     GENERAL_LLM_ENV_VARS,
     LLM_STEP_COMPLETE_DATASET,
@@ -24,6 +28,10 @@ from llm_step_config import (
 from schemas import RunResult
 
 StatusCallback = Callable[[str, Optional[str]], None]
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+DEFAULT_INPUT_ITEM_LIMIT = 50
+ADMIN_INPUT_ITEM_LIMIT = 100
+MAX_INPUT_ITEMS = DEFAULT_INPUT_ITEM_LIMIT
 
 
 class PipelineCancelled(Exception):
@@ -81,6 +89,26 @@ def _doi_scope(dois: list[str]) -> str:
     return f"{len(clean)} DOIs"
 
 
+def _validate_input_item_limit(input_count: int, input_item_limit: int | None = None) -> int:
+    limit = int(input_item_limit or MAX_INPUT_ITEMS)
+    if input_count > limit:
+        raise ValueError(
+            f"SALSA accepts at most {limit} DOIs, PDFs, or figure images per run."
+        )
+    return limit
+
+
+def _safe_run_dir(run_root: Path, run_id: str) -> Path:
+    run_id = (run_id or "").strip()
+    if not _RUN_ID_RE.match(run_id):
+        raise ValueError("Run name may only contain letters, numbers, underscores, dots, or dashes.")
+    root = Path(run_root).resolve()
+    run_dir = (root / run_id).resolve()
+    if run_dir != root and root not in run_dir.parents:
+        raise ValueError(f"Run directory escapes workspace root: {run_dir}")
+    return run_dir
+
+
 def _report_status(
     status_callback: Optional[StatusCallback],
     stage: str,
@@ -88,8 +116,25 @@ def _report_status(
     cancel_event: Any = None,
 ) -> None:
     _raise_if_cancelled(cancel_event)
+    write_run_status(state="running", stage=stage, doi=doi)
     if status_callback is not None:
         status_callback(stage, doi)
+
+
+def _progress_env(
+    *,
+    scripts_root: Path,
+    stage: str,
+    env: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    out = (env or os.environ.copy()).copy()
+    out["SALSA_CURRENT_STAGE"] = stage
+    src_path = str(scripts_root.resolve())
+    existing = out.get("PYTHONPATH", "")
+    parts = [p for p in existing.split(os.pathsep) if p]
+    if src_path not in parts:
+        out["PYTHONPATH"] = os.pathsep.join([src_path] + parts)
+    return out
 
 
 def _clear_general_llm_env(env: Dict[str, str]) -> None:
@@ -225,6 +270,10 @@ def run_full_pipeline(
     run_chemical_composition: bool = False,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
+    uploaded_pdfs: list[dict[str, Any]] | None = None,
+    uploaded_figures: list[dict[str, Any]] | None = None,
+    uploaded_figure_document_id: str | None = None,
+    input_item_limit: int = MAX_INPUT_ITEMS,
     status_callback: Optional[StatusCallback] = None,
     cancel_event: Any = None,
 ) -> RunResult:
@@ -244,9 +293,37 @@ def run_full_pipeline(
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     else:
         run_id = run_id.strip()
-    run_dir = (run_root / run_id).resolve()
-    doi_scope = _doi_scope(dois)
-    _report_status(status_callback, "Preparing run workspace", doi_scope, cancel_event)
+    run_dir = _safe_run_dir(run_root, run_id)
+    pdf_uploads = [
+        PdfUpload(
+            filename=str(item.get("filename") or "uploaded.pdf"),
+            content=item.get("content") or b"",
+            document_id=item.get("document_id"),
+        )
+        for item in (uploaded_pdfs or [])
+        if item.get("content")
+    ]
+    figure_uploads = [
+        FigureUpload(
+            filename=str(item.get("filename") or "uploaded_figure.png"),
+            content=item.get("content") or b"",
+            caption=str(item.get("caption") or ""),
+        )
+        for item in (uploaded_figures or [])
+        if item.get("content")
+    ]
+    input_count = (
+        len(pdf_uploads)
+        or len(figure_uploads)
+        or len([doi for doi in (dois or []) if str(doi).strip()])
+    )
+    input_item_limit = _validate_input_item_limit(input_count, input_item_limit)
+    if dois:
+        doi_scope = _doi_scope(dois)
+    elif pdf_uploads:
+        doi_scope = f"{len(pdf_uploads)} uploaded PDF" + ("" if len(pdf_uploads) == 1 else "s")
+    else:
+        doi_scope = f"{len(figure_uploads)} uploaded figure" + ("" if len(figure_uploads) == 1 else "s")
 
     if run_dir.exists():
         raise FileExistsError(
@@ -260,6 +337,8 @@ def run_full_pipeline(
     import os
     os.environ["SALSA_RUN_DIR"] = str(run_dir)
     os.environ["SALSA_RUN_ID"] = run_id
+    os.environ[RUN_STATUS_FILE_ENV] = str(run_dir / RUN_STATUS_FILE_NAME)
+    _report_status(status_callback, "Preparing run workspace", doi_scope, cancel_event)
 
     # --- Reference workspace-level custom instructions ---
     # Instructions are saved in workspace/custom_instructions/default.json
@@ -290,9 +369,31 @@ def run_full_pipeline(
     for d in [records_dir, papers_dir, reparsed_dir, figures_tables_dir, plextract_workdir, llm_figure_workdir, complete_dataset_dir]:
         d.mkdir(parents=True, exist_ok=True)
 
-    # --- 0) write a minimal DOI CSV for records downloader ---
+    # --- 0) write a minimal DOI CSV for records downloader / downstream stages ---
     # download_records script default expects column name "DOI"
     doi_csv = records_dir / "input_dois.csv"
+    if pdf_uploads:
+        _report_status(status_callback, "Extracting uploaded PDFs with Docling", doi_scope, cancel_event)
+        docling_result = extract_uploaded_pdfs_with_docling(
+            pdf_uploads,
+            run_dir=run_dir,
+            run_extract_tables=run_extract_tables,
+            run_extract_figures=run_extract_figures,
+            status_callback=status_callback,
+            cancel_event=cancel_event,
+        )
+        dois = docling_result.dois
+        doi_scope = _doi_scope(dois)
+    elif figure_uploads:
+        _report_status(status_callback, "Staging uploaded figures", doi_scope, cancel_event)
+        figure_result = stage_uploaded_figures(
+            figure_uploads,
+            run_dir=run_dir,
+            document_id=uploaded_figure_document_id,
+        )
+        dois = figure_result.dois
+        doi_scope = _doi_scope(dois)
+
     with open(doi_csv, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["DOI"])
@@ -309,67 +410,70 @@ def run_full_pipeline(
     p_plextract        = scripts_root / "extract_figure_data" / "plextract.py"
     p_complete_dataset = scripts_root / "complete_dataset" / "complete_dataset.py"
 
-    # --- 1) download_records_multiple_dois_webofscience.py ---
-    # writes download_results_*.csv into --log_file directory.
-    _report_status(status_callback, "Downloading DOI records", doi_scope, cancel_event)
-    _run([
-        sys.executable, str(p_download_records),
-        "--file_path", str(doi_csv),
-        "--doi_column", "DOI",
-        "--no_db",
-        "--log_file", str(records_dir),
-        "--output_dir", str(records_dir),
-    ], cancel_event=cancel_event)
-
-    results_csv = _latest_matching_csv(records_dir, "download_results_*.csv")
-
-    # --- 2) download_papers.py (no_db) ---
-    # Writes structured_files under --download_dir/structured_files
-    _report_status(status_callback, "Downloading papers", doi_scope, cancel_event)
-    _run([
-        sys.executable, str(p_download_papers),
-        "--no_db",
-        "--input_csv", str(results_csv),
-        "--download_dir", str(papers_dir),
-        "--log_file", str(papers_dir / "logs"),
-        "--sample_size", "None",
-    ], cancel_event=cancel_event)
-
     structured_root = papers_dir / "structured_files"
-
-    # --- 3) reparse_filtered_dois.py ---
-    # Produces reparsed/index.csv and per-doi parsed.json
-    _report_status(status_callback, "Re-parsing downloaded papers", doi_scope, cancel_event)
-    _run([
-        sys.executable, str(p_reparse),
-        "--csv_path", str(results_csv),
-        "--structured_root", str(structured_root),
-        "--output_dir", str(reparsed_dir),
-        "--doi_column", "doi",   # output from download_records is lower 'doi'
-    ], cancel_event=cancel_event)
-
     index_csv = reparsed_dir / "index.csv"
+    if not (pdf_uploads or figure_uploads):
+        # --- 1) download_records_multiple_dois_webofscience.py ---
+        # writes download_results_*.csv into --log_file directory.
+        _report_status(status_callback, "Downloading DOI records", doi_scope, cancel_event)
+        _run([
+            sys.executable, str(p_download_records),
+            "--file_path", str(doi_csv),
+            "--doi_column", "DOI",
+            "--no_db",
+            "--log_file", str(records_dir),
+            "--output_dir", str(records_dir),
+        ], env=_progress_env(scripts_root=scripts_root, stage="Downloading DOI records"), cancel_event=cancel_event)
 
-    # --- 4) extract_figures_tables_llm.py (extraction only, no filtering yet) ---
-    cmd_extract = [
-        sys.executable, str(p_extract_ft),
-        "--no_db",
-        "--csv_path", str(index_csv),
-        "--structured_files_dir", str(structured_root),
-        "--output_dir", str(figures_tables_dir),
-    ]
-    if run_extract_figures:
-        cmd_extract.append("--extract_figures")
-    if run_extract_tables:
-        cmd_extract.append("--extract_tables")
-    _report_status(status_callback, "Extracting figures and tables", doi_scope, cancel_event)
-    _run(
-        cmd_extract,
-        env=_subprocess_env_for_llm_step(LLM_STEP_EXTRACT_TABLES)
-        if run_extract_tables
-        else None,
-        cancel_event=cancel_event,
-    )
+        results_csv = _latest_matching_csv(records_dir, "download_results_*.csv")
+
+        # --- 2) download_papers.py (no_db) ---
+        # Writes structured_files under --download_dir/structured_files
+        _report_status(status_callback, "Downloading papers", doi_scope, cancel_event)
+        _run([
+            sys.executable, str(p_download_papers),
+            "--no_db",
+            "--input_csv", str(results_csv),
+            "--download_dir", str(papers_dir),
+            "--log_file", str(papers_dir / "logs"),
+            "--sample_size", "None",
+        ], env=_progress_env(scripts_root=scripts_root, stage="Downloading papers"), cancel_event=cancel_event)
+
+        # --- 3) reparse_filtered_dois.py ---
+        # Produces reparsed/index.csv and per-doi parsed.json
+        _report_status(status_callback, "Re-parsing downloaded papers", doi_scope, cancel_event)
+        _run([
+            sys.executable, str(p_reparse),
+            "--csv_path", str(results_csv),
+            "--structured_root", str(structured_root),
+            "--output_dir", str(reparsed_dir),
+            "--doi_column", "doi",   # output from download_records is lower 'doi'
+        ], env=_progress_env(scripts_root=scripts_root, stage="Re-parsing downloaded papers"), cancel_event=cancel_event)
+
+        # --- 4) extract_figures_tables_llm.py (extraction only, no filtering yet) ---
+        cmd_extract = [
+            sys.executable, str(p_extract_ft),
+            "--no_db",
+            "--csv_path", str(index_csv),
+            "--structured_files_dir", str(structured_root),
+            "--output_dir", str(figures_tables_dir),
+        ]
+        if run_extract_figures:
+            cmd_extract.append("--extract_figures")
+        if run_extract_tables:
+            cmd_extract.append("--extract_tables")
+        _report_status(status_callback, "Extracting figures and tables", doi_scope, cancel_event)
+        _run(
+            cmd_extract,
+            env=_progress_env(
+                scripts_root=scripts_root,
+                stage="Extracting figures and tables",
+                env=_subprocess_env_for_llm_step(LLM_STEP_EXTRACT_TABLES)
+                if run_extract_tables
+                else None,
+            ),
+            cancel_event=cancel_event,
+        )
 
     # --- 5) chemical composition extraction (before filtering) ---
     # Run chemical composition extraction on unfiltered figures/tables so that
@@ -434,7 +538,11 @@ def run_full_pipeline(
                 "--output_dir", str(figures_tables_dir),
                 "--filter_figures",
             ],
-            env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_FIGURES),
+            env=_progress_env(
+                scripts_root=scripts_root,
+                stage="Filtering figures",
+                env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_FIGURES),
+            ),
             cancel_event=cancel_event,
         )
     if run_filter_tables:
@@ -448,7 +556,11 @@ def run_full_pipeline(
                 "--output_dir", str(figures_tables_dir),
                 "--filter_tables",
             ],
-            env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_TABLES),
+            env=_progress_env(
+                scripts_root=scripts_root,
+                stage="Filtering tables",
+                env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_TABLES),
+            ),
             cancel_event=cancel_event,
         )
 
@@ -465,7 +577,7 @@ def run_full_pipeline(
                 sys.executable, str(p_plextract),
                 "--input", str(_figures_dir),
                 "--workdir", str(plextract_workdir),
-            ], cancel_event=cancel_event)
+            ], env=_progress_env(scripts_root=scripts_root, stage="Extracting figure data with OCR"), cancel_event=cancel_event)
 
     if run_plextract and _figures_dir.exists() and any(_figures_dir.iterdir()):
         plextract_results_root = _plextract_results_root(plextract_workdir)
@@ -523,7 +635,15 @@ def run_full_pipeline(
         if ci_path and ci_path.exists():
             cmd += ["--custom_instructions", str(ci_path)]
 
-        _run(cmd, env=_subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET), cancel_event=cancel_event)
+        _run(
+            cmd,
+            env=_progress_env(
+                scripts_root=scripts_root,
+                stage="Completing dataset rows",
+                env=_subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET),
+            ),
+            cancel_event=cancel_event,
+        )
 
     # --- discover everything for UI ---
     _report_status(status_callback, "Loading run results", doi_scope, cancel_event)

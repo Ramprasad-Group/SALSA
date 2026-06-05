@@ -27,9 +27,9 @@ _PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, _PAPER_DL)
 
-from llm_client import get_llm_client
 from ui.openai_cost import append_usage, run_id_from_env
 from ui.custom_instructions import load_instructions_from_env_or_path
+from ui.run_progress import write_current_doi
 
 from paper_downloader import config
 from backend import sett, postgres
@@ -43,11 +43,18 @@ from parsers.springer_extractor import extract_springer_figures, extract_springe
 from parsers.rsc_extractor import extract_rsc_figures, extract_rsc_tables
 from parsers.nature_extractor import extract_nature_figures, extract_nature_tables
 
-
-client = get_llm_client()
-
 # --- Load custom instructions (set via SALSA_CUSTOM_INSTRUCTIONS env var) ---
 _custom_instructions = load_instructions_from_env_or_path()
+_filter_client = None
+
+
+def _get_filter_client():
+    """Create the LLM client only for filter stages that actually need it."""
+    global _filter_client
+    if _filter_client is None:
+        from llm_client import get_llm_client
+        _filter_client = get_llm_client(force_new=True)
+    return _filter_client
 
 
 def setup_logging(log_level='INFO', log_file=None):
@@ -506,6 +513,7 @@ def figure_test(meta: dict, use_image: bool = True) -> bool:
             print(f"[vision] Error encoding image {image_path}: {e}")
 
     try:
+        client = _get_filter_client()
         text, meta = client.chat(
             messages=[
                 {
@@ -533,8 +541,8 @@ def figure_test(meta: dict, use_image: bool = True) -> bool:
         result = text.strip().upper()
         return result.startswith("YES")
     except Exception as e:
-        print(f"[error filtering figure]: {e}")
-        return False
+        logging.getLogger('extraction').warning(f"[error filtering figure; keeping figure]: {e}")
+        return True
 
 def table_test(meta: dict) -> bool:
     """
@@ -579,6 +587,7 @@ def table_test(meta: dict) -> bool:
         """.strip()
 
     try:
+        client = _get_filter_client()
         text, meta = client.chat(
             messages=[
                 {
@@ -605,17 +614,20 @@ def table_test(meta: dict) -> bool:
         result = text.strip().upper()
         return result.startswith("YES")
     except Exception as e:
-        print(f"[error filtering table]: {e}")
-        return False
+        logging.getLogger('extraction').warning(f"[error filtering table; keeping table]: {e}")
+        return True
 
 def filter_figures(output_dir: str):
     """
     Scan output_dir for figure metadata JSON files and delete figures
     that are not conductivity vs. time plots.
     """
+    logger = logging.getLogger('extraction')
     fig_dir = os.path.join(output_dir, "figures")
     json_files = glob.glob(os.path.join(fig_dir, "**", "*_metadata.json"), recursive=True)
-    print(f"Found {len(json_files)} figure metadata files in directory: {fig_dir}")
+    msg = f"Found {len(json_files)} figure metadata files in directory: {fig_dir}"
+    print(msg)
+    logger.info(msg)
 
     kept, removed = 0, 0
 
@@ -623,33 +635,45 @@ def filter_figures(output_dir: str):
         try:
             with open(meta_path, "r") as f:
                 meta = json.load(f)
+            doi = str(meta.get("doi") or Path(meta_path).parent.name.replace("@", "/"))
+            write_current_doi(doi, stage="Filtering figures")
             
-            image_path = meta.get("figure_file_path")
-
             if figure_test(meta):
                 kept += 1
             else:
                 removed += 1
+                image_path = meta.get("figure_file_path")
                 if image_path and os.path.exists(image_path):
                     os.remove(image_path)
                 # check for formerly .gif files
-                if '.gif' in image_path:
-                    os.remove(image_path.replace('gif', 'jpg'))
+                if image_path and '.gif' in image_path:
+                    jpg_path = image_path.replace('gif', 'jpg')
+                    if os.path.exists(jpg_path):
+                        os.remove(jpg_path)
                 
                 os.remove(meta_path)
         except Exception as e:
-            print(f"Error processing {meta_path}: {e}")
+            logger.warning(f"Error processing {meta_path}: {e}")
 
-    print(f"Kept {kept} relevant figures, removed {removed} irrelevant ones.")
+    msg = f"Kept {kept} relevant figures, removed {removed} irrelevant ones."
+    print(msg)
+    logger.info(msg)
 
 def filter_tables(output_dir: str):
     """
     Scan output_dir for figure metadata JSON files and delete figures
     that are not conductivity vs. time plots.
     """
+    logger = logging.getLogger('extraction')
     table_dir = os.path.join(output_dir, "tables")
     json_files = glob.glob(os.path.join(table_dir, "**", "*_metadata.json"), recursive=True)
-    print(f"Found {len(json_files)} table metadata files in directory: {table_dir}")
+    run_dir = Path(output_dir).parent
+    docling_table_dir = run_dir / "docling"
+    if docling_table_dir.exists():
+        json_files.extend(glob.glob(str(docling_table_dir / "**" / "tables" / "*_metadata.json"), recursive=True))
+    msg = f"Found {len(json_files)} table metadata files in directory: {table_dir}"
+    print(msg)
+    logger.info(msg)
 
     kept, removed = 0, 0
 
@@ -657,6 +681,8 @@ def filter_tables(output_dir: str):
         try:
             with open(meta_path, "r") as f:
                 meta = json.load(f)
+            doi = str(meta.get("doi") or Path(meta_path).parent.name.replace("@", "/"))
+            write_current_doi(doi, stage="Filtering tables")
             
             image_path = meta.get("table_file_path")
 
@@ -669,9 +695,11 @@ def filter_tables(output_dir: str):
                     os.remove(image_path)
                 os.remove(meta_path)
         except Exception as e:
-            print(f"Error processing {meta_path}: {e}")
+            logger.warning(f"Error processing {meta_path}: {e}")
 
-    print(f"Kept {kept} relevant tables, removed {removed} irrelevant ones.")
+    msg = f"Kept {kept} relevant tables, removed {removed} irrelevant ones."
+    print(msg)
+    logger.info(msg)
 
 def _log_cost(response, extra: dict):
         """
@@ -720,6 +748,15 @@ def main():
     if args.debug_publishers:
         logger.info("Running in debug mode - testing publisher extraction")
         debug_publisher_extraction(args.output_dir, llm_extractor, extract_figures, extract_tables)
+        return
+
+    if (args.filter_figures or args.filter_tables) and not (extract_figures or extract_tables):
+        if args.filter_figures:
+            logger.info("Filtering figures for conductivity vs. time relevance...")
+            filter_figures(args.output_dir)
+        if args.filter_tables:
+            logger.info("Filtering tables for conductivity vs. time relevance...")
+            filter_tables(args.output_dir)
         return
     
     if not args.no_db:
@@ -786,6 +823,7 @@ def main():
     
     for _, row in tqdm(papers_df.iterrows(), total=len(papers_df), desc="Processing papers"):
         doi = row['doi']
+        write_current_doi(str(doi))
         directory_db = row['directory']
         doctype = row['doctype']
         

@@ -30,9 +30,12 @@ import pandas as pd
 
 # Local project imports (no DB modules!)
 _PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, _PAPER_DL)
 import paper_downloader.LimeSoup as LimeSoup
 from paper_downloader import utils, config
+from ui.run_progress import write_current_doi
 
 
 # ---------------------------
@@ -144,6 +147,7 @@ def main():
 
     for doi in tqdm(dois, desc="Re-parsing DOIs"):
         doi = doi.strip()
+        write_current_doi(doi)
         logger.warning(f"Processing DOI: {doi}")
 
         try:

@@ -29,8 +29,14 @@ import shutil
 import datetime
 import argparse
 import logging
+import sys
 from typing import List
 from pathlib import Path
+
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _SRC_ROOT not in sys.path:
+    sys.path.insert(0, _SRC_ROOT)
+from ui.run_progress import write_current_doi
 
 # Local imports
 from match_legend import legend_descriptors_from_json, series_descriptors, build_cost_matrix_with_fallback, hungarian_match
@@ -521,6 +527,7 @@ if __name__ == "__main__":
 
     # exdtract data from figures for each doi
     for subdir in subdirs:
+        write_current_doi(os.path.basename(subdir).replace("@", "/"))
         print(f"=====RUN PIPELINE FOR {subdir}=====")
         run_pipeline(input_dir=subdir, workdir=args.workdir, run_id=run_id, skip_lineformer=args.skip_lineformer)
 

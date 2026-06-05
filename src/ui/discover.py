@@ -218,6 +218,8 @@ def discover_run(run_dir: Path) -> RunResult:
             if tab_dir.exists():
                 for tfile in sorted([p for p in tab_dir.iterdir() if p.is_file() and not p.name.endswith("_metadata.json")]):
                     meta_path = tfile.with_name(tfile.stem + "_metadata.json")
+                    if not meta_path.exists():
+                        meta_path = run_dir / "docling" / safe_doi / "tables" / f"{tfile.stem}_metadata.json"
                     meta_path = meta_path if meta_path.exists() else None
                     meta_obj = _read_json(meta_path) if meta_path else {}
                     caption = meta_obj.get("caption", "")

@@ -1,6 +1,8 @@
 #from numpy import isnan
 import requests
 from os import path, mkdir, rename, remove, stat
+import os
+import sys
 #import logging
 from random import randint
 from time import sleep
@@ -12,6 +14,11 @@ import json
 from pathlib import Path
 import requests, pickle
 # from email.mime.text import MIMEText
+
+_SRC_ROOT = path.abspath(path.join(path.dirname(__file__), "..", ".."))
+if _SRC_ROOT not in sys.path:
+    sys.path.insert(0, _SRC_ROOT)
+from ui.run_progress import write_current_doi
 
 MAX_SLEEP_TIME = 7
 # FULL_DOWNLOAD_SUCCESSFUL = 1
@@ -268,6 +275,7 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
         title = str(doc['title'])
         year = doc['pub_year'] if doc['pub_year'] is not None else None
         doi = str(doc['doi'])
+        write_current_doi(doi)
         logger.info(f'Downloading DOI: {doi}')
         url = ''
         try:

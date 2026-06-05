@@ -30,6 +30,7 @@ sys.path.insert(0, _SRC_ROOT)
 from llm_client import LLMConfig, get_llm_client, load_processing_llm_config
 from ui.openai_cost import append_usage, run_id_from_env
 from ui.custom_instructions import load_instructions_from_env_or_path
+from ui.run_progress import write_current_doi
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../paper-downloader"))
 sys.path.insert(0, parent_dir)
@@ -171,6 +172,8 @@ def collect_tables(doi: str, tables_dir: str) -> List[Dict[str, Any]]:
         return []
 
     tables: List[Dict[str, Any]] = []
+    modified_doi = os.path.basename(os.path.normpath(tables_dir))
+    run_dir = os.environ.get("SALSA_RUN_DIR", "").strip()
 
     for filename in os.listdir(tables_dir):
         if not filename.lower().endswith(".csv"):
@@ -179,6 +182,14 @@ def collect_tables(doi: str, tables_dir: str) -> List[Dict[str, Any]]:
         table_base = os.path.splitext(filename)[0]
         table_csv_path = os.path.join(tables_dir, filename)
         metadata_path = os.path.join(tables_dir, f"{table_base}_metadata.json")
+        if not os.path.exists(metadata_path) and run_dir:
+            metadata_path = os.path.join(
+                run_dir,
+                "docling",
+                modified_doi,
+                "tables",
+                f"{table_base}_metadata.json",
+            )
 
         if not os.path.exists(metadata_path):
             log.warning(f"No metadata file found for table '{table_csv_path}' (expected: {metadata_path})")
@@ -764,6 +775,7 @@ def main():
 
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
         doi = str(row[args.doi_column]).strip()
+        write_current_doi(doi)
         full_text_path = find_matching_files(doi, args.index_csv_path)
 
         if not isinstance(full_text_path, str) or full_text_path.strip() == "":

@@ -5,18 +5,26 @@ import inspect
 import threading
 import time
 import traceback
+from http.cookies import SimpleCookie
 from hashlib import md5
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import streamlit.elements.image as st_image
 import plotly.express as px
 from PIL import Image, UnidentifiedImageError
 from streamlit_drawable_canvas import CanvasResult, _component_func, _data_url_to_image
-from pipeline import PipelineCancelled, run_full_pipeline
+from pipeline import (
+    ADMIN_INPUT_ITEM_LIMIT,
+    DEFAULT_INPUT_ITEM_LIMIT,
+    PipelineCancelled,
+    run_full_pipeline,
+)
 from discover import discover_run
 from schemas import RunResult
-from intervention import find_interventions, latest_plextract_run_dir
+from run_progress import RUN_STATUS_FILE_NAME, read_run_status, write_run_status
+from intervention import latest_plextract_run_dir
 from intervention import (
     get_lineformer_dir,
     load_series_catalog,
@@ -30,12 +38,8 @@ from intervention import (
 )
 from run_plextract_manual import run_plextract_on_crops as _run_plextract_on_crops
 from custom_instructions import (
-    DEFAULT_PRESET_NAME,
+    DEFAULT_TABLE_EXTRACTION_RULES,
     default_instructions,
-    list_presets,
-    save_preset,
-    load_preset,
-    delete_preset,
 )
 import numpy as np
 import cv2
@@ -59,6 +63,18 @@ import re
 from datetime import datetime
 from typing import Callable, Sequence, Optional, Any
 from urllib.request import urlopen
+from auth import (
+    AuthStore,
+    build_reset_url,
+    data_root_from_env,
+    is_admin_user,
+    run_belongs_to_user,
+    safe_child_path,
+    send_password_reset_email,
+    user_workspaces_root,
+    validate_password,
+    write_run_manifest,
+)
 from llm_step_config import (
     GENERAL_LLM_ENV_VARS,
     LLM_STEP_CHEM_COMPOSITION,
@@ -73,6 +89,8 @@ from llm_step_config import (
     step_env_names,
     step_env_to_general_env_map,
 )
+
+SALSA_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "salsa_icon.png"
 
 # Make cost module importable
 _cost_dir = os.path.join(os.path.dirname(__file__), "..", "cost")
@@ -90,6 +108,55 @@ def _list_subdirs(p: Path) -> list[str]:
     if not p.exists():
         return []
     return sorted([x.name for x in p.iterdir() if x.is_dir()])
+
+def _ignored_workspace_or_run_name(name: str) -> bool:
+    return name in {"axis_presets", "instruction_presets", "settings_presets", "custom_instructions"}
+
+def _read_json_file(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _format_bytes(size: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(max(size, 0))
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+
+def _dir_size_bytes(root: Path) -> int:
+    total = 0
+    if not root.exists():
+        return total
+    for current_root, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames
+            if not Path(current_root, d).is_symlink()
+        ]
+        for filename in filenames:
+            path = Path(current_root) / filename
+            try:
+                if not path.is_symlink():
+                    total += path.stat().st_size
+            except OSError:
+                continue
+    return total
+
+def _path_mtime_iso(path: Path) -> str:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
+    except OSError:
+        return ""
+
+def _count_subdirs(path: Path) -> int:
+    try:
+        return sum(1 for child in path.iterdir() if child.is_dir())
+    except OSError:
+        return 0
 
 def _is_safe_workspace_name(name: str) -> bool:
     """
@@ -115,8 +182,7 @@ def _ensure_workspace(root: Path, name: str) -> Path:
     return ws
 
 def _default_workspace_name() -> str:
-    # nice default when user hasn't chosen anything yet
-    return datetime.now().strftime("workspace_%Y%m%d")
+    return "workspace_1"
 
 def _default_ollama_models_dir() -> Path:
     """
@@ -378,6 +444,16 @@ def st_image_auto(img, *, full_width=True, **kwargs):
     if "use_container_width" in sig.parameters:
         return st.image(img, use_container_width=full_width, **kwargs)
     return st.image(img, use_column_width=full_width, **kwargs)
+
+
+def render_salsa_brand_header() -> None:
+    if not SALSA_LOGO_PATH.exists():
+        st.title("SALSA - Semi-Autonomous Literature Scraping Assistant")
+        return
+
+    _, logo_col, _ = st.columns([1, 6, 1])
+    with logo_col:
+        st_image_auto(str(SALSA_LOGO_PATH), full_width=True)
 
 
 def _is_valid_image_path(path: Optional[Path]) -> bool:
@@ -1512,22 +1588,31 @@ def _render_cost_summary(run_dir: Path):
     if not summary["models"]:
         return
     with st.expander("Cost Summary", expanded=False):
-        for model_name, info in summary["models"].items():
-            label = model_name if model_name != "unknown" else "unknown model"
-            st.markdown(
-                f"**{label}**: {info['calls']} calls, "
-                f"{info['input']:,} input tokens, "
-                f"{info['cached']:,} cached, "
-                f"{info['output']:,} output tokens "
-                f"— **${info['cost']:.4f}**"
-            )
-        st.markdown(f"### Total: **${summary['grand_total']:.4f}**")
-
-@st.cache_data(show_spinner=False)
-def _cached_flagged(run_dir_str: str):
-    # cache intervention scan so it doesn't re-run constantly
-    run_dir = Path(run_dir_str)
-    return find_interventions(run_dir)
+        stages = summary.get("stages") or {}
+        if stages:
+            stage_rows = []
+            for stage_name, info in stages.items():
+                stage_models = info.get("models") or {}
+                model_bits = [
+                    (
+                        f"{model_name if model_name != 'unknown' else 'unknown model'} "
+                        f"({model_info['calls']} calls, ${model_info['cost']:.4f})"
+                    )
+                    for model_name, model_info in stage_models.items()
+                ]
+                stage_rows.append(
+                    {
+                        "Stage": stage_name,
+                        "Model(s)": "; ".join(model_bits) if model_bits else "",
+                        "Calls": info["calls"],
+                        "Input": info["input"],
+                        "Cached": info["cached"],
+                        "Output": info["output"],
+                        "Cost": f"${info['cost']:.4f}",
+                    }
+                )
+            st.dataframe(pd.DataFrame(stage_rows), use_container_width=True, hide_index=True)
+        st.metric("Total", f"${summary['grand_total']:.4f}")
 
 @st.cache_data(show_spinner=False)
 def _load_csv(csv_path: str) -> pd.DataFrame:
@@ -1701,25 +1786,14 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
 
     return combined
 
-def build_doi_stats(rr: RunResult, *, include_interventions: bool, doi_order: list[str] | None = None) -> pd.DataFrame:
+def build_doi_stats(rr: RunResult, *, doi_order: list[str] | None = None) -> pd.DataFrame:
     rows = []
-    flagged = []
-    if include_interventions:
-        flagged = _cached_flagged(str(rr.run_dir))
-
-    # count interventions per safe_doi
-    flagged_counts = {}
-    if flagged:
-        for x in flagged:
-            flagged_counts[x.safe_doi] = flagged_counts.get(x.safe_doi, 0) + 1
-
     for d in rr.dois:
         safe = doi_to_safe(d.doi)
         rows.append({
             "DOI": d.doi,
             "Tables": len(d.tables or []),
             "Figures": len(d.figures or []),
-            "Interventions Needed": flagged_counts.get(safe, 0) if include_interventions else None,
             "_doi_safe": safe,  # hidden helper
         })
 
@@ -2025,10 +2099,15 @@ def _step_has_configured_model(step_key: str) -> bool:
     return bool(_step_model_value(step_key))
 
 
-def _render_step_llm_selector(step_key: str, *, caption: Optional[str] = None) -> None:
+def _render_step_llm_selector(
+    step_key: str,
+    *,
+    caption: Optional[str] = None,
+    title: Optional[str] = None,
+) -> None:
     _ensure_shared_llm_settings_in_state()
 
-    st.subheader(LLM_STEP_LABELS[step_key])
+    st.subheader(title or LLM_STEP_LABELS[step_key])
     if caption:
         st.caption(caption)
 
@@ -2049,6 +2128,7 @@ def _render_step_llm_selector(step_key: str, *, caption: Optional[str] = None) -
         else 0,
         key=provider_key,
         horizontal=True,
+        on_change=_keep_create_settings_preset_open,
     )
 
     if provider == "Ollama":
@@ -2056,19 +2136,37 @@ def _render_step_llm_selector(step_key: str, *, caption: Optional[str] = None) -
         if models:
             if st.session_state.get(model_key) not in models:
                 st.session_state.pop(model_key, None)
-            st.selectbox("Model", options=models, index=0, key=model_key)
+            st.selectbox(
+                "Model",
+                options=models,
+                index=0,
+                key=model_key,
+                on_change=_keep_create_settings_preset_open,
+            )
         else:
-            st.text_input("Model (no models detected)", value="", key=model_key)
+            st.text_input(
+                "Model (no models detected)",
+                value="",
+                key=model_key,
+                on_change=_keep_create_settings_preset_open,
+            )
             st.caption("Tip: run `ollama pull <model>` then refresh.")
     else:
         if st.session_state.get(model_key) not in _openai_models:
             st.session_state.pop(model_key, None)
-        st.selectbox("Model", options=_openai_models, index=0, key=model_key)
+        st.selectbox(
+            "Model",
+            options=_openai_models,
+            index=0,
+            key=model_key,
+            on_change=_keep_create_settings_preset_open,
+        )
 
 
 def _active_llm_steps(
     *,
     run_extract_tables: bool,
+    use_docling_pdf_uploads: bool = False,
     run_chemical_composition: bool,
     run_filter_figures: bool,
     run_filter_tables: bool,
@@ -2077,7 +2175,7 @@ def _active_llm_steps(
     run_complete_dataset: bool,
 ) -> list[str]:
     steps: list[str] = []
-    if run_extract_tables:
+    if run_extract_tables and not use_docling_pdf_uploads:
         steps.append(LLM_STEP_EXTRACT_TABLES)
     if run_chemical_composition:
         steps.extend([LLM_STEP_CHEM_RELEVANT, LLM_STEP_CHEM_COMPOSITION])
@@ -2114,6 +2212,442 @@ def _missing_openai_api_key_steps(step_keys: Sequence[str]) -> list[str]:
     ]
 
 
+def _llm_step_caption(step_key: str) -> str:
+    captions = {
+        LLM_STEP_EXTRACT_TABLES: "Used when parsing table content with the LLM.",
+        LLM_STEP_CHEM_RELEVANT: "Finds the text, tables, and schemes relevant to chemical composition.",
+        LLM_STEP_CHEM_COMPOSITION: "Uses the selected relevant evidence to extract sample compositions.",
+        LLM_STEP_FILTER_FIGURES: "Decides which figures are relevant downstream.",
+        LLM_STEP_FILTER_TABLES: "Decides which tables are relevant downstream.",
+        LLM_STEP_FIGURE_DATA: "Used only when bypassing OCR and extracting figure data directly with the LLM.",
+        LLM_STEP_COMPLETE_DATASET: "Builds the final dataset rows.",
+    }
+    return captions.get(step_key, "")
+
+
+def _looks_like_doi_scope(value: str) -> bool:
+    return bool(re.fullmatch(r"\d+\s+DOIs?", value.strip()))
+
+
+def _pid_is_alive(pid: Any) -> bool:
+    try:
+        pid_int = int(pid)
+    except Exception:
+        return False
+    if pid_int <= 0:
+        return False
+    try:
+        os.kill(pid_int, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _run_status_is_active(status: dict[str, Any]) -> bool:
+    return status.get("state") in {"running", "cancelling"} and _pid_is_alive(status.get("pid"))
+
+
+def _mark_inactive_run_status(status_path: Path, status: dict[str, Any]) -> dict[str, Any]:
+    state = status.get("state")
+    pid = status.get("pid")
+    if state not in {"running", "cancelling"} or _pid_is_alive(pid):
+        return status
+    write_run_status(
+        status_path,
+        state="interrupted",
+        stage="Interrupted",
+        error=f"Last recorded pipeline process is no longer running (pid: {pid}).",
+    )
+    return read_run_status(status_path)
+
+
+def _run_progress_status_text(status: dict[str, Any]) -> str:
+    stage = status.get("stage") or "Running"
+    doi = str(status.get("doi") or "").strip()
+    lines = [f"Running stage: **{stage}**"]
+    if doi:
+        label = "Scope" if _looks_like_doi_scope(doi) else "Current DOI"
+        lines.append(f"{label}: `{doi}`")
+    figure = str(status.get("figure") or "").strip()
+    if figure:
+        lines.append(f"Current figure: `{figure}`")
+    updated_at = status.get("updated_at")
+    if updated_at:
+        lines.append(f"Updated: `{updated_at}`")
+    return "\n\n".join(lines)
+
+
+def _render_run_progress_status(status: dict[str, Any]) -> None:
+    st.info(_run_progress_status_text(status))
+
+
+def _workspace_display_name_for_run(run_dir: Path, workspaces_root: Path) -> str:
+    try:
+        rel = run_dir.resolve().relative_to(workspaces_root.resolve())
+        workspace_name = rel.parts[0] if rel.parts else run_dir.parent.name
+    except Exception:
+        workspace_name = run_dir.parent.name
+    if any(ch.isupper() for ch in workspace_name):
+        return workspace_name
+    return workspace_name.replace("_", " ").replace("-", " ").title()
+
+
+def _admin_run_records(data_root: Path, users: Sequence[Any]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for user in users:
+        profile_slug = str(user["profile_slug"])
+        user_workspaces = user_workspaces_root(data_root, user)
+        for workspace_dir in sorted(
+            [p for p in user_workspaces.iterdir() if p.is_dir() and not _ignored_workspace_or_run_name(p.name)],
+            key=lambda p: p.name.lower(),
+        ):
+            for run_dir in sorted(
+                [p for p in workspace_dir.iterdir() if p.is_dir() and not _ignored_workspace_or_run_name(p.name)],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            ):
+                status = read_run_status(run_dir / RUN_STATUS_FILE_NAME)
+                manifest = _read_json_file(run_dir / "run_manifest.json")
+                doi_count = _count_subdirs(run_dir / "reparsed")
+                records.append({
+                    "user_id": int(user["id"]),
+                    "username": user["username"],
+                    "email": user["email"],
+                    "display_name": user["display_name"],
+                    "role": user["role"],
+                    "profile_slug": profile_slug,
+                    "workspace": workspace_dir.name,
+                    "run_id": run_dir.name,
+                    "run_dir": str(run_dir),
+                    "owner_username": manifest.get("owner_username") or user["username"],
+                    "created_at": manifest.get("created_at") or "",
+                    "state": status.get("state") or "unknown",
+                    "stage": status.get("stage") or "",
+                    "doi": status.get("doi") or "",
+                    "updated_at": status.get("updated_at") or "",
+                    "last_modified": _path_mtime_iso(run_dir),
+                    "doi_count": doi_count,
+                    "size_bytes": _dir_size_bytes(run_dir),
+                })
+    return records
+
+
+def _admin_user_stats(users: Sequence[Any], run_records: Sequence[dict[str, Any]], data_root: Path) -> list[dict[str, Any]]:
+    records_by_user: dict[int, list[dict[str, Any]]] = {}
+    for record in run_records:
+        records_by_user.setdefault(int(record["user_id"]), []).append(record)
+
+    rows: list[dict[str, Any]] = []
+    for user in users:
+        user_id = int(user["id"])
+        user_records = records_by_user.get(user_id, [])
+        workspaces_root_for_user = user_workspaces_root(data_root, user)
+        workspaces = [
+            p for p in workspaces_root_for_user.iterdir()
+            if p.is_dir() and not _ignored_workspace_or_run_name(p.name)
+        ]
+        state_counts: dict[str, int] = {}
+        for record in user_records:
+            state = str(record.get("state") or "unknown")
+            state_counts[state] = state_counts.get(state, 0) + 1
+        last_activity = max(
+            [str(r.get("updated_at") or r.get("last_modified") or "") for r in user_records],
+            default="",
+        )
+        total_size = sum(int(r.get("size_bytes") or 0) for r in user_records)
+        rows.append({
+            "username": user["username"],
+            "email": user["email"],
+            "first_name": user["first_name"],
+            "last_name": user["last_name"],
+            "institution": user["institution"],
+            "display_name": user["display_name"],
+            "role": user["role"],
+            "workspaces": len(workspaces),
+            "runs": len(user_records),
+            "done": state_counts.get("done", 0),
+            "running": state_counts.get("running", 0) + state_counts.get("cancelling", 0),
+            "errors": state_counts.get("error", 0),
+            "interrupted": state_counts.get("interrupted", 0),
+            "total_dois": sum(int(r.get("doi_count") or 0) for r in user_records),
+            "disk": _format_bytes(total_size),
+            "last_activity": last_activity,
+        })
+    return rows
+
+
+def _render_admin_page(
+    *,
+    auth_store: AuthStore,
+    data_root: Path,
+    current_user: Any,
+) -> bool:
+    st.header("Admin")
+    st.caption("Manage SALSA profiles, roles, run access, and per-user activity.")
+
+    users = auth_store.list_users()
+    run_records = _admin_run_records(data_root, users)
+    stats_rows = _admin_user_stats(users, run_records, data_root)
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Users", len(users))
+    metric_cols[1].metric("Admins", sum(1 for user in users if user["role"] == "admin"))
+    metric_cols[2].metric("Runs", len(run_records))
+    metric_cols[3].metric("Storage", _format_bytes(sum(int(r.get("size_bytes") or 0) for r in run_records)))
+
+    st.subheader("User Statistics")
+    if stats_rows:
+        st.dataframe(pd.DataFrame(stats_rows), use_container_width=True, hide_index=True)
+    else:
+        st.info("No users found.")
+
+    st.subheader("Role Management")
+    selected_user = None
+    user_options = {
+        f"{user['username']} ({user['email']})": user
+        for user in users
+    }
+    if user_options:
+        selected_user_label = st.selectbox(
+            "Profile",
+            options=list(user_options.keys()),
+            key="admin_role_user",
+        )
+        selected_user = user_options[selected_user_label]
+        role_options = ["admin", "user"]
+        selected_role = st.selectbox(
+            "Role",
+            options=role_options,
+            index=role_options.index(selected_user["role"]) if selected_user["role"] in role_options else 1,
+            key=f"admin_role_value_{selected_user['id']}",
+        )
+        if st.button("Update role", type="primary", key="admin_update_role"):
+            try:
+                auth_store.set_user_role(int(selected_user["id"]), selected_role)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Updated {selected_user['username']} to {selected_role}.")
+                st.rerun()
+
+    if selected_user is None:
+        return False
+
+    selected_run_records = [
+        record for record in run_records
+        if int(record["user_id"]) == int(selected_user["id"])
+    ]
+    st.subheader(f"Runs for {selected_user['username']}")
+    if selected_run_records:
+        runs_df = pd.DataFrame(selected_run_records)
+        display_df = runs_df[[
+            "workspace",
+            "run_id",
+            "state",
+            "stage",
+            "doi_count",
+            "updated_at",
+            "last_modified",
+            "run_dir",
+        ]].copy()
+        display_df.insert(5, "disk", runs_df["size_bytes"].map(lambda n: _format_bytes(int(n or 0))))
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        run_options = {
+            f"{record['workspace']} / {record['run_id']} [{record['state']}]": record
+            for record in selected_run_records
+        }
+        selected_run_label = st.selectbox(
+            "Open run",
+            options=list(run_options.keys()),
+            key="admin_open_run",
+        )
+        if st.button("Load selected run", key="admin_load_run"):
+            selected_record = run_options[selected_run_label]
+            try:
+                run_path = safe_child_path(
+                    data_root,
+                    "users",
+                    str(selected_record["profile_slug"]),
+                    "workspaces",
+                    str(selected_record["workspace"]),
+                    str(selected_record["run_id"]),
+                )
+                st.session_state["rr"] = discover_run(run_path)
+                st.session_state["admin_loaded_run_owner"] = (
+                    f"{selected_record['username']} / {selected_record['workspace']}"
+                )
+                st.session_state["admin_show_loaded_run"] = True
+                st.success(f"Loaded {selected_record['run_id']} from {selected_record['username']}.")
+            except Exception as exc:
+                st.error(f"Could not load run: {exc}")
+        if st.session_state.get("admin_show_loaded_run") and st.session_state.get("rr") is not None:
+            owner = st.session_state.get("admin_loaded_run_owner", "")
+            st.info(f"Showing loaded run below: **{owner}**")
+            if st.button("Stay on admin dashboard only", key="admin_hide_loaded_run"):
+                st.session_state["admin_show_loaded_run"] = False
+                st.rerun()
+            return True
+    else:
+        st.info("No runs found for this profile yet.")
+
+    return False
+
+
+def _render_guide_page() -> None:
+    st.header("Guide")
+    st.caption("A practical walkthrough for setting up SALSA runs, tuning settings, and correcting figure extraction results.")
+
+    quick_start_tab, settings_tab, review_tab, interventions_tab = st.tabs(
+        ["Start a run", "Settings presets", "Review results", "Figure interventions"]
+    )
+
+    with quick_start_tab:
+        st.subheader("Start a new run")
+        st.markdown(
+            """
+1. Choose or create a workspace in the sidebar.
+2. In **Input Source**, choose **DOI(s)**, **PDF(s)**, or **Figure(s)**.
+3. Provide the inputs:
+   - **DOI(s):** paste one DOI per line, up to 50.
+   - **PDF(s):** upload up to 50 PDFs. Optionally add one document ID per PDF so outputs use a readable identifier instead of the filename.
+   - **Figure(s):** upload up to 50 image files. Optionally add a figure set ID and one caption per uploaded figure.
+4. In **Run configuration**, enter a **Run Name** if you want a stable name. Leave it blank to use a timestamp.
+5. Click **Run pipeline**.
+
+Run names may contain letters, numbers, underscores, periods, and dashes. A named run is easiest to find later from **Load an existing run**.
+            """
+        )
+
+        st.subheader("Input choice tips")
+        st.markdown(
+            """
+- Use **DOI(s)** when SALSA should download and parse papers for you.
+- Use **PDF(s)** when you already have the papers locally or want to process documents that are not easy to fetch by DOI.
+- Use **Figure(s)** when you only need figure data extraction from uploaded images. In this mode, table extraction and chemical composition extraction are disabled because there is no full paper context.
+            """
+        )
+
+    with settings_tab:
+        st.subheader("Use bundled presets")
+        st.markdown(
+            f"""
+SALSA creates two starter settings presets:
+
+- **{DEFAULT_SETTINGS_PRESET_NAME}:** conservative general-purpose settings. It extracts tables, figures, OCR figure data, chemical composition, and the completed dataset. Figure and table filtering are off by default.
+- **{EXAMPLE_AEM_SETTINGS_PRESET_NAME}:** an example configuration for AEM degradation workflows. It enables figure and table filtering and uses stronger LLM choices for selected steps.
+
+Open **Load Settings Preset**, choose a preset, and click **Load**. The currently loaded preset appears at the bottom of that expander.
+            """
+        )
+
+        st.subheader("Adjust cost and performance")
+        st.markdown(
+            """
+Open **Create Settings Preset** to edit the active configuration before a run.
+
+- Turn off stages you do not need. Each disabled LLM stage reduces cost and run time.
+- Use **Chat GPT** models for managed API calls, or **Ollama** models when you want local inference and have Ollama running.
+- Smaller models such as `gpt-4.1-mini` are typically cheaper and faster.
+- Larger or more capable models can improve extraction quality on difficult papers, noisy tables, and nuanced filtering tasks.
+- For Ollama-backed steps, increase **Ollama context window (num_ctx)** when papers are being truncated, at the cost of more memory and slower local inference.
+- Keep **Use LLM to extract data from figures** off when you want the editable OCR/intervention workflow. Turn it on when you prefer direct LLM figure extraction and do not need crop, axis, or series edits.
+            """
+        )
+
+        st.subheader("Save custom settings")
+        st.markdown(
+            """
+1. Edit stage checkboxes, LLM providers/models, and instruction text in **Create Settings Preset**.
+2. Add or edit **Data processing rules** and output column defaults if the completed dataset should follow a specific schema.
+3. Enter a **Settings preset name**.
+4. Click **Save**.
+
+Saved presets are shared across your workspaces, so you can reload the same setup for future runs.
+            """
+        )
+
+    with review_tab:
+        st.subheader("Load and inspect existing runs")
+        st.markdown(
+            """
+Use **Load an existing run** in the sidebar:
+
+1. Pick the workspace to browse.
+2. Select a **Run ID**.
+3. Click **Load run**.
+
+After loading, SALSA shows the run ID, workspace, cost summary, and a **Processed DOIs** table. Select a DOI, then switch between **Parsed text**, **Tables**, **Figures**, **Chemical Composition**, and **Dataset**.
+            """
+        )
+
+        st.subheader("What to check")
+        st.markdown(
+            """
+- **Tables:** inspect extracted table files and any LLM-generated dataset rows.
+- **Figures:** inspect the original figure image, OCR-extracted data, and completed-dataset rows.
+- **Dataset:** review the combined output that SALSA will export downstream.
+- **Cost summary:** compare stage-level usage when changing presets or models.
+            """
+        )
+
+    with interventions_tab:
+        st.subheader("Open figure interventions")
+        st.markdown(
+            """
+1. Load a completed or partially completed run.
+2. Select a DOI and open **Figures**.
+3. For a figure, click **Load Interventions**.
+
+Interventions are saved under the run, so you can load the same run later and continue from the saved corrections.
+            """
+        )
+
+        st.subheader("Crop figures")
+        st.markdown(
+            """
+Use **Crop Figure** when one image contains multiple charts or panels.
+
+1. Draw rectangles around each chart.
+2. Use **Move/resize rectangles** to refine the crop boxes.
+3. Click **Save crops**.
+4. Run OCR data extraction on the crops so each subfigure gets its own extracted dataset.
+            """
+        )
+
+        st.subheader("Modify axes and titles")
+        st.markdown(
+            """
+Open **Axis Configuration** to correct axis titles, axis type, and calibration.
+
+- Edit X and Y axis titles and click **Save axis titles**.
+- For calibration, click Xmin, Xmax, Ymin, and Ymax on the image.
+- Enter the real axis values, choose linear or log10 axes, then click **Save calibration override from clicks**.
+            """
+        )
+
+        st.subheader("Modify series")
+        st.markdown(
+            """
+Open **Series Management** to correct which plotted marks belong to each data series.
+
+- Add, rename, or remove series as needed.
+- Assign or correct detected masks/points for each series.
+- Save the series mapping before rerunning extraction.
+            """
+        )
+
+        st.subheader("Rerun extraction after edits")
+        st.markdown(
+            """
+- Click **Rerun OCR data extraction** after crop, axis, or series changes. This reapplies overrides and regenerates OCR-derived figure data.
+- Click **Run LLM dataset generation** after OCR data looks correct. This regenerates completed-dataset rows for the selected figure or subfigure.
+
+If the LLM rerun is unavailable, check that **Complete dataset** has an LLM model configured in the sidebar and that an API key is present for Chat GPT-backed steps.
+            """
+        )
+
+
 def clear_processing_llm_env_if_disabled() -> None:
     """Prevent stale processing-model env vars from affecting in-process reruns."""
     if st.session_state.get("use_separate_processing_llm"):
@@ -2137,6 +2671,8 @@ _CI_EDITOR_KEYS = (
     "ci_table_extraction",
     "ci_figure_filter",
     "ci_table_filter",
+    "ci_chemical_composition",
+    "ci_figure_data",
     "ci_data_processing",
     _CI_COLUMN_DEFAULTS_SOURCE_KEY,
     _CI_COLUMN_DEFAULTS_VERSION_KEY,
@@ -2230,6 +2766,8 @@ def _custom_instructions_from_editor_state(column_defaults_table: Any) -> dict[s
         "table_extraction_rules": st.session_state.get("ci_table_extraction", ""),
         "figure_filter_criteria": st.session_state.get("ci_figure_filter", ""),
         "table_filter_criteria": st.session_state.get("ci_table_filter", ""),
+        "chemical_composition_rules": st.session_state.get("ci_chemical_composition", ""),
+        "figure_data_extraction_rules": st.session_state.get("ci_figure_data", ""),
         "data_processing_rules": st.session_state.get("ci_data_processing", ""),
         "output_columns": output_columns,
         "missing_value_defaults": missing_defaults,
@@ -2251,6 +2789,8 @@ def _apply_custom_instruction_state(
     st.session_state["ci_table_extraction"] = ci.get("table_extraction_rules", "")
     st.session_state["ci_figure_filter"] = ci.get("figure_filter_criteria", "")
     st.session_state["ci_table_filter"] = ci.get("table_filter_criteria", "")
+    st.session_state["ci_chemical_composition"] = ci.get("chemical_composition_rules", "")
+    st.session_state["ci_figure_data"] = ci.get("figure_data_extraction_rules", "")
     st.session_state["ci_data_processing"] = ci.get("data_processing_rules", "")
     if _CI_COLUMN_DEFAULTS_VERSION_KEY not in st.session_state:
         st.session_state[_CI_COLUMN_DEFAULTS_VERSION_KEY] = 0
@@ -2285,6 +2825,338 @@ def _apply_pending_custom_instruction_state() -> Optional[str]:
             )
     return st.session_state.pop(_CI_FLASH_MESSAGE_KEY, None)
 
+
+SETTINGS_PRESETS_DIR_NAME = "settings_presets"
+DEFAULT_SETTINGS_PRESET_NAME = "default"
+EXAMPLE_AEM_SETTINGS_PRESET_NAME = "example_aem_degradation"
+_SETTINGS_PENDING_APPLY_KEY = "settings_pending_apply"
+_SETTINGS_FLASH_MESSAGE_KEY = "settings_flash_message"
+
+_STAGE_STATE_KEYS = {
+    "exclude_full_text": "settings_exclude_full_text",
+    "run_extract_tables": "settings_run_extract_tables",
+    "run_extract_figures": "settings_run_extract_figures",
+    "run_filter_tables": "settings_run_filter_tables",
+    "run_filter_figures": "settings_run_filter_figures",
+    "run_plextract": "settings_run_plextract",
+    "bypass_ocr_with_llm": "settings_bypass_ocr_with_llm",
+    "run_chemical_composition": "settings_run_chemical_composition",
+    "run_complete_dataset": "settings_run_complete_dataset",
+}
+
+_DEFAULT_STAGE_SETTINGS = {
+    "exclude_full_text": True,
+    "run_extract_tables": True,
+    "run_extract_figures": True,
+    "run_filter_tables": False,
+    "run_filter_figures": False,
+    "run_plextract": True,
+    "bypass_ocr_with_llm": False,
+    "run_chemical_composition": True,
+    "run_complete_dataset": True,
+}
+
+_AEM_EXAMPLE_STAGE_SETTINGS = {
+    **_DEFAULT_STAGE_SETTINGS,
+    "run_filter_figures": True,
+    "run_filter_tables": True,
+}
+
+DEFAULT_SETTINGS_LLM_MODEL = "gpt-4.1-mini"
+AEM_EXAMPLE_LLM_MODELS = {
+    LLM_STEP_EXTRACT_TABLES: "gpt-4.1",
+    LLM_STEP_CHEM_RELEVANT: "gpt-4.1",
+    LLM_STEP_CHEM_COMPOSITION: "gpt-5.5",
+    LLM_STEP_FILTER_FIGURES: "gpt-4.1-mini",
+    LLM_STEP_FILTER_TABLES: "gpt-4.1",
+    LLM_STEP_FIGURE_DATA: "gpt-5.5",
+    LLM_STEP_COMPLETE_DATASET: "gpt-4.1",
+}
+
+
+def _default_settings_instructions() -> dict[str, Any]:
+    return {
+        "table_extraction_rules": DEFAULT_TABLE_EXTRACTION_RULES,
+        "figure_filter_criteria": "",
+        "table_filter_criteria": "",
+        "chemical_composition_rules": "",
+        "figure_data_extraction_rules": "",
+        "data_processing_rules": "",
+        "output_columns": [],
+        "missing_value_defaults": {},
+    }
+
+
+def _settings_presets_dir(workspaces_root: Path) -> Path:
+    d = Path(workspaces_root) / SETTINGS_PRESETS_DIR_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _list_settings_presets(workspaces_root: Path) -> list[str]:
+    return sorted(
+        p.stem for p in _settings_presets_dir(workspaces_root).glob("*.json") if p.is_file()
+    )
+
+
+def _save_settings_preset(workspaces_root: Path, name: str, settings: dict[str, Any]) -> Path:
+    path = _settings_presets_dir(workspaces_root) / f"{name}.json"
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _load_settings_preset(workspaces_root: Path, name: str) -> dict[str, Any]:
+    path = _settings_presets_dir(workspaces_root) / f"{name}.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    return _normalize_settings_preset(data)
+
+
+def _settings_preset_exists(workspaces_root: Path, name: str) -> bool:
+    return (_settings_presets_dir(workspaces_root) / f"{name}.json").is_file()
+
+
+def _settings_default_llm_steps() -> dict[str, dict[str, str]]:
+    return {
+        step_key: {"provider": "Chat GPT", "model": DEFAULT_SETTINGS_LLM_MODEL}
+        for step_key in _STEP_LLM_RENDER_ORDER
+    }
+
+
+def _aem_example_llm_steps() -> dict[str, dict[str, str]]:
+    return {
+        step_key: {
+            "provider": "Chat GPT",
+            "model": AEM_EXAMPLE_LLM_MODELS.get(step_key, DEFAULT_SETTINGS_LLM_MODEL),
+        }
+        for step_key in _STEP_LLM_RENDER_ORDER
+    }
+
+
+def _make_settings_preset(
+    *,
+    stages: dict[str, bool],
+    custom_instructions: dict[str, Any],
+    llm_steps: Optional[dict[str, dict[str, str]]] = None,
+    include_session_llms: bool = False,
+    openai_api_key: str = "",
+) -> dict[str, Any]:
+    llm_steps = dict(llm_steps or _settings_default_llm_steps())
+    if include_session_llms:
+        for step_key in _STEP_LLM_RENDER_ORDER:
+            llm_steps[step_key] = {
+                "provider": _step_provider_label(step_key),
+                "model": _step_model_value(step_key),
+            }
+
+    return {
+        "version": 1,
+        "openai_api_key": openai_api_key,
+        "openai_base_url": st.session_state.get("openai_base_url", "https://api.openai.com/v1")
+        if include_session_llms
+        else "https://api.openai.com/v1",
+        "ollama_host": st.session_state.get("ollama_host", default_ollama_host)
+        if include_session_llms and "default_ollama_host" in globals()
+        else "",
+        "ollama_models_dir": st.session_state.get("ollama_models_dir", str(default_ollama_dir))
+        if include_session_llms and "default_ollama_dir" in globals()
+        else "",
+        "ollama_num_ctx": int(st.session_state.get("ollama_num_ctx", 16384))
+        if include_session_llms
+        else 16384,
+        "stages": dict(stages),
+        "llm_steps": llm_steps,
+        "custom_instructions": dict(custom_instructions),
+    }
+
+
+def _normalize_settings_preset(data: dict[str, Any]) -> dict[str, Any]:
+    default = _make_settings_preset(
+        stages=_DEFAULT_STAGE_SETTINGS,
+        custom_instructions=_default_settings_instructions(),
+    )
+    if not isinstance(data, dict):
+        return default
+
+    stages = data.get("stages", {})
+    if isinstance(stages, dict):
+        default["stages"].update(
+            {
+                key: bool(stages.get(key, default["stages"][key]))
+                for key in _DEFAULT_STAGE_SETTINGS
+            }
+        )
+
+    llm_steps = data.get("llm_steps", {})
+    if isinstance(llm_steps, dict):
+        for step_key in _STEP_LLM_RENDER_ORDER:
+            raw = llm_steps.get(step_key, {})
+            if isinstance(raw, dict):
+                provider = str(raw.get("provider") or "Chat GPT")
+                default["llm_steps"][step_key] = {
+                    "provider": provider if provider in {"Chat GPT", "Ollama"} else "Chat GPT",
+                    "model": str(raw.get("model") or "").strip(),
+                }
+
+    ci = data.get("custom_instructions", {})
+    if isinstance(ci, dict):
+        merged_ci = _default_settings_instructions()
+        merged_ci.update(ci)
+        default["custom_instructions"] = merged_ci
+
+    for key in ("openai_api_key", "openai_base_url", "ollama_host", "ollama_models_dir"):
+        if key in data:
+            default[key] = str(data.get(key) or "")
+    if not default["openai_base_url"]:
+        default["openai_base_url"] = "https://api.openai.com/v1"
+    try:
+        default["ollama_num_ctx"] = int(data.get("ollama_num_ctx", default["ollama_num_ctx"]))
+    except Exception:
+        pass
+
+    return default
+
+
+def _current_stage_settings_from_state() -> dict[str, bool]:
+    return {
+        stage_name: bool(st.session_state.get(state_key, default_value))
+        for stage_name, state_key in _STAGE_STATE_KEYS.items()
+        for default_value in [_DEFAULT_STAGE_SETTINGS[stage_name]]
+    }
+
+
+def _current_settings_preset_from_state(current_ci: dict[str, Any]) -> dict[str, Any]:
+    _ensure_shared_llm_settings_in_state()
+    return _make_settings_preset(
+        stages=_current_stage_settings_from_state(),
+        custom_instructions=current_ci,
+        include_session_llms=True,
+        openai_api_key=str(st.session_state.get("openai_api_key", "")).strip(),
+    )
+
+
+def _apply_settings_preset_state(settings: dict[str, Any], *, preset_name: Optional[str]) -> None:
+    settings = _normalize_settings_preset(settings)
+    _ensure_shared_llm_settings_in_state()
+    for stage_name, state_key in _STAGE_STATE_KEYS.items():
+        st.session_state[state_key] = bool(
+            settings.get("stages", {}).get(stage_name, _DEFAULT_STAGE_SETTINGS[stage_name])
+        )
+
+    st.session_state["openai_api_key"] = str(settings.get("openai_api_key") or "")
+    st.session_state["openai_base_url"] = str(
+        settings.get("openai_base_url") or "https://api.openai.com/v1"
+    )
+    if settings.get("ollama_host"):
+        st.session_state["ollama_host"] = str(settings.get("ollama_host") or "")
+    if settings.get("ollama_models_dir"):
+        st.session_state["ollama_models_dir"] = str(settings.get("ollama_models_dir") or "")
+    st.session_state["ollama_num_ctx"] = int(settings.get("ollama_num_ctx", 16384))
+
+    for step_key, config in settings.get("llm_steps", {}).items():
+        if step_key not in _STEP_LLM_RENDER_ORDER or not isinstance(config, dict):
+            continue
+        st.session_state[_step_provider_key(step_key)] = str(config.get("provider") or "Chat GPT")
+        model = str(config.get("model") or "").strip()
+        if model:
+            st.session_state[_step_model_key(step_key)] = model
+        else:
+            st.session_state.pop(_step_model_key(step_key), None)
+
+    _apply_custom_instruction_state(
+        settings.get("custom_instructions", _default_settings_instructions()),
+        preset_name=preset_name,
+    )
+    st.session_state["current_settings_preset_name"] = preset_name
+    st.session_state["settings_new_preset_name"] = preset_name or ""
+
+
+def _queue_settings_preset_state(
+    settings: dict[str, Any],
+    *,
+    preset_name: Optional[str],
+    flash_message: Optional[str] = None,
+) -> None:
+    st.session_state[_SETTINGS_PENDING_APPLY_KEY] = {
+        "settings": settings,
+        "preset_name": preset_name,
+    }
+    if flash_message:
+        st.session_state[_SETTINGS_FLASH_MESSAGE_KEY] = flash_message
+
+
+def _apply_pending_settings_preset_state() -> Optional[str]:
+    pending = st.session_state.pop(_SETTINGS_PENDING_APPLY_KEY, None)
+    if isinstance(pending, dict):
+        settings = pending.get("settings")
+        if isinstance(settings, dict):
+            _apply_settings_preset_state(
+                settings,
+                preset_name=pending.get("preset_name"),
+            )
+    return st.session_state.pop(_SETTINGS_FLASH_MESSAGE_KEY, None)
+
+
+def _bootstrap_settings_presets_for_workspaces(workspaces_root: Path) -> None:
+    if not _settings_preset_exists(workspaces_root, DEFAULT_SETTINGS_PRESET_NAME):
+        _save_settings_preset(
+            workspaces_root,
+            DEFAULT_SETTINGS_PRESET_NAME,
+            _make_settings_preset(
+                stages=_DEFAULT_STAGE_SETTINGS,
+                custom_instructions=_default_settings_instructions(),
+            ),
+        )
+    if not _settings_preset_exists(workspaces_root, EXAMPLE_AEM_SETTINGS_PRESET_NAME):
+        _save_settings_preset(
+            workspaces_root,
+            EXAMPLE_AEM_SETTINGS_PRESET_NAME,
+            _make_settings_preset(
+                stages=_AEM_EXAMPLE_STAGE_SETTINGS,
+                custom_instructions=default_instructions(),
+                llm_steps=_aem_example_llm_steps(),
+            ),
+        )
+
+
+def _bootstrap_settings_presets_for_profiles(data_root: Path, users: Sequence[Any]) -> None:
+    for user in users:
+        try:
+            profile_workspaces_root = (
+                Path(data_root) / "users" / str(user["profile_slug"]) / "workspaces"
+            )
+            profile_workspaces_root.mkdir(parents=True, exist_ok=True)
+            _bootstrap_settings_presets_for_workspaces(profile_workspaces_root)
+        except Exception:
+            continue
+
+
+def _keep_create_settings_preset_open() -> None:
+    st.session_state["create_settings_preset_expanded"] = True
+
+
+def _keep_load_settings_preset_open() -> None:
+    st.session_state["load_settings_preset_expanded"] = True
+
+
+def _settings_checkbox(label: str, state_key: str, default: bool, **kwargs: Any) -> bool:
+    if state_key not in st.session_state:
+        st.session_state[state_key] = default
+    kwargs.setdefault("on_change", _keep_create_settings_preset_open)
+    return bool(st.checkbox(label, key=state_key, **kwargs))
+
+
+def _render_instruction_text_area(label: str, state_key: str, height: int = 120) -> None:
+    st.text_area(
+        label,
+        height=height,
+        key=state_key,
+        on_change=_keep_create_settings_preset_open,
+    )
+
+
 # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
 default_ollama_dir = _default_ollama_models_dir()
 default_ollama_host = _default_ollama_host()
@@ -2309,10 +3181,352 @@ _openai_models = [
     "gpt-4o-mini",
 ]
 
+_AUTH_SESSION_COOKIE_NAME = "salsa_session"
+_AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+MAX_INPUT_ITEMS = DEFAULT_INPUT_ITEM_LIMIT
+
+
+def _env_truthy(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _query_param(name: str) -> str:
+    try:
+        value = st.query_params.get(name, "")
+    except Exception:
+        params = st.experimental_get_query_params()
+        value = params.get(name, [""])
+        if isinstance(value, list):
+            value = value[0] if value else ""
+    if isinstance(value, list):
+        return str(value[0] if value else "")
+    return str(value or "")
+
+
+def _set_query_param(name: str, value: str) -> None:
+    try:
+        st.query_params[name] = value
+    except Exception:
+        params = st.experimental_get_query_params()
+        params[name] = value
+        st.experimental_set_query_params(**params)
+
+
+def _clear_query_param(name: str) -> None:
+    try:
+        if name in st.query_params:
+            del st.query_params[name]
+    except Exception:
+        params = st.experimental_get_query_params()
+        params.pop(name, None)
+        st.experimental_set_query_params(**params)
+
+
+def _cookie_from_header(cookie_header: str, name: str) -> str:
+    if not cookie_header:
+        return ""
+    cookie = SimpleCookie()
+    try:
+        cookie.load(cookie_header)
+    except Exception:
+        return ""
+    morsel = cookie.get(name)
+    return morsel.value if morsel is not None else ""
+
+
+def _request_cookie_value(name: str) -> str:
+    context = getattr(st, "context", None)
+    if context is not None:
+        try:
+            cookies = getattr(context, "cookies", None)
+            if cookies and cookies.get(name):
+                return str(cookies.get(name) or "")
+        except Exception:
+            pass
+        try:
+            headers = getattr(context, "headers", None)
+            if headers:
+                value = _cookie_from_header(str(headers.get("cookie") or headers.get("Cookie") or ""), name)
+                if value:
+                    return value
+        except Exception:
+            pass
+
+    try:
+        from streamlit.web.server.websocket_headers import _get_websocket_headers
+
+        headers = _get_websocket_headers() or {}
+        return _cookie_from_header(str(headers.get("Cookie") or headers.get("cookie") or ""), name)
+    except Exception:
+        return ""
+
+
+def _render_cookie_script(*, token: str = "", clear: bool = False) -> None:
+    cookie_name = json.dumps(_AUTH_SESSION_COOKIE_NAME)
+    cookie_writer = """
+        function writeCookie(value) {
+            try {
+                window.parent.document.cookie = value;
+            } catch (err) {}
+            try {
+                document.cookie = value;
+            } catch (err) {}
+        }
+    """
+    if clear:
+        script = f"""
+        <script>
+        {cookie_writer}
+        writeCookie({cookie_name} + "=; Max-Age=0; Path=/; SameSite=Lax");
+        window.setTimeout(function() {{
+            window.parent.location.reload();
+        }}, 50);
+        </script>
+        """
+    else:
+        cookie_value = json.dumps(token)
+        max_age = int(_AUTH_SESSION_MAX_AGE_SECONDS)
+        script = f"""
+        <script>
+        {cookie_writer}
+        writeCookie({cookie_name} + "=" + encodeURIComponent({cookie_value}) + "; Max-Age={max_age}; Path=/; SameSite=Lax");
+        </script>
+        """
+    components.html(script, height=1, width=1)
+
+
+def _render_pending_auth_cookie_scripts() -> None:
+    token = st.session_state.pop("pending_auth_cookie_token", "")
+    clear_cookie = bool(st.session_state.pop("pending_clear_auth_cookie", False))
+    if clear_cookie:
+        if _request_cookie_value(_AUTH_SESSION_COOKIE_NAME):
+            _render_cookie_script(clear=True)
+    elif token:
+        _render_cookie_script(token=str(token))
+
+
+def _set_auth_session(auth_store: AuthStore, user: Any) -> None:
+    token = auth_store.create_auth_session_token(int(user["id"]))
+    st.session_state["auth_user_id"] = int(user["id"])
+    st.session_state["auth_session_token"] = token
+    st.session_state["pending_auth_cookie_token"] = token
+
+
+def _clear_auth_session(auth_store: Optional[AuthStore] = None) -> None:
+    token = str(
+        st.session_state.get("auth_session_token")
+        or _request_cookie_value(_AUTH_SESSION_COOKIE_NAME)
+        or ""
+    )
+    if auth_store is not None and token:
+        auth_store.revoke_auth_session_token(token)
+    st.session_state["pending_clear_auth_cookie"] = True
+    for key in (
+        "auth_user_id",
+        "auth_session_token",
+        "rr",
+        "workspace_name",
+        "load_workspace",
+        "load_run_id",
+        "pending_auth_cookie_token",
+        _ACTIVE_PIPELINE_RUN_KEY if "_ACTIVE_PIPELINE_RUN_KEY" in globals() else "",
+    ):
+        if key:
+            st.session_state.pop(key, None)
+
+
+def _current_user(auth_store: AuthStore):
+    user_id = st.session_state.get("auth_user_id")
+    token = str(
+        st.session_state.get("auth_session_token")
+        or _request_cookie_value(_AUTH_SESSION_COOKIE_NAME)
+        or ""
+    )
+
+    if user_id:
+        user = auth_store.get_user(int(user_id))
+    elif token:
+        user = auth_store.user_from_auth_session_token(token)
+        if user is not None:
+            st.session_state["auth_user_id"] = int(user["id"])
+            st.session_state["auth_session_token"] = token
+    else:
+        user = None
+
+    if user is None and user_id:
+        _clear_auth_session()
+    elif user is None and token:
+        _clear_auth_session()
+        _render_cookie_script(clear=True)
+    return user
+
+
+def _render_auth_gate(auth_store: AuthStore):
+    user = _current_user(auth_store)
+    if user is not None:
+        return user
+
+    st.subheader("Sign in")
+    login_tab, create_tab, forgot_tab, reset_tab = st.tabs(
+        ["Login", "Create Account", "Forgot Password", "Reset Password"]
+    )
+
+    with login_tab:
+        with st.form("login_form"):
+            identifier = st.text_input("Username or email")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login", type="primary")
+        if submitted:
+            user = auth_store.authenticate(identifier, password)
+            if user is None:
+                st.error("Invalid username/email or password.")
+            else:
+                _set_auth_session(auth_store, user)
+                st.rerun()
+
+    with create_tab:
+        if not _env_truthy("SALSA_AUTH_ALLOW_SIGNUP", True):
+            st.info("Account creation is disabled on this deployment.")
+        else:
+            with st.form("create_account_form"):
+                username = st.text_input("Username", key="signup_username")
+                email = st.text_input("Email", key="signup_email")
+                first_name = st.text_input("First name", key="signup_first_name")
+                last_name = st.text_input("Last name", key="signup_last_name")
+                institution = st.text_input("Institution", key="signup_institution")
+                password = st.text_input("Password", type="password", key="signup_pw")
+                password_again = st.text_input(
+                    "Confirm password",
+                    type="password",
+                    key="signup_pw_again",
+                )
+                submitted = st.form_submit_button("Create account", type="primary")
+            if submitted:
+                try:
+                    if password != password_again:
+                        raise ValueError("Passwords do not match.")
+                    user = auth_store.create_user(
+                        username=username,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        institution=institution,
+                        password=password,
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    _set_auth_session(auth_store, user)
+                    st.success("Account created.")
+                    st.rerun()
+
+    with forgot_tab:
+        smtp_configured = bool(os.environ.get("SALSA_SMTP_HOST") and os.environ.get("SALSA_SMTP_FROM"))
+        print_reset_links = _env_truthy("SALSA_AUTH_PRINT_RESET_LINKS", False)
+        if smtp_configured:
+            st.caption("A one-time reset token will be emailed if the account exists.")
+        elif print_reset_links:
+            st.caption("A one-time reset token will be written to the SALSA service logs.")
+        else:
+            st.warning(
+                "Password reset delivery is not configured. Set SMTP environment "
+                "variables, or set SALSA_AUTH_PRINT_RESET_LINKS=1 for internal-only "
+                "log-based resets."
+            )
+        with st.form("forgot_password_form"):
+            identifier = st.text_input("Username or email", key="forgot_identifier")
+            submitted = st.form_submit_button("Send reset token")
+        if submitted:
+            if not (smtp_configured or print_reset_links):
+                st.error("Password reset delivery is not configured for this deployment.")
+            else:
+                user = auth_store.find_user(identifier)
+                delivery_failed = False
+                if user is not None:
+                    token = auth_store.create_password_reset_token(int(user["id"]))
+                    reset_url = build_reset_url(
+                        os.environ.get("SALSA_PUBLIC_URL", ""),
+                        token,
+                        user["email"],
+                    )
+                    mailed = False
+                    if smtp_configured:
+                        try:
+                            mailed = send_password_reset_email(user["email"], reset_url)
+                        except Exception as exc:
+                            delivery_failed = True
+                            print(f"[SALSA auth] Password reset email failed: {exc}")
+                    if print_reset_links and not mailed:
+                        print(
+                            "[SALSA auth] Password reset token for "
+                            f"{user['username']}: {reset_url}"
+                        )
+                if delivery_failed and not print_reset_links:
+                    st.error("Reset email could not be sent. Check the SMTP settings and service logs.")
+                elif smtp_configured:
+                    st.success("If that account exists, a reset email has been sent.")
+                else:
+                    st.success("If that account exists, a reset token was written to the service logs.")
+            if not smtp_configured and not print_reset_links:
+                st.info(
+                    "The service reads deployment settings from "
+                    "`/home/wschertzer3/SALSA/.env.production`."
+                )
+            elif not smtp_configured and print_reset_links:
+                st.info("Check the service logs with `journalctl -u salsa`.")
+            elif smtp_configured and not print_reset_links:
+                st.info(
+                    "If email delivery still fails, enable `SALSA_AUTH_PRINT_RESET_LINKS=1` "
+                    "temporarily to write fallback reset links to the service logs."
+                )
+
+    with reset_tab:
+        with st.form("reset_password_form"):
+            identifier = st.text_input(
+                "Username or email",
+                value=_query_param("reset_identifier"),
+                key="reset_identifier",
+            )
+            token = st.text_input(
+                "Reset token",
+                value=_query_param("reset_token"),
+                key="reset_token",
+            )
+            password = st.text_input("New password", type="password", key="reset_pw")
+            password_again = st.text_input(
+                "Confirm new password",
+                type="password",
+                key="reset_pw_again",
+            )
+            submitted = st.form_submit_button("Reset password", type="primary")
+        if submitted:
+            try:
+                if password != password_again:
+                    raise ValueError("Passwords do not match.")
+                ok = auth_store.reset_password_with_token(
+                    identifier=identifier,
+                    token=token,
+                    new_password=password,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                if ok:
+                    st.success("Password reset. You can log in now.")
+                    _clear_query_param("reset_token")
+                    _clear_query_param("reset_identifier")
+                else:
+                    st.error("Invalid or expired reset token.")
+
+    st.stop()
+
 
 
 st.set_page_config(page_title="SALSA UI", layout="wide")
-st.title("SALSA - Semi-Autonomous Literature Scraping Assistant")
+render_salsa_brand_header()
 
 st.markdown("""
 <style>
@@ -2327,23 +3541,94 @@ div[data-testid="stExpanderDetails"] {
 </style>
 """, unsafe_allow_html=True)
 
+scripts_root = (Path(__file__).resolve().parent / "..").resolve()
+salsa_data_root = data_root_from_env(scripts_root / "ui_runs")
+auth_db_path = Path(os.environ.get("SALSA_AUTH_DB", str(salsa_data_root / "auth.sqlite3")))
+auth_store = AuthStore(auth_db_path)
+auth_store.bootstrap_default_admin()
+if _query_param("salsa_session") and not st.session_state.get("_legacy_auth_query_cleared"):
+    st.session_state["_legacy_auth_query_cleared"] = True
+    _clear_query_param("salsa_session")
+_render_pending_auth_cookie_scripts()
+current_user = _render_auth_gate(auth_store)
+MAX_INPUT_ITEMS = ADMIN_INPUT_ITEM_LIMIT if is_admin_user(current_user) else DEFAULT_INPUT_ITEM_LIMIT
+workspaces_root = user_workspaces_root(salsa_data_root, current_user)
+_bootstrap_settings_presets_for_profiles(salsa_data_root, auth_store.list_users())
+show_admin_page = False
+
 # ---------------- Sidebar ----------------
 with st.sidebar:
+    if "salsa_active_page" not in st.session_state:
+        st.session_state["salsa_active_page"] = "tool"
 
-    # Set workspace variables – resolve relative to this file, not cwd
-    scripts_root = (Path(__file__).resolve().parent / "..").resolve()
-    workspaces_root = Path(str(scripts_root / "ui_runs"))
-    workspaces_root.mkdir(parents=True, exist_ok=True)
+    if st.session_state["salsa_active_page"] == "guide":
+        if st.button("Back to SALSA tool", use_container_width=True):
+            st.session_state["salsa_active_page"] = "tool"
+            st.rerun()
+    else:
+        if st.button("Guide", use_container_width=True):
+            st.session_state["salsa_active_page"] = "guide"
+            st.rerun()
 
     st.divider()
+
+    with st.expander("Profile", expanded=False):
+        profile_label = current_user["display_name"] or current_user["username"]
+        st.write(f"Signed in as **{profile_label}**")
+        st.caption(current_user["email"])
+        st.caption(f"Role: **{current_user['role']}**")
+        if st.button("Logout"):
+            _clear_auth_session(auth_store)
+            st.rerun()
+
+        with st.form("change_password_form"):
+            current_password = st.text_input(
+                "Current password",
+                type="password",
+                key="change_pw_current",
+            )
+            new_password = st.text_input(
+                "New password",
+                type="password",
+                key="change_pw_new",
+            )
+            new_password_again = st.text_input(
+                "Confirm new password",
+                type="password",
+                key="change_pw_new_again",
+            )
+            submitted = st.form_submit_button("Update password")
+        if submitted:
+            try:
+                if new_password != new_password_again:
+                    raise ValueError("Passwords do not match.")
+                validate_password(new_password)
+                if auth_store.authenticate(current_user["username"], current_password) is None:
+                    raise ValueError("Current password is incorrect.")
+                auth_store.set_password(int(current_user["id"]), new_password)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success("Password updated.")
+
+    st.divider()
+    if is_admin_user(current_user):
+        selected_page = st.radio(
+            "View",
+            options=["Run workspace", "Admin"],
+            horizontal=True,
+            key="salsa_sidebar_view",
+        )
+        show_admin_page = selected_page == "Admin"
+        st.divider()
 
     # Choose/create workspace
     st.header("Workspace")
 
-    # List existing workspaces (filter out axis_presets and instruction_presets)
+    # List existing workspaces (filter out shared config directories)
     existing_workspaces = [
         ws for ws in _list_subdirs(workspaces_root)
-        if ws not in ("axis_presets", "instruction_presets")
+        if not _ignored_workspace_or_run_name(ws)
     ]
 
     # Apply pending selection (but DON'T write workspace_name)
@@ -2388,35 +3673,121 @@ with st.sidebar:
     run_root = active_workspace_dir
 
     st.divider()
-    st.header("Select Stages")
-    with st.expander("Stages", expanded=False):
-        run_download_doi = st.checkbox("Download DOIs", value=True)
-        run_extract_figures = st.checkbox("Extract figures", value=True)
-        run_extract_tables = st.checkbox("Extract tables", value=True)
-        run_chemical_composition = st.checkbox("Extract chemical composition", value=True)
-        run_filter_figures = st.checkbox("Filter figures", value=True)
-        run_filter_tables = st.checkbox("Filter tables", value=True)
-        run_plextract = st.checkbox("Extract data from figures", value=True)
-        bypass_ocr_with_llm = st.checkbox(
-            "Bypass OCR and extract figure data directly with the LLM",
-            value=False,
-            help="Writes an LLM-digitized figure dataset, then Complete dataset can process it.",
-        )
-        run_complete_dataset = st.checkbox("Complete dataset", value=True)
-        exclude_full_text = st.checkbox("Exclude full text from context", value=True)
+    st.header("Input Source")
+    input_source = st.radio(
+        "Source",
+        options=["DOI(s)", "PDF(s)", "Figure(s)"],
+        horizontal=True,
+        key="input_source",
+    )
+    use_docling_pdf_uploads = input_source == "PDF(s)"
+    use_figure_uploads = input_source == "Figure(s)"
+    use_file_uploads = use_docling_pdf_uploads or use_figure_uploads
 
     st.divider()
-    st.header("Select LLM(s)")
-    with st.expander("LLM", expanded=False):
+    st.header("Settings")
+    _bootstrap_settings_presets_for_workspaces(workspaces_root)
+    settings_flash_message = _apply_pending_settings_preset_state()
+    if "custom_instructions" not in st.session_state:
+        _apply_settings_preset_state(
+            _load_settings_preset(workspaces_root, DEFAULT_SETTINGS_PRESET_NAME),
+            preset_name=DEFAULT_SETTINGS_PRESET_NAME,
+        )
+    elif any(key not in st.session_state for key in _CI_EDITOR_KEYS):
+        _apply_custom_instruction_state(
+            st.session_state["custom_instructions"],
+            preset_name=st.session_state.get("current_preset_name"),
+        )
+    if settings_flash_message:
+        st.success(settings_flash_message)
+
+    existing_settings_presets = _list_settings_presets(workspaces_root)
+
+    with st.expander(
+        "Create Settings Preset",
+        expanded=bool(st.session_state.get("create_settings_preset_expanded", False)),
+    ):
         _ensure_shared_llm_settings_in_state()
-        st.caption("Choose the LLM for each stage that actually uses one.")
         st.text_input(
             "OpenAI API key",
             key="openai_api_key",
             type="password",
             placeholder="sk-...",
-            help="Required for every stage that uses Chat GPT.",
+            help="Required for every selected stage that uses Chat GPT.",
+            on_change=_keep_create_settings_preset_open,
         )
+
+        if use_figure_uploads:
+            run_extract_figures = True
+            run_extract_tables = False
+            run_chemical_composition = False
+            run_filter_tables = False
+            exclude_full_text = True
+            st.checkbox("Exclude full text from context", value=True, disabled=True, key="settings_upload_exclude_full_text")
+            st.checkbox("Extract tables", value=False, disabled=True, key="settings_upload_extract_tables")
+            st.checkbox("Extract figures", value=True, disabled=True, key="settings_upload_extract_figures")
+            st.checkbox("Filter tables", value=False, disabled=True, key="settings_upload_filter_tables")
+        else:
+            exclude_full_text = _settings_checkbox(
+                "Exclude full text from context",
+                _STAGE_STATE_KEYS["exclude_full_text"],
+                _DEFAULT_STAGE_SETTINGS["exclude_full_text"],
+            )
+            run_extract_tables = _settings_checkbox(
+                "Extract tables",
+                _STAGE_STATE_KEYS["run_extract_tables"],
+                _DEFAULT_STAGE_SETTINGS["run_extract_tables"],
+            )
+            run_extract_figures = _settings_checkbox(
+                "Extract figures",
+                _STAGE_STATE_KEYS["run_extract_figures"],
+                _DEFAULT_STAGE_SETTINGS["run_extract_figures"],
+            )
+            run_filter_tables = _settings_checkbox(
+                "Filter tables",
+                _STAGE_STATE_KEYS["run_filter_tables"],
+                _DEFAULT_STAGE_SETTINGS["run_filter_tables"],
+            )
+
+        run_filter_figures = _settings_checkbox(
+            "Filter figures",
+            _STAGE_STATE_KEYS["run_filter_figures"],
+            _DEFAULT_STAGE_SETTINGS["run_filter_figures"],
+        )
+        run_plextract = _settings_checkbox(
+            "Extract data from figures",
+            _STAGE_STATE_KEYS["run_plextract"],
+            _DEFAULT_STAGE_SETTINGS["run_plextract"],
+        )
+        _, figure_data_llm_col = st.columns([0.08, 0.92])
+        with figure_data_llm_col:
+            bypass_ocr_with_llm = _settings_checkbox(
+                "Use LLM to extract data from figures",
+                _STAGE_STATE_KEYS["bypass_ocr_with_llm"],
+                _DEFAULT_STAGE_SETTINGS["bypass_ocr_with_llm"],
+                help="Writes an LLM-digitized figure dataset. Cannot crop images or modify series/axes in this mode",
+            )
+        if use_figure_uploads:
+            st.checkbox(
+                "Extract chemical composition",
+                value=False,
+                disabled=True,
+                key="settings_upload_chemical_composition",
+            )
+            run_chemical_composition = False
+        else:
+            run_chemical_composition = _settings_checkbox(
+                "Extract chemical composition",
+                _STAGE_STATE_KEYS["run_chemical_composition"],
+                _DEFAULT_STAGE_SETTINGS["run_chemical_composition"],
+            )
+        run_complete_dataset = _settings_checkbox(
+            "Complete dataset",
+            _STAGE_STATE_KEYS["run_complete_dataset"],
+            _DEFAULT_STAGE_SETTINGS["run_complete_dataset"],
+        )
+
+        ci = st.session_state["custom_instructions"]
         ollama_host = _normalize_ollama_host(
             st.session_state.get("ollama_host", default_ollama_host)
         )
@@ -2427,30 +3798,17 @@ with st.sidebar:
                 "Start Ollama to enable Ollama model selection."
             )
 
-        llm_steps_to_render: list[tuple[str, Optional[str]]] = [
-            (LLM_STEP_EXTRACT_TABLES, "Used when parsing table content with the LLM."),
-            (
-                LLM_STEP_CHEM_RELEVANT,
-                "Finds the text, tables, and schemes relevant to chemical composition.",
-            ),
-            (
-                LLM_STEP_CHEM_COMPOSITION,
-                "Uses the selected relevant evidence to extract sample compositions.",
-            ),
-            (LLM_STEP_FILTER_FIGURES, "Decides which figures are relevant downstream."),
-            (LLM_STEP_FILTER_TABLES, "Decides which tables are relevant downstream."),
-            (LLM_STEP_COMPLETE_DATASET, "Builds the final dataset rows."),
-        ]
-        if bypass_ocr_with_llm:
-            llm_steps_to_render.insert(
-                5,
-                (
-                    LLM_STEP_FIGURE_DATA,
-                    "Used only when bypassing OCR and extracting figure data directly with the LLM.",
-                ),
-            )
-
-        if ollama_available and _any_step_uses_ollama([step_key for step_key, _ in llm_steps_to_render]):
+        llm_steps_to_render = _active_llm_steps(
+            run_extract_tables=run_extract_tables,
+            use_docling_pdf_uploads=use_file_uploads,
+            run_chemical_composition=run_chemical_composition,
+            run_filter_figures=run_filter_figures,
+            run_filter_tables=run_filter_tables and not use_figure_uploads,
+            run_plextract=run_plextract,
+            bypass_ocr_with_llm=bypass_ocr_with_llm,
+            run_complete_dataset=run_complete_dataset,
+        )
+        if ollama_available and _any_step_uses_ollama(llm_steps_to_render):
             st.number_input(
                 "Ollama context window (num_ctx)",
                 min_value=4096,
@@ -2458,186 +3816,191 @@ with st.sidebar:
                 value=int(st.session_state.get("ollama_num_ctx", 16384)),
                 key="ollama_num_ctx",
                 help="Shared across all Ollama-backed steps.",
+                on_change=_keep_create_settings_preset_open,
             )
 
-        for idx, (step_key, caption) in enumerate(llm_steps_to_render):
-            _render_step_llm_selector(step_key, caption=caption)
-            if idx != len(llm_steps_to_render) - 1:
+        if run_extract_tables and not use_file_uploads:
+            with st.container():
+                _render_step_llm_selector(
+                    LLM_STEP_EXTRACT_TABLES,
+                    caption=_llm_step_caption(LLM_STEP_EXTRACT_TABLES),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_EXTRACT_TABLES]} settings",
+                )
+                _render_instruction_text_area(
+                    "Table extraction rules",
+                    "ci_table_extraction",
+                )
+            st.divider()
+
+        if run_chemical_composition:
+            with st.container():
+                _render_step_llm_selector(
+                    LLM_STEP_CHEM_RELEVANT,
+                    caption=_llm_step_caption(LLM_STEP_CHEM_RELEVANT),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_RELEVANT]} settings",
+                )
                 st.divider()
+                _render_step_llm_selector(
+                    LLM_STEP_CHEM_COMPOSITION,
+                    caption=_llm_step_caption(LLM_STEP_CHEM_COMPOSITION),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_COMPOSITION]} settings",
+                )
+                _render_instruction_text_area(
+                    "Chemical composition instructions",
+                    "ci_chemical_composition",
+                    height=120,
+                )
+            st.divider()
 
-        if not bypass_ocr_with_llm:
-            st.caption(
-                "The figure-data LLM selection is only used when 'Bypass OCR and extract figure data directly with the LLM' is enabled."
+        if run_filter_figures:
+            with st.container():
+                _render_step_llm_selector(
+                    LLM_STEP_FILTER_FIGURES,
+                    caption=_llm_step_caption(LLM_STEP_FILTER_FIGURES),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_FIGURES]} settings",
+                )
+                _render_instruction_text_area(
+                    "Figure filtering criteria",
+                    "ci_figure_filter",
+                    height=150,
+                )
+            st.divider()
+
+        if run_filter_tables and not use_figure_uploads:
+            with st.container():
+                _render_step_llm_selector(
+                    LLM_STEP_FILTER_TABLES,
+                    caption=_llm_step_caption(LLM_STEP_FILTER_TABLES),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_TABLES]} settings",
+                )
+                _render_instruction_text_area(
+                    "Table filtering criteria",
+                    "ci_table_filter",
+                    height=150,
+                )
+            st.divider()
+
+        if run_plextract and bypass_ocr_with_llm:
+            with st.container():
+                _render_step_llm_selector(
+                    LLM_STEP_FIGURE_DATA,
+                    caption=_llm_step_caption(LLM_STEP_FIGURE_DATA),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_FIGURE_DATA]} settings",
+                )
+                _render_instruction_text_area(
+                    "Figure data extraction instructions",
+                    "ci_figure_data",
+                    height=120,
+                )
+            st.divider()
+
+        ci_column_defaults_table = st.session_state.get(
+            _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+            _column_defaults_table_from_instructions(ci),
+        )
+        if run_complete_dataset:
+            with st.container():
+                _render_step_llm_selector(
+                    LLM_STEP_COMPLETE_DATASET,
+                    caption=_llm_step_caption(LLM_STEP_COMPLETE_DATASET),
+                    title=f"{LLM_STEP_LABELS[LLM_STEP_COMPLETE_DATASET]} settings",
+                )
+                _render_instruction_text_area(
+                    "Data processing rules",
+                    "ci_data_processing",
+                )
+                ci_column_defaults_table = st.data_editor(
+                    st.session_state.get(
+                        _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+                        _column_defaults_table_from_instructions(ci),
+                    ),
+                    hide_index=True,
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    key=_ci_column_defaults_widget_key(),
+                    on_change=_keep_create_settings_preset_open,
+                )
+
+        current_ci = _custom_instructions_from_editor_state(ci_column_defaults_table)
+        st.session_state["custom_instructions"] = current_ci
+
+        st.subheader("Save Preset")
+        col_name, col_save_btn = st.columns([3, 1])
+        with col_name:
+            preset_name = st.text_input(
+                "Settings preset name",
+                value=st.session_state.get("current_settings_preset_name", ""),
+                key="settings_new_preset_name",
+                placeholder="Enter a name for this settings preset",
+                on_change=_keep_create_settings_preset_open,
             )
+        with col_save_btn:
+            st.write("")
+            st.write("")
+            if st.button("Save", type="primary", key="save_settings_preset_btn") and preset_name.strip():
+                clean_preset_name = preset_name.strip()
+                current_settings = _make_settings_preset(
+                    stages={
+                        "exclude_full_text": exclude_full_text,
+                        "run_extract_tables": run_extract_tables,
+                        "run_extract_figures": run_extract_figures,
+                        "run_filter_tables": run_filter_tables and not use_figure_uploads,
+                        "run_filter_figures": run_filter_figures,
+                        "run_plextract": run_plextract,
+                        "bypass_ocr_with_llm": bypass_ocr_with_llm,
+                        "run_chemical_composition": run_chemical_composition,
+                        "run_complete_dataset": run_complete_dataset,
+                    },
+                    custom_instructions=current_ci,
+                    include_session_llms=True,
+                    openai_api_key=str(st.session_state.get("openai_api_key", "")).strip(),
+                )
+                _save_settings_preset(workspaces_root, clean_preset_name, current_settings)
+                _queue_settings_preset_state(
+                    current_settings,
+                    preset_name=clean_preset_name,
+                    flash_message=f"Saved settings preset: {clean_preset_name}",
+                )
+                st.rerun()
 
-    st.divider()
-    st.header("Custom Instructions")
-    ci_flash_message = _apply_pending_custom_instruction_state()
-    if "custom_instructions" not in st.session_state:
-        _apply_custom_instruction_state(
-            default_instructions(),
-            preset_name=DEFAULT_PRESET_NAME,
-        )
-    elif any(key not in st.session_state for key in _CI_EDITOR_KEYS):
-        _apply_custom_instruction_state(
-            st.session_state["custom_instructions"],
-            preset_name=st.session_state.get("current_preset_name"),
-        )
-    if ci_flash_message:
-        st.success(ci_flash_message)
+        st.session_state["create_settings_preset_expanded"] = False
 
-    ci = st.session_state["custom_instructions"]
-
-    # --- Load presets ---
-    existing_presets = list_presets(workspaces_root)
-    with st.expander("Load Preset Custom Instructions", expanded = False):
-        if existing_presets:
+    with st.expander(
+        "Load Settings Preset",
+        expanded=bool(st.session_state.get("load_settings_preset_expanded", False)),
+    ):
+        if existing_settings_presets:
             col_load_a, col_load_b = st.columns([3, 1])
             with col_load_a:
-                preset_choice = st.selectbox(
-                    "Select preset to load",
-                    options=[""] + existing_presets,
-                    key="ci_preset_choice",
+                settings_preset_choice = st.selectbox(
+                    "Saved settings preset",
+                    options=[""] + existing_settings_presets,
+                    key="settings_preset_choice",
+                    on_change=_keep_load_settings_preset_open,
                 )
             with col_load_b:
-                if st.button("Load", type="secondary") and preset_choice:
-                    loaded = load_preset(workspaces_root, preset_choice)
-                    _queue_custom_instruction_state(
-                        loaded,
-                        preset_name=preset_choice,
-                        flash_message=f"Loaded preset: {preset_choice}",
+                st.write("")
+                st.write("")
+                if st.button(
+                    "Load",
+                    type="secondary",
+                    key="load_settings_preset_btn",
+                    on_click=_keep_load_settings_preset_open,
+                ) and settings_preset_choice:
+                    loaded_settings = _load_settings_preset(workspaces_root, settings_preset_choice)
+                    _queue_settings_preset_state(
+                        loaded_settings,
+                        preset_name=settings_preset_choice,
+                        flash_message=f"Loaded settings preset: {settings_preset_choice}",
                     )
                     st.rerun()
         else:
-            st.info("No presets saved yet. Create your first preset below.")
+            st.info("No settings presets saved yet.")
 
-        # Show currently loaded preset
-        if st.session_state.get("current_preset_name"):
-            st.caption(f"Currently editing: **{st.session_state['current_preset_name']}**")
+        if st.session_state.get("current_settings_preset_name"):
+            st.caption(f"Currently loaded: **{st.session_state['current_settings_preset_name']}**")
         else:
-            st.caption("Currently editing: **Unsaved changes (default)**")
-
-    # --- Instruction editors ---
-    with st.expander("Table extraction rules", expanded=False):
-        st.caption(
-            "Extra rules for how raw HTML/XML tables are parsed into structured data. "
-            "E.g. how merged cells or multi-level headers should be handled."
-        )
-        st.text_area(
-            "Table extraction extra rules",
-            value=ci.get("table_extraction_rules", ""),
-            height=120,
-            key="ci_table_extraction",
-        )
-
-    with st.expander("Figure filtering criteria", expanded=False):
-        st.caption(
-            "Criteria the LLM uses to decide whether to keep or discard a figure. "
-            "E.g. 'only keep line charts showing conductivity vs time'."
-        )
-        st.text_area(
-            "Figure filter criteria",
-            value=ci.get("figure_filter_criteria", ""),
-            height=150,
-            key="ci_figure_filter",
-        )
-
-    with st.expander("Table filtering criteria", expanded=False):
-        st.caption(
-            "Criteria the LLM uses to decide whether to keep or discard a table."
-        )
-        st.text_area(
-            "Table filter criteria",
-            value=ci.get("table_filter_criteria", ""),
-            height=150,
-            key="ci_table_filter",
-        )
-
-    with st.expander("Data processing rules", expanded=False):
-        st.caption(
-            "Extra rules applied when the LLM processes data (converts tables/figures into "
-            "final dataset rows, extracts chemical compositions). E.g. 'before = time 0'."
-        )
-        st.text_area(
-            "Data processing extra rules",
-            value=ci.get("data_processing_rules", ""),
-            height=120,
-            key="ci_data_processing",
-        )
-
-    with st.expander("Output columns & missing-value defaults", expanded=False):
-        st.caption(
-            "Each row defines one output column. Leave the default value blank if that column should not receive a fallback when the value is missing."
-        )
-        ci_column_defaults_table = st.data_editor(
-            st.session_state.get(
-                _CI_COLUMN_DEFAULTS_SOURCE_KEY,
-                _column_defaults_table_from_instructions(ci),
-            ),
-            hide_index=True,
-            num_rows="dynamic",
-            use_container_width=True,
-            key=_ci_column_defaults_widget_key(),
-        )
-    current_ci = _custom_instructions_from_editor_state(ci_column_defaults_table)
-    st.session_state["custom_instructions"] = current_ci
-    if current_ci == default_instructions():
-        st.write(
-            "Default LLM instructions are being used (Anion Exchange Membrane degaradation data extraction). Please create or load a custom ruleset for your application."
-        )
-
-    with st.expander("Save Custom Instructions", expanded=False):
-
-        st.subheader("Save Preset")
-        col_name, col_save_btn, col_del_btn = st.columns([3, 1, 1])
-
-        with col_name:
-            # Default to current preset name if editing an existing one
-            default_name = st.session_state.get("current_preset_name", "")
-            preset_name = st.text_input(
-                "Preset name",
-                value=default_name,
-                key="ci_new_preset_name",
-                placeholder="Enter a name for this preset"
-            )
-
-        with col_save_btn:
-            st.write("")  # spacing
-            st.write("")  # spacing
-            if st.button("Save", type="primary") and preset_name.strip():
-                clean_preset_name = preset_name.strip()
-                save_preset(workspaces_root, clean_preset_name, current_ci)
-                _queue_custom_instruction_state(
-                    current_ci,
-                    preset_name=clean_preset_name,
-                    flash_message=f"Saved preset: {clean_preset_name}",
-                )
-                st.rerun()
-
-        with col_del_btn:
-            st.write("")  # spacing
-            st.write("")  # spacing
-            if existing_presets and st.button("Delete", type="secondary") and st.session_state.get("ci_preset_choice"):
-                deleted_preset_name = st.session_state["ci_preset_choice"]
-                delete_preset(workspaces_root, deleted_preset_name)
-                next_preset_name = st.session_state.get("current_preset_name")
-                if next_preset_name == deleted_preset_name:
-                    next_preset_name = None
-                _queue_custom_instruction_state(
-                    current_ci,
-                    preset_name=next_preset_name,
-                    flash_message=f"Deleted preset: {deleted_preset_name}",
-                )
-                st.rerun()
-
-        # --- Reset to defaults button ---
-        if st.button("Reset to defaults", type="secondary"):
-            _queue_custom_instruction_state(
-                default_instructions(),
-                preset_name=DEFAULT_PRESET_NAME,
-                flash_message="Reset custom instructions to defaults.",
-            )
-            st.rerun()
+            st.caption("Currently loaded: **Unsaved settings**")
 
     # st.divider()
     # st.header("Axis & Units Configuration")
@@ -2796,10 +4159,10 @@ with st.sidebar:
     st.divider()
     with st.expander("Load an existing run", expanded=False):
 
-        # Choose which workspace to browse when loading runs (filter out axis_presets and instruction_presets)
+        # Choose which workspace to browse when loading runs (filter out shared config directories)
         load_ws_options = [
             ws for ws in _list_subdirs(workspaces_root)
-            if ws not in ("axis_presets", "instruction_presets")
+            if not _ignored_workspace_or_run_name(ws)
         ]
 
         if load_ws_options:
@@ -2817,12 +4180,26 @@ with st.sidebar:
 
             load_workspace_dir = _ensure_workspace(workspaces_root, load_workspace_name)
 
-            existing_runs = sorted([p.name for p in load_workspace_dir.iterdir() if p.is_dir()], reverse=True)
+            existing_runs = sorted(
+                [
+                    p.name
+                    for p in load_workspace_dir.iterdir()
+                    if p.is_dir() and not _ignored_workspace_or_run_name(p.name)
+                ],
+                reverse=True,
+            )
             pick = st.selectbox("Run ID", options=[""] + existing_runs, key="load_run_id")
 
             if st.button("Load run") and pick:
-                rr = discover_run(load_workspace_dir / pick)
-                st.session_state["rr"] = rr
+                try:
+                    run_path = safe_child_path(load_workspace_dir, pick)
+                    if not run_belongs_to_user(run_path, workspaces_root, current_user):
+                        raise PermissionError("This run does not belong to the signed-in user.")
+                    rr = discover_run(run_path)
+                except Exception as exc:
+                    st.error(f"Could not load run: {exc}")
+                else:
+                    st.session_state["rr"] = rr
         else:
             st.info("No workspaces exist yet. Create one above, then run the pipeline.")
 
@@ -2836,17 +4213,36 @@ def _rerun_app() -> None:
 
 def _pipeline_status_snapshot(worker: dict[str, Any]) -> dict[str, Any]:
     with worker["lock"]:
-        return dict(worker["status"])
+        snapshot = dict(worker["status"])
+    status_path = worker.get("status_path")
+    if status_path:
+        disk_status = read_run_status(status_path)
+        # The on-disk status file is JSON, so object values such as RunResult are
+        # stringified there. Keep the in-memory object for UI follow-up actions.
+        disk_status.pop("result", None)
+        snapshot.update(disk_status)
+    return snapshot
 
 
 def _set_pipeline_status(worker: dict[str, Any], **updates: Any) -> None:
     with worker["lock"]:
         worker["status"].update(updates)
+    status_path = worker.get("status_path")
+    if status_path:
+        disk_updates = dict(updates)
+        result = disk_updates.pop("result", None)
+        if result is not None:
+            disk_updates["result_run_id"] = getattr(result, "run_id", None)
+            disk_updates["result_run_dir"] = str(getattr(result, "run_dir", ""))
+        write_run_status(status_path, **disk_updates)
 
 
 def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> dict[str, Any]:
     lock = threading.Lock()
     cancel_event = threading.Event()
+    auth_context = dict(pipeline_kwargs.pop("_auth_context", {}))
+    run_dir = safe_child_path(Path(pipeline_kwargs["run_root"]), str(pipeline_kwargs["run_id"]))
+    status_path = run_dir / RUN_STATUS_FILE_NAME
     status: dict[str, Any] = {
         "state": "running",
         "stage": "Starting pipeline",
@@ -2860,6 +4256,7 @@ def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> 
         "lock": lock,
         "cancel_event": cancel_event,
         "status": status,
+        "status_path": status_path,
         "dois": list(dois),
     }
 
@@ -2879,6 +4276,14 @@ def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> 
                 status_callback=on_status,
                 cancel_event=cancel_event,
             )
+            if auth_context:
+                write_run_manifest(
+                    rr.run_dir,
+                    user_id=auth_context.get("user_id"),
+                    username=str(auth_context.get("username") or ""),
+                    workspace=str(auth_context.get("workspace") or rr.run_dir.parent.name),
+                    run_id=rr.run_id,
+                )
             _set_pipeline_status(worker, state="done", result=rr, stage="Done")
         except PipelineCancelled as exc:
             _set_pipeline_status(
@@ -2912,10 +4317,6 @@ def _render_active_pipeline_run() -> None:
     state = snapshot.get("state", "running")
 
     if thread.is_alive():
-        stage = snapshot.get("stage") or "Running"
-        doi = snapshot.get("doi") or "Current DOI"
-        st.info(f"Running stage: **{stage}**\n\nDOI: `{doi}`")
-
         if worker["cancel_event"].is_set():
             st.warning("Cancellation requested. Stopping the active pipeline step...")
         elif st.button("Cancel Run", type="secondary"):
@@ -2923,9 +4324,11 @@ def _render_active_pipeline_run() -> None:
             _set_pipeline_status(worker, state="cancelling", stage="Cancelling")
             st.warning("Cancellation requested. Stopping the active pipeline step...")
 
-        time.sleep(1)
-        _rerun_app()
-        st.stop()
+        status_slot = st.empty()
+        while thread.is_alive():
+            snapshot = _pipeline_status_snapshot(worker)
+            status_slot.info(_run_progress_status_text(snapshot))
+            time.sleep(1)
 
     snapshot = _pipeline_status_snapshot(worker)
     state = snapshot.get("state", state)
@@ -2947,31 +4350,135 @@ def _render_active_pipeline_run() -> None:
 # ---------------- Run pipeline ----------------
 _render_active_pipeline_run()
 
-st.subheader("Input DOIs")
-doi_text = st.text_area("One DOI per line", height=140)
+if st.session_state.get("salsa_active_page") == "guide":
+    _render_guide_page()
+    st.stop()
+
+if show_admin_page:
+    show_loaded_run = _render_admin_page(
+        auth_store=auth_store,
+        data_root=salsa_data_root,
+        current_user=current_user,
+    )
+    if not show_loaded_run:
+        st.stop()
+    st.divider()
+
+if use_docling_pdf_uploads:
+    st.subheader("Input PDF(s)")
+    uploaded_pdf_files = st.file_uploader(
+        f"Upload PDF file(s), max {MAX_INPUT_ITEMS}",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="uploaded_pdf_files",
+    )
+    if uploaded_pdf_files and len(uploaded_pdf_files) > MAX_INPUT_ITEMS:
+        st.error(f"Upload at most {MAX_INPUT_ITEMS} PDFs.")
+    uploaded_pdf_ids_text = st.text_area(
+        "Document IDs (optional, one per PDF)",
+        height=100,
+        help="Leave blank to use uploaded/<filename>. These IDs are used anywhere SALSA normally shows a DOI.",
+    )
+    doi_text = ""
+elif use_figure_uploads:
+    st.subheader("Input Figure(s)")
+    uploaded_figure_files = st.file_uploader(
+        f"Upload figure image file(s), max {MAX_INPUT_ITEMS}",
+        type=["png", "jpg", "jpeg", "gif", "tif", "tiff", "bmp", "webp"],
+        accept_multiple_files=True,
+        key="uploaded_figure_files",
+    )
+    if uploaded_figure_files and len(uploaded_figure_files) > MAX_INPUT_ITEMS:
+        st.error(f"Upload at most {MAX_INPUT_ITEMS} figure images.")
+    uploaded_figure_document_id = st.text_input(
+        "Figure set ID (optional)",
+        value="",
+        help="Leave blank to use uploaded/<filename> for one figure or uploaded/figures for multiple figures.",
+    )
+    uploaded_figure_captions_text = st.text_area(
+        "Figure captions (optional, one per uploaded figure)",
+        height=120,
+    )
+    uploaded_pdf_files = []
+    uploaded_pdf_ids_text = ""
+    doi_text = ""
+else:
+    uploaded_pdf_files = []
+    uploaded_pdf_ids_text = ""
+    uploaded_figure_files = []
+    uploaded_figure_document_id = ""
+    uploaded_figure_captions_text = ""
+    st.subheader("Input DOI(s)")
+    doi_text = st.text_area(f"One DOI per line, max {MAX_INPUT_ITEMS}", height=140)
 
 st.subheader("Run configuration")
 default_run_id = st.session_state.get("pending_run_id", "")
 run_id_input = st.text_input(
-    "Run ID (optional)",
+    "Run Name (optional)",
     value=default_run_id,
-    help="Leave blank to auto-generate timestamp-based run ID",
+    help="Leave blank to auto-generate timestamp-based run name",
 )
 
 st.session_state["pending_run_id"] = run_id_input
 
 
 if st.button("Run pipeline", type="primary"):
-    dois = [d.strip() for d in doi_text.splitlines() if d.strip()]
+    uploaded_pdfs = []
+    uploaded_figures = []
+    figure_document_id = ""
+    if use_docling_pdf_uploads:
+        id_lines = [line.strip() for line in uploaded_pdf_ids_text.splitlines() if line.strip()]
+        for idx, uploaded_file in enumerate(uploaded_pdf_files or []):
+            document_id = id_lines[idx] if idx < len(id_lines) else None
+            uploaded_pdfs.append({
+                "filename": uploaded_file.name,
+                "content": uploaded_file.getvalue(),
+                "document_id": document_id,
+            })
+        dois = [
+            item["document_id"]
+            or f"uploaded/{re.sub(r'[^A-Za-z0-9_.-]+', '_', Path(item['filename']).stem).strip('._-') or 'uploaded_pdf'}"
+            for item in uploaded_pdfs
+        ]
+    elif use_figure_uploads:
+        caption_lines = uploaded_figure_captions_text.splitlines()
+        figure_document_id = uploaded_figure_document_id.strip()
+        for idx, uploaded_file in enumerate(uploaded_figure_files or []):
+            caption = caption_lines[idx].strip() if idx < len(caption_lines) else ""
+            uploaded_figures.append({
+                "filename": uploaded_file.name,
+                "content": uploaded_file.getvalue(),
+                "caption": caption,
+            })
+        if figure_document_id:
+            dois = [figure_document_id]
+        elif len(uploaded_figures) == 1:
+            first_name = uploaded_figures[0]["filename"] if uploaded_figures else "uploaded_figure"
+            dois = [f"uploaded/{re.sub(r'[^A-Za-z0-9_.-]+', '_', Path(first_name).stem).strip('._-') or 'uploaded_figure'}"]
+        else:
+            dois = ["uploaded/figures"] if uploaded_figures else []
+    else:
+        dois = [d.strip() for d in doi_text.splitlines() if d.strip()]
     st.session_state["doi_order"] = dois
-    if not dois:
+    if use_docling_pdf_uploads and not uploaded_pdfs:
+        st.error("Please upload at least one PDF.")
+    elif use_docling_pdf_uploads and len(uploaded_pdfs) > MAX_INPUT_ITEMS:
+        st.error(f"Upload at most {MAX_INPUT_ITEMS} PDFs.")
+    elif use_figure_uploads and not uploaded_figures:
+        st.error("Please upload at least one figure image.")
+    elif use_figure_uploads and len(uploaded_figures) > MAX_INPUT_ITEMS:
+        st.error(f"Upload at most {MAX_INPUT_ITEMS} figure images.")
+    elif not use_file_uploads and not dois:
         st.error("Please paste at least one DOI.")
+    elif not use_file_uploads and len(dois) > MAX_INPUT_ITEMS:
+        st.error(f"Enter at most {MAX_INPUT_ITEMS} DOIs.")
     else:
         active_llm_steps = _active_llm_steps(
             run_extract_tables=run_extract_tables,
+            use_docling_pdf_uploads=use_file_uploads,
             run_chemical_composition=run_chemical_composition,
             run_filter_figures=run_filter_figures,
-            run_filter_tables=run_filter_tables,
+            run_filter_tables=run_filter_tables and not use_figure_uploads,
             run_plextract=run_plextract,
             bypass_ocr_with_llm=bypass_ocr_with_llm,
             run_complete_dataset=run_complete_dataset,
@@ -2989,12 +4496,21 @@ if st.button("Run pipeline", type="primary"):
                 + ", ".join(missing_openai_api_key_steps)
             )
         else:
-            custom_run_id = run_id_input.strip() or None
+            custom_run_id = run_id_input.strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
 
             _sync_all_step_llm_envs_from_session()
 
+            try:
+                target = safe_child_path(run_root, custom_run_id)
+            except PermissionError as exc:
+                st.error(f"Invalid run name: {exc}")
+                st.stop()
+
+            if not _WORKSPACE_RE.match(custom_run_id):
+                st.error("Run name may only contain letters, numbers, underscores, dots, or dashes.")
+                st.stop()
+
             if custom_run_id:
-                target = run_root / custom_run_id
                 if target.exists():
                     st.warning(f"Run directory already exists and may be overwritten: {target}")
 
@@ -3023,7 +4539,7 @@ if st.button("Run pipeline", type="primary"):
                 run_extract_figures=run_extract_figures,
                 run_extract_tables=run_extract_tables,
                 run_filter_figures=run_filter_figures,
-                run_filter_tables=run_filter_tables,
+                run_filter_tables=run_filter_tables and not use_figure_uploads,
                 run_plextract=run_plextract and not bypass_ocr_with_llm,
                 run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
                 run_complete_dataset=run_complete_dataset,
@@ -3031,6 +4547,15 @@ if st.button("Run pipeline", type="primary"):
                 run_chemical_composition=run_chemical_composition,
                 exclude_full_text=exclude_full_text,
                 custom_instructions=_run_ci,
+                uploaded_pdfs=uploaded_pdfs if use_docling_pdf_uploads else None,
+                uploaded_figures=uploaded_figures if use_figure_uploads else None,
+                uploaded_figure_document_id=figure_document_id if use_figure_uploads else None,
+                input_item_limit=MAX_INPUT_ITEMS,
+                _auth_context={
+                    "user_id": int(current_user["id"]),
+                    "username": current_user["username"],
+                    "workspace": active_workspace_name,
+                },
             )
             st.session_state[_ACTIVE_PIPELINE_RUN_KEY] = _start_pipeline_worker(
                 pipeline_kwargs,
@@ -3043,23 +4568,28 @@ if not rr:
     st.stop()
 
 st.info(f"Run ID: **{rr.run_id}**")
-st.info(f"Workspace: **{rr.run_dir}**")
+st.info(f"Workspace: **{_workspace_display_name_for_run(rr.run_dir, workspaces_root)}**")
+_loaded_run_status_path = rr.run_dir / RUN_STATUS_FILE_NAME
+_loaded_run_status = _mark_inactive_run_status(
+    _loaded_run_status_path,
+    read_run_status(_loaded_run_status_path),
+)
+if _run_status_is_active(_loaded_run_status):
+    _loaded_status_slot = st.empty()
+    while _run_status_is_active(_loaded_run_status):
+        _loaded_status_slot.info(_run_progress_status_text(_loaded_run_status))
+        time.sleep(1)
+        _loaded_run_status = _mark_inactive_run_status(
+            _loaded_run_status_path,
+            read_run_status(_loaded_run_status_path),
+        )
+    _loaded_status_slot.info(_run_progress_status_text(_loaded_run_status))
 _render_cost_summary(rr.run_dir)
 
 # ---------------- DOI summary table + DOI selector ----------------
 st.subheader("Processed DOIs")
 
-# Let user decide whether to compute interventions (can be expensive)
-colA, colB = st.columns([1, 3])
-with colA:
-    compute_interventions = st.checkbox("Include intervention counts", value=False)
-with colB:
-    if compute_interventions:
-        st.caption("Intervention counts are cached per run directory once computed.")
-    else:
-        st.caption("Turn on to identify figures needing manual intervention.")
-
-df_stats = build_doi_stats(rr, include_interventions=compute_interventions)
+df_stats = build_doi_stats(rr)
 
 # Render as interactive table (row click -> selects DOI when supported)
 df_view = df_stats.drop(columns=["_doi_safe"], errors="ignore")
@@ -4628,9 +6158,10 @@ if selected_doi_view == "Chemical Composition":
                 samples = result.get("samples", [])
                 st.markdown(f"**Found {len(samples)} sample(s)**")
                 if samples:
-                    for s in samples:
-                        with st.expander(f"Sample: {s.get('sample_name', 'Unknown')}"):
-                            st.json(s)
+                    for sample_idx, sample in enumerate(samples, start=1):
+                        sample_name = sample.get("sample_name", "Unknown")
+                        st.markdown(f"**Sample {sample_idx}: {sample_name}**")
+                        st.json(sample)
 
                 relevant = result.get("relevant_content", [])
                 st.markdown(f"**Identified {len(relevant)} relevant content section(s)**")

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import datetime
 import json
+import logging
 import mimetypes
 import re
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +14,7 @@ import pandas as pd
 
 from llm_client import get_llm_client
 from ui.openai_cost import append_usage, run_id_from_env
+from ui.run_progress import write_current_doi, write_run_status
 
 
 FIGURE_DATA_COLUMNS = [
@@ -24,6 +28,32 @@ FIGURE_DATA_COLUMNS = [
 ]
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+def _run_logger(workdir: Path, run_id: int) -> tuple[logging.Logger, Path]:
+    log_dir = workdir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"llm_figure_extraction_run_{run_id}.log"
+    logger = logging.getLogger(f"salsa.llm_figure_extraction.{workdir.resolve()}.{run_id}")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        handler = logging.FileHandler(log_path)
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(handler)
+    return logger, log_path
+
+
+def _append_status_event(status_path: Path, event: Dict[str, Any]) -> None:
+    record = dict(event)
+    record["timestamp"] = datetime.datetime.now().isoformat(timespec="seconds")
+    with open(status_path, "a") as f:
+        f.write(json.dumps(record, sort_keys=True) + "\n")
 
 
 def _image_data_url(image_path: Path) -> str:
@@ -220,43 +250,145 @@ def run_llm_figure_data_extraction(
     run_id = (max(existing_run_ids) + 1) if existing_run_ids else 0
     output_root = results_root / str(run_id) / "output"
     output_root.mkdir(parents=True, exist_ok=True)
+    logger, log_path = _run_logger(workdir, run_id)
+    status_path = workdir / "logs" / f"llm_figure_extraction_run_{run_id}.jsonl"
+    successes = 0
+    failures = 0
+    logger.info("Starting direct LLM figure extraction")
+    logger.info("figures_root=%s", figures_root)
+    logger.info("output_root=%s", output_root)
+    _append_status_event(
+        status_path,
+        {
+            "event": "run_started",
+            "figures_root": str(figures_root),
+            "output_root": str(output_root),
+            "log_path": str(log_path),
+        },
+    )
 
     for doi_dir in sorted(p for p in figures_root.iterdir() if p.is_dir()):
         safe_doi = doi_dir.name
         doi = safe_doi.replace("@", "/")
+        write_current_doi(doi)
+        logger.info("Processing DOI %s", doi)
         for image_path in sorted(p for p in doi_dir.iterdir() if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES):
             figure_id = _safe_output_name(image_path)
             final_dir = output_root / safe_doi / figure_id / "final"
-            final_dir.mkdir(parents=True, exist_ok=True)
-
-            caption = _read_caption(image_path)
+            caption = ""
             try:
+                final_dir.mkdir(parents=True, exist_ok=True)
+                caption = _read_caption(image_path)
+                logger.info("Starting figure doi=%s figure=%s image=%s", doi, figure_id, image_path)
+                write_run_status(
+                    state="running",
+                    stage="Extracting figure data with LLM",
+                    doi=doi,
+                    figure=figure_id,
+                    image_path=str(image_path),
+                )
+                _append_status_event(
+                    status_path,
+                    {
+                        "event": "figure_started",
+                        "doi": doi,
+                        "safe_doi": safe_doi,
+                        "figure_id": figure_id,
+                        "image_path": str(image_path),
+                    },
+                )
                 df, meta = extract_figure_data_llm(
                     image_path=image_path,
                     doi=doi,
                     caption=caption,
                 )
                 _log_cost(meta, doi=doi, figure_name=figure_id)
-            except Exception as exc:
-                print(f"[direct_llm_figure_data] WARNING: extraction failed for {image_path}: {exc}")
-                df = pd.DataFrame(columns=FIGURE_DATA_COLUMNS)
-
-            df = df.reindex(columns=FIGURE_DATA_COLUMNS, fill_value="").fillna("").astype(str)
-            df.to_csv(final_dir / "final_dataset.csv", index=False)
-            (final_dir / "metadata.json").write_text(
-                json.dumps(
+                df = df.reindex(columns=FIGURE_DATA_COLUMNS, fill_value="").fillna("").astype(str)
+                df.to_csv(final_dir / "final_dataset.csv", index=False)
+                (final_dir / "metadata.json").write_text(
+                    json.dumps(
+                        {
+                            "doi": doi,
+                            "safe_doi": safe_doi,
+                            "figure_id": figure_id,
+                            "image_path": str(image_path),
+                            "caption": caption,
+                            "extraction_method": "direct_llm",
+                            "rows": len(df),
+                            "status": "success",
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                )
+                successes += 1
+                logger.info("Finished figure doi=%s figure=%s rows=%s", doi, figure_id, len(df))
+                _append_status_event(
+                    status_path,
                     {
+                        "event": "figure_success",
                         "doi": doi,
                         "safe_doi": safe_doi,
                         "figure_id": figure_id,
                         "image_path": str(image_path),
-                        "caption": caption,
-                        "extraction_method": "direct_llm",
                         "rows": len(df),
+                        "final_dataset": str(final_dir / "final_dataset.csv"),
                     },
-                    indent=2,
-                    ensure_ascii=False,
                 )
-            )
+            except Exception as exc:
+                failures += 1
+                tb = traceback.format_exc()
+                print(f"[direct_llm_figure_data] WARNING: extraction failed for {image_path}: {exc}")
+                logger.error("Failed figure doi=%s figure=%s image=%s error=%s", doi, figure_id, image_path, exc)
+                logger.error(tb)
+                try:
+                    final_dir.mkdir(parents=True, exist_ok=True)
+                    pd.DataFrame(columns=FIGURE_DATA_COLUMNS).to_csv(final_dir / "final_dataset.csv", index=False)
+                    (final_dir / "metadata.json").write_text(
+                        json.dumps(
+                            {
+                                "doi": doi,
+                                "safe_doi": safe_doi,
+                                "figure_id": figure_id,
+                                "image_path": str(image_path),
+                                "caption": caption,
+                                "extraction_method": "direct_llm",
+                                "rows": 0,
+                                "status": "failed",
+                                "error": str(exc),
+                            },
+                            indent=2,
+                            ensure_ascii=False,
+                        )
+                    )
+                except Exception as write_exc:
+                    logger.error(
+                        "Failed to write failure placeholder doi=%s figure=%s error=%s",
+                        doi,
+                        figure_id,
+                        write_exc,
+                    )
+                _append_status_event(
+                    status_path,
+                    {
+                        "event": "figure_failure",
+                        "doi": doi,
+                        "safe_doi": safe_doi,
+                        "figure_id": figure_id,
+                        "image_path": str(image_path),
+                        "error": str(exc),
+                        "traceback": tb,
+                    },
+                )
 
+    logger.info("Finished direct LLM figure extraction successes=%s failures=%s", successes, failures)
+    _append_status_event(
+        status_path,
+        {
+            "event": "run_finished",
+            "successes": successes,
+            "failures": failures,
+            "output_root": str(output_root),
+        },
+    )
     return output_root

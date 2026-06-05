@@ -5,6 +5,8 @@ import subprocess
 from os import path
 import os
 import pandas as pd  # NEW
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, _SRC_ROOT)
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
 sys.path.insert(0, parent_dir)
 from paper_downloader import downloader, utils

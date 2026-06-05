@@ -26,6 +26,18 @@ PRICES_PER_1M = {
     "gpt-5.5-pro": {"in": 30.00, "out":180.00},
 }
 
+STAGE_LABELS_BY_KIND = {
+    "table_xml": "Table recreation",
+    "table_html": "Table recreation",
+    "filter_figure": "Figure filtering",
+    "filter_table": "Table filtering",
+    "direct_llm_figure_data": "Figure data extraction",
+    "chemical_composition_relevant_content": "Chemical composition: find relevant content",
+    "chemical_composition_table": "Chemical composition: extract composition",
+    "emit_rows_figure": "Complete dataset from figures",
+    "emit_rows_table": "Complete dataset from tables",
+}
+
 def canonical_model(name: str) -> str:
     # Your logs show "gpt-4o-2024-08-06" → treat as "gpt-4o"
     if not name:
@@ -68,8 +80,50 @@ def canonical_model(name: str) -> str:
         return "unknown"
     return name
 
+def stage_label_for_record(rec: dict) -> str:
+    extra = rec.get("extra") or {}
+    if not isinstance(extra, dict):
+        return "Other LLM usage"
+
+    kind = str(extra.get("kind") or "").strip()
+    if kind in STAGE_LABELS_BY_KIND:
+        return STAGE_LABELS_BY_KIND[kind]
+    if kind:
+        return kind.replace("_", " ").title()
+    return "Other LLM usage"
+
+def _blank_totals() -> dict:
+    return {"input": 0, "cached": 0, "output": 0, "n": 0}
+
+def _add_record_totals(totals: dict, rec: dict) -> None:
+    totals["input"] += int(rec.get("input_tokens", 0) or 0)
+    totals["cached"] += int(rec.get("cached_tokens", 0) or 0)
+    totals["output"] += int(rec.get("output_tokens", 0) or 0)
+    totals["n"] += 1
+
+def _cost_for_totals(model: str, totals: dict) -> float:
+    prices = PRICES_PER_1M.get(model)
+    if not prices:
+        return 0.0
+    non_cached_in = max(0, totals["input"] - totals["cached"])
+    return (
+        (non_cached_in / 1e6) * prices["in"]
+        + (totals["cached"] / 1e6) * prices.get("cached_in", prices["in"])
+        + (totals["output"] / 1e6) * prices["out"]
+    )
+
+def _public_totals(totals: dict, cost: float) -> dict:
+    return {
+        "calls": totals["n"],
+        "input": totals["input"],
+        "cached": totals["cached"],
+        "output": totals["output"],
+        "cost": cost,
+    }
+
 def main(path: str):
-    totals = defaultdict(lambda: {"input": 0, "cached": 0, "output": 0, "n": 0})
+    totals = defaultdict(_blank_totals)
+    stage_model_totals = defaultdict(lambda: defaultdict(_blank_totals))
 
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -78,12 +132,30 @@ def main(path: str):
                 continue
             rec = json.loads(line)
             m = canonical_model(rec.get("model", ""))
-            totals[m]["input"] += int(rec.get("input_tokens", 0) or 0)
-            totals[m]["cached"] += int(rec.get("cached_tokens", 0) or 0)
-            totals[m]["output"] += int(rec.get("output_tokens", 0) or 0)
-            totals[m]["n"] += 1
+            _add_record_totals(totals[m], rec)
+            _add_record_totals(stage_model_totals[stage_label_for_record(rec)][m], rec)
 
     grand_total = 0.0
+    print("\nPer-stage totals:")
+    for stage, models in stage_model_totals.items():
+        stage_calls = stage_input = stage_cached = stage_output = 0
+        stage_cost = 0.0
+        model_parts = []
+        for m, t in models.items():
+            model_cost = _cost_for_totals(m, t)
+            stage_calls += t["n"]
+            stage_input += t["input"]
+            stage_cached += t["cached"]
+            stage_output += t["output"]
+            stage_cost += model_cost
+            model_parts.append(f"{m}: calls={t['n']}, cost=${model_cost:.6f}")
+        model_summary = "; ".join(model_parts)
+        print(
+            f"- {stage}: calls={stage_calls}, input={stage_input}, "
+            f"cached={stage_cached}, output={stage_output}, cost=${stage_cost:.6f}"
+            f" ({model_summary})"
+        )
+
     print("\nPer-model totals:")
     for m, t in totals.items():
         prices = PRICES_PER_1M.get(m)
@@ -91,8 +163,7 @@ def main(path: str):
             print(f"- {m}: {t}  (NO PRICES CONFIGURED)")
             continue
 
-        non_cached_in = max(0, t["input"] - t["cached"])
-        cost = (non_cached_in / 1e6) * prices["in"] + (t["cached"] / 1e6) * prices.get("cached_in", prices["in"]) + (t["output"] / 1e6) * prices["out"]
+        cost = _cost_for_totals(m, t)
         grand_total += cost
 
         print(f"- {m}: calls={t['n']}, input={t['input']}, cached={t['cached']}, output={t['output']}, cost=${cost:.6f}")
@@ -109,14 +180,19 @@ def summarise_usage(path: str) -> dict:
                 "<model>": {"calls": N, "input": N, "cached": N, "output": N, "cost": float},
                 ...
             },
+            "stages": {
+                "<stage>": {"calls": N, "input": N, "cached": N, "output": N, "cost": float},
+                ...
+            },
             "grand_total": float,
         }
     """
     from pathlib import Path as _P
     if not _P(path).exists():
-        return {"models": {}, "grand_total": 0.0}
+        return {"models": {}, "stages": {}, "grand_total": 0.0}
 
-    totals = defaultdict(lambda: {"input": 0, "cached": 0, "output": 0, "n": 0})
+    totals = defaultdict(_blank_totals)
+    stage_model_totals = defaultdict(lambda: defaultdict(_blank_totals))
 
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -125,33 +201,33 @@ def summarise_usage(path: str) -> dict:
                 continue
             rec = json.loads(line)
             m = canonical_model(rec.get("model", ""))
-            totals[m]["input"] += int(rec.get("input_tokens", 0) or 0)
-            totals[m]["cached"] += int(rec.get("cached_tokens", 0) or 0)
-            totals[m]["output"] += int(rec.get("output_tokens", 0) or 0)
-            totals[m]["n"] += 1
+            _add_record_totals(totals[m], rec)
+            _add_record_totals(stage_model_totals[stage_label_for_record(rec)][m], rec)
 
     grand_total = 0.0
     models_out = {}
     for m, t in totals.items():
-        prices = PRICES_PER_1M.get(m)
-        cost = 0.0
-        if prices:
-            non_cached_in = max(0, t["input"] - t["cached"])
-            cost = (
-                (non_cached_in / 1e6) * prices["in"]
-                + (t["cached"] / 1e6) * prices.get("cached_in", prices["in"])
-                + (t["output"] / 1e6) * prices["out"]
-            )
+        cost = _cost_for_totals(m, t)
         grand_total += cost
-        models_out[m] = {
-            "calls": t["n"],
-            "input": t["input"],
-            "cached": t["cached"],
-            "output": t["output"],
-            "cost": cost,
-        }
+        models_out[m] = _public_totals(t, cost)
 
-    return {"models": models_out, "grand_total": grand_total}
+    stages_out = {}
+    for stage, models in stage_model_totals.items():
+        stage_totals = _blank_totals()
+        stage_cost = 0.0
+        stage_models_out = {}
+        for m, t in models.items():
+            model_cost = _cost_for_totals(m, t)
+            stage_totals["n"] += t["n"]
+            stage_totals["input"] += t["input"]
+            stage_totals["cached"] += t["cached"]
+            stage_totals["output"] += t["output"]
+            stage_cost += model_cost
+            stage_models_out[m] = _public_totals(t, model_cost)
+        stages_out[stage] = _public_totals(stage_totals, stage_cost)
+        stages_out[stage]["models"] = stage_models_out
+
+    return {"models": models_out, "stages": stages_out, "grand_total": grand_total}
 
 
 if __name__ == "__main__":

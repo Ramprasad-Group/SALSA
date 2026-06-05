@@ -15,10 +15,13 @@ from pathlib import Path
 from tqdm import tqdm
 import os
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, parent_dir)
 from paper_downloader import records_downloader, config, utils
 from backend import sett, postgres
 from backend.postgres.orm import PaperInfo, Papers
+from ui.run_progress import write_current_doi
 
 def make_result(doi, publisher, title, year, success, message):
     return {
@@ -232,6 +235,7 @@ log.info(f"Starting processing of {len(df)} DOIs")
 
 for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
     doi = row[args.doi_column]
+    write_current_doi(str(doi))
     publisher = row['final_publisher']
     
     # Get CSV data for fallback
