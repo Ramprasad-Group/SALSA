@@ -1,9 +1,0 @@
-README.md
-pyproject.toml
-src/plextract.egg-info/PKG-INFO
-src/plextract.egg-info/SOURCES.txt
-src/plextract.egg-info/dependency_links.txt
-src/plextract.egg-info/requires.txt
-src/plextract.egg-info/top_level.txt
-tests/test_chemical_prompt_text.py
-tests/test_composition_table_schema.py

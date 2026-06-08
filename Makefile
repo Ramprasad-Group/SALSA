@@ -47,4 +47,5 @@ ui:
 
 clean: ## Remove Python caches and egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	rm -rf src/plextract.egg-info
+	find . -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true
+	rm -rf .pytest_cache build dist

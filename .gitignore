@@ -9,6 +9,9 @@ src/ui_runs/
 __pycache__/
 *.pyc
 *.egg-info/
+.pytest_cache/
+build/
+dist/
 
 # OS metadata
 .DS_Store
