@@ -121,30 +121,37 @@ SALSA's main workflow is orchestrated by the Streamlit UI:
 
 ```text
 SALSA/
-├── assets/                          # README and UI assets
-├── deploy/                          # Remote hosting templates
-│   ├── env/
-│   ├── nginx/
-│   └── systemd/
-├── extern/                          # Git submodules
-│   ├── ChartDete/                   # Chart element detector
-│   └── LineFormer/                  # Line extraction transformer
-├── huggingface/                     # Model configs and checkpoints
+├── assets/                          # README and UI images
+├── deploy/                          # Remote deployment documentation and templates
+│   ├── env/salsa.env.example
+│   ├── nginx/salsa.conf
+│   └── systemd/salsa.service
+├── extern/                          # Git submodules used for chart digitization
+│   ├── ChartDete/
+│   └── LineFormer/
+├── huggingface/                     # ChartDete and LineFormer configs/checkpoints
 ├── src/
-│   ├── ui/                          # Streamlit app and orchestration
-│   ├── paper-downloader/            # Paper acquisition and parsing
-│   ├── extract_figure_data/         # Chart digitization and figure extraction
-│   ├── chemical_composition/        # Chemistry/sample extraction helpers
-│   ├── complete_dataset/            # LLM-assisted final dataset builder
+│   ├── chemical_composition/        # Composition extraction and JSME drawing tool
+│   ├── complete_dataset/            # Dataset assembly and row transformation
 │   ├── cost/                        # Usage and cost summaries
-│   ├── setup-scripts/               # Setup and patch scripts
-│   └── ui_runs/                     # Local UI workspaces and run artifacts
-├── tests/                           # Focused regression tests
+│   ├── extract_figure_data/         # OCR, chart detection, masks, and XY extraction
+│   ├── paper-downloader/            # Paper acquisition and parsing
+│   ├── setup-scripts/               # Environment setup and submodule patching
+│   ├── ui/                          # Streamlit UI, pipeline, auth, and interventions
+│   ├── ui_runs/                     # Generated workspaces and run artifacts (ignored)
+│   ├── llm_client.py                # Shared LLM provider client
+│   └── run.py                       # Legacy command-line pipeline entry point
+├── tests/                           # Pipeline, UI, schema, prompt, and cost tests
+├── .env.production                  # Production environment configuration
+├── .gitmodules                      # ChartDete and LineFormer submodule definitions
 ├── environment.yml                  # Conda environment
-├── Makefile                         # make setup / make ui
+├── Makefile                         # Setup, launch, and cleanup commands
 ├── pyproject.toml                   # Python package metadata
 └── README.md
 ```
+
+Runtime logs, extraction results, workspaces, Python caches, and generated
+`*.egg-info` directories are not part of the source layout and are ignored.
 
 ## Deployment
 

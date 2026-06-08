@@ -8,6 +8,10 @@ src/ui_runs/
 # Python bytecode caches
 __pycache__/
 *.pyc
+*.egg-info/
+
+# OS metadata
+.DS_Store
 
 # Large model checkpoints (download from HF at runtime)
 huggingface/checkpoint.pth

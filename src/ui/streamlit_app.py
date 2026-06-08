@@ -7,6 +7,7 @@ import time
 import traceback
 from http.cookies import SimpleCookie
 from hashlib import md5
+import os
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -53,7 +54,6 @@ from axis_config import (
     delete_preset as delete_axis_preset,
 )
 import math
-import os
 import sys
 import subprocess
 import sys
@@ -91,6 +91,15 @@ from llm_step_config import (
 )
 
 SALSA_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "salsa_icon.png"
+PUBLISHER_TDM_ENV_NAMES = {
+    "elsevier_api_key": ("ELSEVIER_API_KEY", "ELS_API_KEY"),
+    "wiley_tdm_token": ("WILEY_TDM_TOKEN", "WILEY_API_KEY"),
+}
+_INITIAL_PUBLISHER_TDM_ENV = {
+    env_name: os.environ.get(env_name)
+    for env_names in PUBLISHER_TDM_ENV_NAMES.values()
+    for env_name in env_names
+}
 
 # Make cost module importable
 _cost_dir = os.path.join(os.path.dirname(__file__), "..", "cost")
@@ -1999,6 +2008,10 @@ def _ensure_shared_llm_settings_in_state() -> None:
         )
     if "openai_api_key" not in st.session_state:
         st.session_state["openai_api_key"] = ""
+    if "elsevier_api_key" not in st.session_state:
+        st.session_state["elsevier_api_key"] = ""
+    if "wiley_tdm_token" not in st.session_state:
+        st.session_state["wiley_tdm_token"] = ""
     if "ollama_host" not in st.session_state:
         st.session_state["ollama_host"] = os.environ.get(
             "OLLAMA_HOST",
@@ -2016,6 +2029,19 @@ def _ensure_shared_llm_settings_in_state() -> None:
             )
         except ValueError:
             st.session_state["ollama_num_ctx"] = 16384
+
+
+def _sync_publisher_tdm_env_from_session() -> None:
+    _ensure_shared_llm_settings_in_state()
+    for session_key, env_names in PUBLISHER_TDM_ENV_NAMES.items():
+        value = str(st.session_state.get(session_key, "")).strip()
+        for env_name in env_names:
+            if value:
+                os.environ[env_name] = value
+            elif _INITIAL_PUBLISHER_TDM_ENV.get(env_name) is not None:
+                os.environ[env_name] = _INITIAL_PUBLISHER_TDM_ENV[env_name] or ""
+            else:
+                os.environ.pop(env_name, None)
 
 
 def _step_provider_key(step_key: str) -> str:
@@ -2942,6 +2968,8 @@ def _make_settings_preset(
     llm_steps: Optional[dict[str, dict[str, str]]] = None,
     include_session_llms: bool = False,
     openai_api_key: str = "",
+    elsevier_api_key: str = "",
+    wiley_tdm_token: str = "",
 ) -> dict[str, Any]:
     llm_steps = dict(llm_steps or _settings_default_llm_steps())
     if include_session_llms:
@@ -2954,6 +2982,8 @@ def _make_settings_preset(
     return {
         "version": 1,
         "openai_api_key": openai_api_key,
+        "elsevier_api_key": elsevier_api_key,
+        "wiley_tdm_token": wiley_tdm_token,
         "openai_base_url": st.session_state.get("openai_base_url", "https://api.openai.com/v1")
         if include_session_llms
         else "https://api.openai.com/v1",
@@ -3006,7 +3036,14 @@ def _normalize_settings_preset(data: dict[str, Any]) -> dict[str, Any]:
         merged_ci.update(ci)
         default["custom_instructions"] = merged_ci
 
-    for key in ("openai_api_key", "openai_base_url", "ollama_host", "ollama_models_dir"):
+    for key in (
+        "openai_api_key",
+        "elsevier_api_key",
+        "wiley_tdm_token",
+        "openai_base_url",
+        "ollama_host",
+        "ollama_models_dir",
+    ):
         if key in data:
             default[key] = str(data.get(key) or "")
     if not default["openai_base_url"]:
@@ -3034,6 +3071,8 @@ def _current_settings_preset_from_state(current_ci: dict[str, Any]) -> dict[str,
         custom_instructions=current_ci,
         include_session_llms=True,
         openai_api_key=str(st.session_state.get("openai_api_key", "")).strip(),
+        elsevier_api_key=str(st.session_state.get("elsevier_api_key", "")).strip(),
+        wiley_tdm_token=str(st.session_state.get("wiley_tdm_token", "")).strip(),
     )
 
 
@@ -3046,6 +3085,8 @@ def _apply_settings_preset_state(settings: dict[str, Any], *, preset_name: Optio
         )
 
     st.session_state["openai_api_key"] = str(settings.get("openai_api_key") or "")
+    st.session_state["elsevier_api_key"] = str(settings.get("elsevier_api_key") or "")
+    st.session_state["wiley_tdm_token"] = str(settings.get("wiley_tdm_token") or "")
     st.session_state["openai_base_url"] = str(
         settings.get("openai_base_url") or "https://api.openai.com/v1"
     )
@@ -3716,6 +3757,25 @@ with st.sidebar:
             help="Required for every selected stage that uses Chat GPT.",
             on_change=_keep_create_settings_preset_open,
         )
+        publisher_key_cols = st.columns(2)
+        with publisher_key_cols[0]:
+            st.text_input(
+                "Elsevier API key",
+                key="elsevier_api_key",
+                type="password",
+                placeholder="Elsevier API key",
+                help="Used for Elsevier TDM article and figure downloads.",
+                on_change=_keep_create_settings_preset_open,
+            )
+        with publisher_key_cols[1]:
+            st.text_input(
+                "Wiley TDM token",
+                key="wiley_tdm_token",
+                type="password",
+                placeholder="Wiley TDM token",
+                help="Used for Wiley TDM article and figure downloads.",
+                on_change=_keep_create_settings_preset_open,
+            )
 
         if use_figure_uploads:
             run_extract_figures = True
@@ -3954,6 +4014,8 @@ with st.sidebar:
                     custom_instructions=current_ci,
                     include_session_llms=True,
                     openai_api_key=str(st.session_state.get("openai_api_key", "")).strip(),
+                    elsevier_api_key=str(st.session_state.get("elsevier_api_key", "")).strip(),
+                    wiley_tdm_token=str(st.session_state.get("wiley_tdm_token", "")).strip(),
                 )
                 _save_settings_preset(workspaces_root, clean_preset_name, current_settings)
                 _queue_settings_preset_state(
@@ -4499,6 +4561,7 @@ if st.button("Run pipeline", type="primary"):
             custom_run_id = run_id_input.strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
 
             _sync_all_step_llm_envs_from_session()
+            _sync_publisher_tdm_env_from_session()
 
             try:
                 target = safe_child_path(run_root, custom_run_id)

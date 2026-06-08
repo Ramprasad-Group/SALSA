@@ -111,7 +111,7 @@ def extract_wiley_figures(file_path, output_dir, doi):
                             }
                             
                             # Add API key if available (similar to Elsevier approach)
-                            api_key = os.getenv('WILEY_API_KEY') or os.getenv('API_KEY')
+                            api_key = os.getenv('WILEY_API_KEY') or os.getenv('WILEY_TDM_TOKEN') or os.getenv('API_KEY')
                             if api_key and '?' not in url:
                                 url += f"?APIKey={api_key}"
                             elif api_key and 'APIKey=' not in url:

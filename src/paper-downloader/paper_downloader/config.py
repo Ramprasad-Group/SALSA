@@ -1,3 +1,5 @@
+import os
+
 FULL_DOWNLOAD_SUCCESSFUL = 1
 ABSTRACT_DOWNLOAD_SUCCESSFUL = 2
 LETTER_DOWNLOAD_SUCCESSFUL = 3
@@ -8,8 +10,19 @@ FILE_THREW_EXCEPTION = 7
 
 TIME_OUT_SEC = 90
 SLEEP_SEC = 1
-ELS_API_KEY = '9f937ae349ee8358cc8271ec5198bacd'
-WILEY_TDM_TOKEN = 'b6d871f9-3079-4019-936e-8c07c97d9f78'
+
+
+def _first_env(*names):
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+
+ELS_API_KEY = _first_env('ELSEVIER_API_KEY', 'ELS_API_KEY') or _DEFAULT_ELS_API_KEY
+WILEY_TDM_TOKEN = _first_env('WILEY_TDM_TOKEN', 'WILEY_API_KEY') or _DEFAULT_WILEY_TDM_TOKEN
 DATE_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 publisher_gap_time = {'acs': 481, 'aip': 3, 'wiley': 6, 'ecs': 120}
 
