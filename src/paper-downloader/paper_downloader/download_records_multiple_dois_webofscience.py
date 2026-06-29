@@ -43,6 +43,8 @@ def detect_publisher_from_doi(doi):
     # Simple DOI prefix mapping
     if doi.startswith('10.1016'):
         return 'Elsevier'
+    elif doi.startswith('10.1006'):
+        return 'Elsevier'
     elif doi.startswith('10.1002'):
         return 'Wiley'
     elif doi.startswith('10.1007'):
@@ -59,6 +61,12 @@ def detect_publisher_from_doi(doi):
         return 'AIP Publishing'
     elif doi.startswith('10.1149'):
         return 'ECS'
+    elif doi.startswith('10.1371'):
+        return 'PLOS'
+    elif doi.startswith('10.1109'):
+        return 'IEEE'
+    elif doi.startswith('10.1103'):
+        return 'APS'
     elif doi.startswith('10.1155'):
         return 'Hindawi'
     elif doi.startswith('10.1080'):
@@ -67,8 +75,15 @@ def detect_publisher_from_doi(doi):
         return 'Emerald'
     elif doi.startswith('10.1177'):
         return 'Sage'
+    elif doi.startswith('10.1191'):
+        return 'Sage'
     else:
         return 'Unknown'
+
+
+def doi_prefix(doi):
+    doi = str(doi or "").strip()
+    return doi.split("/", 1)[0] if "/" in doi else doi
 
 def extract_title_from_record(record, csv_title=None):
     """
@@ -108,12 +123,11 @@ def extract_year_from_record(record, csv_year=None):
     Returns an int year or None.
     """
     if not record:
-        return 'No Year Found'
+        return csv_year if pd.notna(csv_year) else None
 
     year = record.get('year')
 
-    # Fall back to CSV column
-    return year
+    return year if year is not None else (csv_year if pd.notna(csv_year) else None)
 
 parser = argparse.ArgumentParser()
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -212,11 +226,9 @@ print("\nPublisher Summary:")
 print(detection_summary)
 print()
 
-# Filter out rows where publisher couldn't be detected
 original_count = len(df)
-df = df[df['final_publisher'] != 'Unknown']
-filtered_count = len(df)
-log.info(f"DOIs with valid publishers: {filtered_count}/{original_count}")
+known_count = int((df['final_publisher'] != 'Unknown').sum())
+log.info(f"DOIs with valid publishers: {known_count}/{original_count}")
 
 
 downloader = records_downloader.RecordsDownloader(logger=log, logger_file=log_file)
@@ -243,9 +255,27 @@ for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
     csv_abstract = row.get(args.abstract_column, None) if args.abstract_column in df.columns else None
     
     csv_year = row.get(args.year_column, None) if args.year_column in df.columns else None
+    if publisher == 'Unknown':
+        prefix = doi_prefix(doi)
+        message = (
+            f"Unknown DOI prefix '{prefix}'. "
+            "No publisher mapping is configured for this prefix."
+        )
+        log.warning(f"{message} DOI: {doi}")
+        failed += 1
+        results.append(make_result(
+            doi,
+            publisher,
+            csv_title or None,
+            csv_year if pd.notna(csv_year) else None,
+            False,
+            message,
+        ))
+        continue
+
     # get year from downloaded record
     doi_record = downloader.get_record_by_doi(doi=doi, mailto=mailid)
-    year_value = extract_year_from_record(doi_record or data_entry, csv_year=csv_year) # prefer downloaded record, fallback to csv_year
+    year_value = extract_year_from_record(doi_record, csv_year=csv_year)
 
     # find publisher match
     publisher_value = publisher  # may be updated after matching
@@ -263,24 +293,28 @@ for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
     if matched_publisher:
         publisher_value = matched_publisher
         log.info(f"Matched publisher '{publisher_value}' for DOI: {doi}")
-    elif publisher not in publisher_journals:
+        journals = list(publisher_journals[publisher_value].keys())
+    else:
         doi_publisher = row['publisher_from_doi']
         if doi_publisher != 'Unknown' and doi_publisher in publisher_journals:
             log.info(f"Publisher '{publisher}' not found, trying DOI-detected publisher '{doi_publisher}' for DOI: {doi}")
             publisher_value = doi_publisher
+            journals = list(publisher_journals[publisher_value].keys())
         else:
-            log.warning(f"Publisher '{publisher}' not found in journals mapping for DOI: {doi}")
-            failed += 1
-            # include the CSV title if present even on failure
-            results.append(make_result(doi, publisher_value, (csv_title or None), year_value, False,
-                                    f"Publisher '{publisher}' not found"))
-            continue
-
-    journals = list(publisher_journals[publisher_value].keys())
+            # Crossref DOI lookup does not require the optional publisher-to-journal
+            # mapping. Process the DOI directly for publishers such as IEEE.
+            log.info(
+                f"Publisher '{publisher}' is not in the journals mapping; "
+                f"using direct DOI metadata lookup for DOI: {doi}"
+            )
+            journals = [None]
     
     for journal in journals:
         try:
-            log.info(f"Trying journal: {journal} for DOI: {doi}")
+            if journal:
+                log.info(f"Trying journal: {journal} for DOI: {doi}")
+            else:
+                log.info(f"Trying direct DOI metadata lookup for DOI: {doi}")
             doi_record = downloader.get_record_by_doi(doi=doi, mailto=mailid)
             if not doi_record:
                 log.info(f"No record found for DOI: {doi} in journal: {journal}")

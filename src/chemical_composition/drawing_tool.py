@@ -27,6 +27,46 @@ import streamlit.components.v1 as components
 
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
+try:
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+except ImportError:  # pragma: no cover - optional runtime dependency
+    Chem = None
+    AllChem = None
+
+_JSME_ROOT = Path(__file__).resolve().parent / "JSME_2024-04-29"
+_JSME_COMPONENT = components.declare_component(
+    "jsme_editor",
+    path=str(_JSME_ROOT),
+)
+_KETCHER_ROOT = Path(__file__).resolve().parent / "standalone"
+_KETCHER_COMPONENT = components.declare_component(
+    "ketcher_editor",
+    path=str(_KETCHER_ROOT),
+)
+
+
+def _smiles_to_rdkit_molfile(smiles: str) -> str:
+    """Convert SMILES to a V2000 molfile for JSME using RDKit."""
+    if Chem is None or AllChem is None:
+        raise RuntimeError(
+            "The chemical SMILES converter is not available in the SALSA Python environment."
+        )
+
+    clean_smiles = str(smiles or "").strip()
+    if not clean_smiles:
+        raise ValueError("Paste a SMILES string first.")
+
+    mol = Chem.MolFromSmiles(clean_smiles)
+    if mol is None:
+        raise ValueError("The chemical SMILES converter could not parse the string.")
+
+    AllChem.Compute2DCoords(mol)
+    molfile = Chem.MolToMolBlock(mol, kekulize=True)
+    if not molfile.strip():
+        raise ValueError("The chemical SMILES converter produced an empty structure.")
+    return molfile
+
 # ---------------------------------------------------------------------------
 # JSME-based HTML component
 # ---------------------------------------------------------------------------
@@ -125,22 +165,40 @@ _JSME_HTML = """\
 
 
 def render_ketcher_editor(
-    height: int = 550,
+    height: int = 720,
     key: str = "ketcher_editor",
 ) -> None:
     """
-    Render the JSME chemical structure editor inside Streamlit.
+    Render the locally vendored Ketcher chemical structure editor.
 
-    The editor is loaded as a self-contained JavaScript applet from
-    a public CDN (no iframe to a third-party site), so it works
-    reliably without cross-origin restrictions.
+    Ketcher is served as a native Streamlit component from:
+      src/chemical_composition/standalone
     """
-    editor_height = max(height - 90, 350)
-    html = _JSME_HTML.format(
-        editor_height=editor_height,
-        editor_width="100%",
+    if not _KETCHER_ROOT.exists():
+        st.error(f"Ketcher distribution folder not found at: `{_KETCHER_ROOT}`")
+        return
+
+    missing_files = [
+        path
+        for path in (
+            _KETCHER_ROOT / "index.html",
+            _KETCHER_ROOT / "static" / "js" / "main.8f1d38b5.js",
+            _KETCHER_ROOT / "static" / "css" / "main.bdf7ea17.css",
+        )
+        if not path.exists()
+    ]
+    if missing_files:
+        st.error(
+            "Ketcher distribution is incomplete. Missing:\n\n"
+            + "\n".join(f"- `{path}`" for path in missing_files)
+        )
+        return
+
+    _KETCHER_COMPONENT(
+        frame_height=height,
+        key=key,
+        default=None,
     )
-    components.html(html, height=height, scrolling=True)
 
 
 # ---------------------------------------------------------------------------
@@ -479,11 +537,10 @@ def render_jsme_editor_local(
     Render a locally vendored JSME distribution located at:
       src/chemical_composition/JSME_2024-04-29
 
-    Uses a local HTTP server + iframe so JSME can load its companion files.
+    JSME is served as a native Streamlit component so all browser requests use
+    the same origin and reverse-proxy path as the main app.
     """
-    # This file lives in src/chemical_composition/
-    here = Path(__file__).resolve().parent
-    jsme_root = here / "JSME_2024-04-29"
+    jsme_root = _JSME_ROOT
     jsme_dir = jsme_root / "jsme"
 
     # Check if JSME root directory exists
@@ -527,40 +584,47 @@ def render_jsme_editor_local(
         )
         return
 
-    bind_host = _jsme_bind_host()
-    requested_port = _jsme_port()
+    component_index = jsme_root / "index.html"
+    if not component_index.exists():
+        st.error(f"JSME component frontend not found: `{component_index}`")
+        return
 
-    # Serve *the JSME root folder* (which contains the jsme subdirectory)
-    server_info = _start_static_server(jsme_root, host=bind_host, port=requested_port)
-    port = server_info["actual_port"]
-    public_base_url = _jsme_public_base_url(port, requested_port=requested_port)
-    local_base_url = _local_base_url(bind_host, port)
+    state_prefix = f"jsme_rdkit_{key}"
+    request_state_key = f"{state_prefix}_request_id"
+    molfile_state_key = f"{state_prefix}_molfile"
+    error_state_key = f"{state_prefix}_error"
+    smiles_state_key = f"{state_prefix}_smiles"
 
-    # Write wrapper HTML into a temp dir INSIDE the served root
-    wrapper_dir = jsme_dir / "_streamlit_wrapper"
-    wrapper_path = _write_jsme_wrapper(
-        wrapper_dir,
-        jsme_base_url=public_base_url,
-        height=height,
+    component_value = _JSME_COMPONENT(
+        editor_height=max(height - 140, 350),
+        frame_height=height,
+        load_request_id=st.session_state.get(request_state_key, ""),
+        load_molfile=st.session_state.get(molfile_state_key, ""),
+        load_error=st.session_state.get(error_state_key, ""),
+        load_smiles=st.session_state.get(smiles_state_key, ""),
+        key=key,
+        default=None,
     )
 
-    # iframe URL: the wrapper is at jsme/_streamlit_wrapper/jsme_wrapper.html
-    # relative to the served root (jsme_root)
-    iframe_url = f"{public_base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}"
+    if not isinstance(component_value, dict):
+        return
+    if component_value.get("action") != "load_smiles":
+        return
 
-    # Test if server is responding
+    request_id = str(component_value.get("request_id") or "")
+    if not request_id or request_id == st.session_state.get(request_state_key):
+        return
+
+    smiles = str(component_value.get("smiles") or "").strip()
+    st.session_state[request_state_key] = request_id
+    st.session_state[smiles_state_key] = smiles
     try:
-        with urllib.request.urlopen(f"{local_base_url}/jsme/_streamlit_wrapper/{wrapper_path.name}", timeout=2) as response:
-            st.write(f"**JSME Server is responding**")
-    except Exception as e:
-        st.error(f"**Server test failed**: {type(e).__name__}: {e}")
-        st.write("**Troubleshooting:**")
-        st.write("- The HTTP server may not have started correctly")
-        st.write(f"- Requested port {requested_port} might be in use by another process")
-        if port != requested_port:
-            st.write(f"- SALSA switched the helper server to port {port}")
-        st.write("- Try restarting the Streamlit app")
-        st.write("- If you opened Streamlit from another machine, set `SALSA_JSME_PUBLIC_URL` to a browser-reachable address, for example `http://<server-host>:{port}`")
-        st.write("- For remote access, you may also need `SALSA_JSME_BIND_HOST=0.0.0.0`")
+        st.session_state[molfile_state_key] = _smiles_to_rdkit_molfile(smiles)
+        st.session_state[error_state_key] = ""
+    except Exception as exc:
+        st.session_state[molfile_state_key] = ""
+        st.session_state[error_state_key] = str(exc)
 
-    components.iframe(iframe_url, height=height, scrolling=True)
+    rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun", None)
+    if rerun is not None:
+        rerun()

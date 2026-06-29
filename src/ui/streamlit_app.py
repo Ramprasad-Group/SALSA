@@ -2,9 +2,11 @@
 from __future__ import annotations
 import json
 import inspect
+import pickle
 import threading
 import time
 import traceback
+import tempfile
 from http.cookies import SimpleCookie
 from hashlib import md5
 import os
@@ -19,12 +21,17 @@ from streamlit_drawable_canvas import CanvasResult, _component_func, _data_url_t
 from pipeline import (
     ADMIN_INPUT_ITEM_LIMIT,
     DEFAULT_INPUT_ITEM_LIMIT,
-    PipelineCancelled,
-    run_full_pipeline,
 )
 from discover import discover_run
 from schemas import RunResult
-from run_progress import RUN_STATUS_FILE_NAME, read_run_status, write_run_status
+from run_progress import (
+    RUN_STATUS_FILE_NAME,
+    _now_eastern_iso,
+    clear_run_cancellation,
+    read_run_status,
+    request_run_cancellation,
+    write_run_status,
+)
 from intervention import latest_plextract_run_dir
 from intervention import (
     get_lineformer_dir,
@@ -60,17 +67,27 @@ import sys
 import base64
 from typing import List, Optional
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Sequence, Optional, Any
 from urllib.request import urlopen
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
+try:
+    from dateutil import tz as dateutil_tz
+except Exception:
+    dateutil_tz = None
 from auth import (
     AuthStore,
-    build_reset_url,
     data_root_from_env,
     is_admin_user,
     run_belongs_to_user,
     safe_child_path,
+    send_account_approved_email,
+    send_account_request_email,
     send_password_reset_email,
+    send_run_notification_email,
     user_workspaces_root,
     validate_password,
     write_run_manifest,
@@ -94,6 +111,10 @@ SALSA_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "salsa_icon.p
 PUBLISHER_TDM_ENV_NAMES = {
     "elsevier_api_key": ("ELSEVIER_API_KEY", "ELS_API_KEY"),
     "wiley_tdm_token": ("WILEY_TDM_TOKEN", "WILEY_API_KEY"),
+    "springer_nature_api_key": ("SPRINGER_NATURE_API_KEY", "SPRINGER_API_KEY"),
+    "rsc_tdm_token": ("RSC_TDM_TOKEN", "RSC_API_KEY"),
+    "ncbi_api_key": ("NCBI_API_KEY", "PUBMED_API_KEY"),
+    "ieee_api_key": ("IEEE_API_KEY", "IEEE_XPLORE_API_KEY"),
 }
 _INITIAL_PUBLISHER_TDM_ENV = {
     env_name: os.environ.get(env_name)
@@ -126,6 +147,106 @@ def _read_json_file(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+def _run_custom_instructions_path(run_dir: Path) -> Path | None:
+    run_snapshot = run_dir / "custom_instructions.json"
+    if run_snapshot.exists():
+        return run_snapshot
+    workspace_default = run_dir.parent / "custom_instructions" / "default.json"
+    return workspace_default if workspace_default.exists() else None
+
+def _run_custom_instructions_label(run_dir: Path) -> tuple[str, str]:
+    manifest = _read_json_file(run_dir / "custom_instructions_manifest.json")
+    name = str(manifest.get("name") or "").strip()
+    if name:
+        return name, "Run snapshot"
+
+    status = read_run_status(run_dir / RUN_STATUS_FILE_NAME)
+    name = str(status.get("custom_instructions_name") or "").strip()
+    if name:
+        return name, "Run snapshot"
+
+    if (run_dir / "custom_instructions.json").exists():
+        return "Custom instructions", "Run snapshot"
+    if (run_dir.parent / "custom_instructions" / "default.json").exists():
+        return "Workspace default", "Legacy fallback; exact run snapshot is unavailable"
+    return "Not recorded", "No custom instruction file found"
+
+def _render_run_custom_instructions(run_dir: Path) -> None:
+    label, source = _run_custom_instructions_label(run_dir)
+    st.info(f"Custom instructions: **{label}**")
+
+    ci_path = _run_custom_instructions_path(run_dir)
+    if ci_path is None:
+        st.caption(source)
+        return
+
+    with st.expander("View custom instructions used", expanded=False):
+        st.caption(source)
+        st.json(_read_json_file(ci_path))
+
+def _run_status_outcome_message(status: dict[str, Any], run_id: str) -> tuple[str, str]:
+    state = str(status.get("state") or "").strip().lower()
+    stage = _display_stage_label(status.get("stage"))
+    error = str(status.get("error") or "").strip()
+    updated = _format_eastern_timestamp(status.get("updated_at"))
+
+    if state == "done":
+        message = f"Run **{run_id}** completed successfully."
+        if updated:
+            message += f"\n\nCompleted (ET): `{updated}`"
+        return "success", message
+    if state == "error":
+        message = f"Run **{run_id}** failed."
+        if stage:
+            message += f"\n\nStage: **{stage}**"
+        if updated:
+            message += f"\n\nUpdated (ET): `{updated}`"
+        if error:
+            message += f"\n\nError: {error}"
+        return "error", message
+    if state == "cancelled":
+        message = f"Run **{run_id}** was cancelled."
+        if updated:
+            message += f"\n\nUpdated (ET): `{updated}`"
+        return "warning", message
+    if state == "interrupted":
+        message = f"Run **{run_id}** was interrupted."
+        if stage:
+            message += f"\n\nLast stage: **{stage}**"
+        if updated:
+            message += f"\n\nUpdated (ET): `{updated}`"
+        if error:
+            message += f"\n\nReason: {error}"
+        return "warning", message
+    return "", ""
+
+
+def _render_run_status_outcome(run_id: str, status: dict[str, Any]) -> None:
+    kind, message = _run_status_outcome_message(status, run_id)
+    if not message:
+        return
+    if kind == "success":
+        st.success(message)
+    elif kind == "error":
+        st.error(message)
+    else:
+        st.warning(message)
+
+    traceback_text = str(status.get("traceback") or "").strip()
+    if traceback_text:
+        with st.expander("Traceback", expanded=False):
+            st.code(traceback_text, language="text")
+
+    if "notification_sent" in status:
+        if status.get("notification_sent"):
+            st.caption("Completion email notification sent.")
+        else:
+            notification_error = str(status.get("notification_error") or "").strip()
+            if notification_error:
+                st.warning(f"Completion email notification was not sent: {notification_error}")
+            else:
+                st.warning("Completion email notification was not sent.")
 
 def _format_bytes(size: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB"]
@@ -1796,13 +1917,47 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
     return combined
 
 def build_doi_stats(rr: RunResult, *, doi_order: list[str] | None = None) -> pd.DataFrame:
+    def _publisher_for_doi(doi_item) -> str:
+        for key in ("publisher", "Publisher", "directory"):
+            value = doi_item.extra.get(key)
+            if value not in (None, ""):
+                return str(value)
+        for collection in (doi_item.tables or [], doi_item.figures or []):
+            for item in collection:
+                value = item.extra.get("publisher") or item.extra.get("Publisher")
+                if value not in (None, ""):
+                    return str(value)
+        return ""
+
+    def _chemical_sample_count(doi_item) -> int:
+        csv_path = doi_item.extra.get("chemical_composition_csv")
+        if csv_path:
+            try:
+                return int(len(pd.read_csv(csv_path)))
+            except Exception:
+                pass
+
+        json_path = doi_item.extra.get("chemical_composition_json")
+        if json_path:
+            try:
+                data = json.loads(Path(json_path).read_text(encoding="utf-8"))
+                samples = data.get("samples") if isinstance(data, dict) else None
+                if isinstance(samples, list):
+                    return len(samples)
+            except Exception:
+                pass
+
+        return 0
+
     rows = []
     for d in rr.dois:
         safe = doi_to_safe(d.doi)
         rows.append({
             "DOI": d.doi,
+            "Publisher": _publisher_for_doi(d),
             "Tables": len(d.tables or []),
             "Figures": len(d.figures or []),
+            "Chemical Samples": _chemical_sample_count(d),
             "_doi_safe": safe,  # hidden helper
         })
 
@@ -2012,6 +2167,14 @@ def _ensure_shared_llm_settings_in_state() -> None:
         st.session_state["elsevier_api_key"] = ""
     if "wiley_tdm_token" not in st.session_state:
         st.session_state["wiley_tdm_token"] = ""
+    if "springer_nature_api_key" not in st.session_state:
+        st.session_state["springer_nature_api_key"] = ""
+    if "rsc_tdm_token" not in st.session_state:
+        st.session_state["rsc_tdm_token"] = ""
+    if "ncbi_api_key" not in st.session_state:
+        st.session_state["ncbi_api_key"] = ""
+    if "ieee_api_key" not in st.session_state:
+        st.session_state["ieee_api_key"] = ""
     if "ollama_host" not in st.session_state:
         st.session_state["ollama_host"] = os.environ.get(
             "OLLAMA_HOST",
@@ -2128,6 +2291,8 @@ def _step_has_configured_model(step_key: str) -> bool:
 def _render_step_llm_selector(
     step_key: str,
     *,
+    ollama_available: bool,
+    ollama_models: Sequence[str],
     caption: Optional[str] = None,
     title: Optional[str] = None,
 ) -> None:
@@ -2139,9 +2304,6 @@ def _render_step_llm_selector(
 
     provider_key = _step_provider_key(step_key)
     model_key = _step_model_key(step_key)
-    ollama_available = _ollama_server_is_available(
-        _normalize_ollama_host(st.session_state.get("ollama_host", default_ollama_host))
-    )
     if not ollama_available and st.session_state.get(provider_key) == "Ollama":
         st.session_state[provider_key] = "Chat GPT"
         st.session_state.pop(model_key, None)
@@ -2158,7 +2320,7 @@ def _render_step_llm_selector(
     )
 
     if provider == "Ollama":
-        models = _ollama_models()
+        models = list(ollama_models)
         if models:
             if st.session_state.get(model_key) not in models:
                 st.session_state.pop(model_key, None)
@@ -2273,6 +2435,36 @@ def _run_status_is_active(status: dict[str, Any]) -> bool:
     return status.get("state") in {"running", "cancelling"} and _pid_is_alive(status.get("pid"))
 
 
+def _format_eastern_timestamp(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        dt = datetime.fromisoformat(normalized)
+    except Exception:
+        return raw
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if ZoneInfo is not None:
+        eastern_tz = ZoneInfo("America/New_York")
+    elif dateutil_tz is not None:
+        eastern_tz = dateutil_tz.gettz("America/New_York") or timezone(timedelta(hours=-5), "ET")
+    else:
+        eastern_tz = timezone(timedelta(hours=-5), "ET")
+    eastern = dt.astimezone(eastern_tz)
+    hour = eastern.strftime("%I").lstrip("0") or "0"
+    return (
+        f"{eastern:%Y-%m-%d} {hour}:{eastern:%M:%S} "
+        f"{eastern:%p} {eastern:%Z}"
+    )
+
+
+def _display_stage_label(stage: Any) -> str:
+    label = str(stage or "Running")
+    return label.replace(" with Docling", "")
+
+
 def _mark_inactive_run_status(status_path: Path, status: dict[str, Any]) -> dict[str, Any]:
     state = status.get("state")
     pid = status.get("pid")
@@ -2288,7 +2480,7 @@ def _mark_inactive_run_status(status_path: Path, status: dict[str, Any]) -> dict
 
 
 def _run_progress_status_text(status: dict[str, Any]) -> str:
-    stage = status.get("stage") or "Running"
+    stage = _display_stage_label(status.get("stage"))
     doi = str(status.get("doi") or "").strip()
     lines = [f"Running stage: **{stage}**"]
     if doi:
@@ -2299,7 +2491,7 @@ def _run_progress_status_text(status: dict[str, Any]) -> str:
         lines.append(f"Current figure: `{figure}`")
     updated_at = status.get("updated_at")
     if updated_at:
-        lines.append(f"Updated: `{updated_at}`")
+        lines.append(f"Updated (ET): `{_format_eastern_timestamp(updated_at)}`")
     return "\n\n".join(lines)
 
 
@@ -2411,15 +2603,90 @@ def _render_admin_page(
     st.header("Admin")
     st.caption("Manage SALSA profiles, roles, run access, and per-user activity.")
 
+    approval_notice = st.session_state.pop("admin_account_approval_notice", None)
+    if approval_notice:
+        st.success(approval_notice["message"])
+        if not approval_notice["notification_sent"]:
+            st.warning(
+                "The account is approved, but the approval email could not be sent. "
+                "Check the SMTP and SALSA_PUBLIC_URL settings."
+            )
+
+    pending_users = auth_store.list_pending_users()
     users = auth_store.list_users()
     run_records = _admin_run_records(data_root, users)
     stats_rows = _admin_user_stats(users, run_records, data_root)
 
-    metric_cols = st.columns(4)
+    metric_cols = st.columns(5)
     metric_cols[0].metric("Users", len(users))
     metric_cols[1].metric("Admins", sum(1 for user in users if user["role"] == "admin"))
-    metric_cols[2].metric("Runs", len(run_records))
-    metric_cols[3].metric("Storage", _format_bytes(sum(int(r.get("size_bytes") or 0) for r in run_records)))
+    metric_cols[2].metric("Pending", len(pending_users))
+    metric_cols[3].metric("Runs", len(run_records))
+    metric_cols[4].metric("Storage", _format_bytes(sum(int(r.get("size_bytes") or 0) for r in run_records)))
+
+    st.subheader("Account Requests")
+    if pending_users:
+        request_rows = [
+            {
+                "name": f"{user['first_name']} {user['last_name']}".strip(),
+                "username": user["username"],
+                "email": user["email"],
+                "institution": user["institution"],
+                "requested_at": user["created_at"],
+            }
+            for user in pending_users
+        ]
+        st.dataframe(pd.DataFrame(request_rows), use_container_width=True, hide_index=True)
+        request_options = {
+            f"{user['username']} ({user['email']})": user
+            for user in pending_users
+        }
+        request_label = st.selectbox(
+            "Pending request",
+            options=list(request_options.keys()),
+            key="admin_pending_user",
+        )
+        requested_user = request_options[request_label]
+        approve_col, reject_col = st.columns(2)
+        if approve_col.button(
+            "Approve account",
+            type="primary",
+            key=f"admin_approve_{requested_user['id']}",
+        ):
+            try:
+                approved_user = auth_store.approve_account(
+                    int(requested_user["id"]),
+                    int(current_user["id"]),
+                )
+            except (PermissionError, ValueError) as exc:
+                st.error(str(exc))
+            else:
+                notification_sent = False
+                try:
+                    notification_sent = send_account_approved_email(approved_user)
+                except Exception as exc:
+                    print(f"[SALSA auth] Account approval email failed: {exc}")
+                st.session_state["admin_account_approval_notice"] = {
+                    "message": f"Approved {requested_user['username']}.",
+                    "notification_sent": notification_sent,
+                }
+                st.rerun()
+        if reject_col.button(
+            "Reject request",
+            key=f"admin_reject_{requested_user['id']}",
+        ):
+            try:
+                auth_store.reject_account(
+                    int(requested_user["id"]),
+                    int(current_user["id"]),
+                )
+            except (PermissionError, ValueError) as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Rejected {requested_user['username']}.")
+                st.rerun()
+    else:
+        st.info("No pending account requests.")
 
     st.subheader("User Statistics")
     if stats_rows:
@@ -2458,6 +2725,34 @@ def _render_admin_page(
 
     if selected_user is None:
         return False
+
+    st.subheader("Delete Account")
+    st.warning(
+        "Deleting an account permanently removes its login and sessions. "
+        "Workspace files are preserved on the server."
+    )
+    delete_confirmation = st.text_input(
+        f"Type {selected_user['username']} to confirm",
+        key=f"admin_delete_confirmation_{selected_user['id']}",
+    )
+    deleting_self = int(selected_user["id"]) == int(current_user["id"])
+    if deleting_self:
+        st.caption("You cannot delete your own account.")
+    if st.button(
+        "Delete account",
+        key=f"admin_delete_user_{selected_user['id']}",
+        disabled=deleting_self or delete_confirmation != selected_user["username"],
+    ):
+        try:
+            auth_store.delete_user(
+                int(selected_user["id"]),
+                int(current_user["id"]),
+            )
+        except (PermissionError, ValueError) as exc:
+            st.error(str(exc))
+        else:
+            st.success(f"Deleted account {selected_user['username']}.")
+            st.rerun()
 
     selected_run_records = [
         record for record in run_records
@@ -2535,9 +2830,9 @@ def _render_guide_page() -> None:
 1. Choose or create a workspace in the sidebar.
 2. In **Input Source**, choose **DOI(s)**, **PDF(s)**, or **Figure(s)**.
 3. Provide the inputs:
-   - **DOI(s):** paste one DOI per line, up to 50.
-   - **PDF(s):** upload up to 50 PDFs. Optionally add one document ID per PDF so outputs use a readable identifier instead of the filename.
-   - **Figure(s):** upload up to 50 image files. Optionally add a figure set ID and one caption per uploaded figure.
+   - **DOI(s):** paste one DOI per line, up to 10 for standard accounts or 100 for administrators.
+   - **PDF(s):** upload up to 10 PDFs for standard accounts or 100 for administrators. Optionally add one document ID per PDF so outputs use a readable identifier instead of the filename.
+   - **Figure(s):** upload up to 10 image files for standard accounts or 100 for administrators. Optionally add a figure set ID and one caption per uploaded figure.
 4. In **Run configuration**, enter a **Run Name** if you want a stable name. Leave it blank to use a timestamp.
 5. Click **Run pipeline**.
 
@@ -2560,7 +2855,7 @@ Run names may contain letters, numbers, underscores, periods, and dashes. A name
             f"""
 SALSA creates two starter settings presets:
 
-- **{DEFAULT_SETTINGS_PRESET_NAME}:** conservative general-purpose settings. It extracts tables, figures, OCR figure data, chemical composition, and the completed dataset. Figure and table filtering are off by default.
+- **{DEFAULT_SETTINGS_PRESET_NAME}:** conservative general-purpose settings. It extracts tables, figures, OCR figure data, and the completed dataset. Chemical composition plus figure and table filtering are off by default.
 - **{EXAMPLE_AEM_SETTINGS_PRESET_NAME}:** an example configuration for AEM degradation workflows. It enables figure and table filtering and uses stronger LLM choices for selected steps.
 
 Open **Load Settings Preset**, choose a preset, and click **Load**. The currently loaded preset appears at the bottom of that expander.
@@ -2570,7 +2865,7 @@ Open **Load Settings Preset**, choose a preset, and click **Load**. The currentl
         st.subheader("Adjust cost and performance")
         st.markdown(
             """
-Open **Create Settings Preset** to edit the active configuration before a run.
+Open **Create/Modify Settings Preset** to edit the active configuration before a run.
 
 - Turn off stages you do not need. Each disabled LLM stage reduces cost and run time.
 - Use **Chat GPT** models for managed API calls, or **Ollama** models when you want local inference and have Ollama running.
@@ -2584,7 +2879,7 @@ Open **Create Settings Preset** to edit the active configuration before a run.
         st.subheader("Save custom settings")
         st.markdown(
             """
-1. Edit stage checkboxes, LLM providers/models, and instruction text in **Create Settings Preset**.
+1. Edit stage checkboxes, LLM providers/models, and instruction text in **Create/Modify Settings Preset**.
 2. Add or edit **Data processing rules** and output column defaults if the completed dataset should follow a specific schema.
 3. Enter a **Settings preset name**.
 4. Click **Save**.
@@ -2862,6 +3157,7 @@ _STAGE_STATE_KEYS = {
     "exclude_full_text": "settings_exclude_full_text",
     "run_extract_tables": "settings_run_extract_tables",
     "run_extract_figures": "settings_run_extract_figures",
+    "run_pdf_page_ocr": "settings_run_pdf_page_ocr",
     "run_filter_tables": "settings_run_filter_tables",
     "run_filter_figures": "settings_run_filter_figures",
     "run_plextract": "settings_run_plextract",
@@ -2874,18 +3170,46 @@ _DEFAULT_STAGE_SETTINGS = {
     "exclude_full_text": True,
     "run_extract_tables": True,
     "run_extract_figures": True,
+    "run_pdf_page_ocr": False,
     "run_filter_tables": False,
     "run_filter_figures": False,
     "run_plextract": True,
     "bypass_ocr_with_llm": False,
-    "run_chemical_composition": True,
+    "run_chemical_composition": False,
     "run_complete_dataset": True,
 }
+
+_DEFAULT_OUTPUT_COLUMNS = [
+    "Sample Name",
+    "independent variable",
+    "independent value",
+    "independent unit",
+    "dependant variable",
+    "dependent value",
+    "dependent unit",
+    "DOI",
+    "source_kind",
+    "source_name",
+]
+
+_LEGACY_DEFAULT_OUTPUT_COLUMNS = [
+    "Sample Name",
+    "independent variable",
+    "independent value",
+    "independent unit",
+    "property",
+    "value",
+    "unit",
+    "DOI",
+    "source_kind",
+    "source_name",
+]
 
 _AEM_EXAMPLE_STAGE_SETTINGS = {
     **_DEFAULT_STAGE_SETTINGS,
     "run_filter_figures": True,
     "run_filter_tables": True,
+    "run_chemical_composition": True,
 }
 
 DEFAULT_SETTINGS_LLM_MODEL = "gpt-4.1-mini"
@@ -2908,7 +3232,7 @@ def _default_settings_instructions() -> dict[str, Any]:
         "chemical_composition_rules": "",
         "figure_data_extraction_rules": "",
         "data_processing_rules": "",
-        "output_columns": [],
+        "output_columns": list(_DEFAULT_OUTPUT_COLUMNS),
         "missing_value_defaults": {},
     }
 
@@ -2970,6 +3294,10 @@ def _make_settings_preset(
     openai_api_key: str = "",
     elsevier_api_key: str = "",
     wiley_tdm_token: str = "",
+    springer_nature_api_key: str = "",
+    rsc_tdm_token: str = "",
+    ncbi_api_key: str = "",
+    ieee_api_key: str = "",
 ) -> dict[str, Any]:
     llm_steps = dict(llm_steps or _settings_default_llm_steps())
     if include_session_llms:
@@ -2984,6 +3312,10 @@ def _make_settings_preset(
         "openai_api_key": openai_api_key,
         "elsevier_api_key": elsevier_api_key,
         "wiley_tdm_token": wiley_tdm_token,
+        "springer_nature_api_key": springer_nature_api_key,
+        "rsc_tdm_token": rsc_tdm_token,
+        "ncbi_api_key": ncbi_api_key,
+        "ieee_api_key": ieee_api_key,
         "openai_base_url": st.session_state.get("openai_base_url", "https://api.openai.com/v1")
         if include_session_llms
         else "https://api.openai.com/v1",
@@ -3040,6 +3372,10 @@ def _normalize_settings_preset(data: dict[str, Any]) -> dict[str, Any]:
         "openai_api_key",
         "elsevier_api_key",
         "wiley_tdm_token",
+        "springer_nature_api_key",
+        "rsc_tdm_token",
+        "ncbi_api_key",
+        "ieee_api_key",
         "openai_base_url",
         "ollama_host",
         "ollama_models_dir",
@@ -3073,6 +3409,10 @@ def _current_settings_preset_from_state(current_ci: dict[str, Any]) -> dict[str,
         openai_api_key=str(st.session_state.get("openai_api_key", "")).strip(),
         elsevier_api_key=str(st.session_state.get("elsevier_api_key", "")).strip(),
         wiley_tdm_token=str(st.session_state.get("wiley_tdm_token", "")).strip(),
+        springer_nature_api_key=str(st.session_state.get("springer_nature_api_key", "")).strip(),
+        rsc_tdm_token=str(st.session_state.get("rsc_tdm_token", "")).strip(),
+        ncbi_api_key=str(st.session_state.get("ncbi_api_key", "")).strip(),
+        ieee_api_key=str(st.session_state.get("ieee_api_key", "")).strip(),
     )
 
 
@@ -3087,6 +3427,12 @@ def _apply_settings_preset_state(settings: dict[str, Any], *, preset_name: Optio
     st.session_state["openai_api_key"] = str(settings.get("openai_api_key") or "")
     st.session_state["elsevier_api_key"] = str(settings.get("elsevier_api_key") or "")
     st.session_state["wiley_tdm_token"] = str(settings.get("wiley_tdm_token") or "")
+    st.session_state["springer_nature_api_key"] = str(
+        settings.get("springer_nature_api_key") or ""
+    )
+    st.session_state["rsc_tdm_token"] = str(settings.get("rsc_tdm_token") or "")
+    st.session_state["ncbi_api_key"] = str(settings.get("ncbi_api_key") or "")
+    st.session_state["ieee_api_key"] = str(settings.get("ieee_api_key") or "")
     st.session_state["openai_base_url"] = str(
         settings.get("openai_base_url") or "https://api.openai.com/v1"
     )
@@ -3150,6 +3496,30 @@ def _bootstrap_settings_presets_for_workspaces(workspaces_root: Path) -> None:
                 custom_instructions=_default_settings_instructions(),
             ),
         )
+    else:
+        default_settings = _load_settings_preset(
+            workspaces_root,
+            DEFAULT_SETTINGS_PRESET_NAME,
+        )
+        default_stages = default_settings.setdefault("stages", {})
+        default_custom_instructions = default_settings.setdefault(
+            "custom_instructions",
+            {},
+        )
+        default_columns = default_custom_instructions.get("output_columns")
+        needs_update = False
+        if default_stages.get("run_chemical_composition") is not False:
+            default_stages["run_chemical_composition"] = False
+            needs_update = True
+        if not default_columns or default_columns == _LEGACY_DEFAULT_OUTPUT_COLUMNS:
+            default_custom_instructions["output_columns"] = list(_DEFAULT_OUTPUT_COLUMNS)
+            needs_update = True
+        if needs_update:
+            _save_settings_preset(
+                workspaces_root,
+                DEFAULT_SETTINGS_PRESET_NAME,
+                default_settings,
+            )
     if not _settings_preset_exists(workspaces_root, EXAMPLE_AEM_SETTINGS_PRESET_NAME):
         _save_settings_preset(
             workspaces_root,
@@ -3411,6 +3781,10 @@ def _render_auth_gate(auth_store: AuthStore):
         return user
 
     st.subheader("Sign in")
+    st.info(
+        "At this time, SALSA is available only to members of the Ramprasad Group. "
+        "For access inquiries, contact wschertzer3@gatech.edu."
+    )
     login_tab, create_tab, forgot_tab, reset_tab = st.tabs(
         ["Login", "Create Account", "Forgot Password", "Reset Password"]
     )
@@ -3449,7 +3823,7 @@ def _render_auth_gate(auth_store: AuthStore):
                 try:
                     if password != password_again:
                         raise ValueError("Passwords do not match.")
-                    user = auth_store.create_user(
+                    user = auth_store.request_account(
                         username=username,
                         email=email,
                         first_name=first_name,
@@ -3460,9 +3834,33 @@ def _render_auth_gate(auth_store: AuthStore):
                 except ValueError as exc:
                     st.error(str(exc))
                 else:
-                    _set_auth_session(auth_store, user)
-                    st.success("Account created.")
-                    st.rerun()
+                    notification_sent = False
+                    notification_error = ""
+                    try:
+                        notification_sent = send_account_request_email(
+                            auth_store.list_admin_emails(),
+                            user,
+                        )
+                    except Exception as exc:
+                        notification_error = str(exc)
+                        print(f"[SALSA auth] Account request email failed: {exc}")
+                    st.success(
+                        "Account request submitted. An administrator must approve it "
+                        "before you can sign in."
+                    )
+                    if not notification_sent:
+                        if "550" in notification_error and "5.7.1" in notification_error:
+                            st.warning(
+                                "The request was saved and is visible to administrators, "
+                                "but Georgia Tech's outbound relay rejected this server. "
+                                "The host polymergenome.storm.gatech.edu and source IP "
+                                "143.215.76.191 must be approved as an Authorized Sender."
+                            )
+                        else:
+                            st.warning(
+                                "The request was saved and is visible to administrators, "
+                                "but the administrator email notification could not be sent."
+                            )
 
     with forgot_tab:
         smtp_configured = bool(os.environ.get("SALSA_SMTP_HOST") and os.environ.get("SALSA_SMTP_FROM"))
@@ -3486,27 +3884,34 @@ def _render_auth_gate(auth_store: AuthStore):
             else:
                 user = auth_store.find_user(identifier)
                 delivery_failed = False
+                delivery_error = ""
                 if user is not None:
                     token = auth_store.create_password_reset_token(int(user["id"]))
-                    reset_url = build_reset_url(
-                        os.environ.get("SALSA_PUBLIC_URL", ""),
-                        token,
-                        user["email"],
-                    )
                     mailed = False
                     if smtp_configured:
                         try:
-                            mailed = send_password_reset_email(user["email"], reset_url)
+                            mailed = send_password_reset_email(user["email"], token)
                         except Exception as exc:
                             delivery_failed = True
+                            delivery_error = str(exc)
                             print(f"[SALSA auth] Password reset email failed: {exc}")
                     if print_reset_links and not mailed:
                         print(
                             "[SALSA auth] Password reset token for "
-                            f"{user['username']}: {reset_url}"
+                            f"{user['username']}: {token}"
                         )
                 if delivery_failed and not print_reset_links:
-                    st.error("Reset email could not be sent. Check the SMTP settings and service logs.")
+                    if "550" in delivery_error and "5.7.1" in delivery_error:
+                        st.error(
+                            "Georgia Tech's outbound relay rejected this server. "
+                            "The host polymergenome.storm.gatech.edu and source IP "
+                            "143.215.76.191 must be approved as an Authorized Sender."
+                        )
+                    else:
+                        st.error(
+                            "Reset email could not be sent. Check the SMTP settings "
+                            "and service logs."
+                        )
                 elif smtp_configured:
                     st.success("If that account exists, a reset email has been sent.")
                 else:
@@ -3596,6 +4001,10 @@ MAX_INPUT_ITEMS = ADMIN_INPUT_ITEM_LIMIT if is_admin_user(current_user) else DEF
 workspaces_root = user_workspaces_root(salsa_data_root, current_user)
 _bootstrap_settings_presets_for_profiles(salsa_data_root, auth_store.list_users())
 show_admin_page = False
+_ACTIVE_PIPELINE_RUN_KEY = "active_pipeline_run"
+
+if _ACTIVE_PIPELINE_RUN_KEY in st.session_state:
+    st.session_state.pop("rr", None)
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
@@ -3716,10 +4125,11 @@ with st.sidebar:
     st.divider()
     st.header("Input Source")
     input_source = st.radio(
-        "Source",
+        "Input source",
         options=["DOI(s)", "PDF(s)", "Figure(s)"],
         horizontal=True,
         key="input_source",
+        label_visibility="collapsed",
     )
     use_docling_pdf_uploads = input_source == "PDF(s)"
     use_figure_uploads = input_source == "Figure(s)"
@@ -3745,7 +4155,7 @@ with st.sidebar:
     existing_settings_presets = _list_settings_presets(workspaces_root)
 
     with st.expander(
-        "Create Settings Preset",
+        "Create/Modify Settings Preset",
         expanded=bool(st.session_state.get("create_settings_preset_expanded", False)),
     ):
         _ensure_shared_llm_settings_in_state()
@@ -3756,6 +4166,17 @@ with st.sidebar:
             placeholder="sk-...",
             help="Required for every selected stage that uses Chat GPT.",
             on_change=_keep_create_settings_preset_open,
+        )
+        st.caption(
+            "DOI redirects do not grant full-text access. SALSA uses documented "
+            "publisher APIs only; upload an authorized PDF for other publishers."
+        )
+        st.caption(
+            "Sources with no API Key required",
+            help=(
+                "APS Harvest, PubMed Central, and PLOS. An NCBI API key is "
+                "optional for higher PubMed Central request limits."
+            ),
         )
         publisher_key_cols = st.columns(2)
         with publisher_key_cols[0]:
@@ -3769,17 +4190,56 @@ with st.sidebar:
             )
         with publisher_key_cols[1]:
             st.text_input(
-                "Wiley TDM token",
+                "Wiley API Key",
                 key="wiley_tdm_token",
                 type="password",
-                placeholder="Wiley TDM token",
+                placeholder="Wiley API Key",
                 help="Used for Wiley TDM article and figure downloads.",
+                on_change=_keep_create_settings_preset_open,
+            )
+        publisher_key_cols = st.columns(2)
+        with publisher_key_cols[0]:
+            st.text_input(
+                "Springer Nature API key",
+                key="springer_nature_api_key",
+                type="password",
+                placeholder="Springer Nature API key",
+                help="Used for open-access JATS full text from Springer Nature.",
+                on_change=_keep_create_settings_preset_open,
+            )
+        with publisher_key_cols[1]:
+            st.text_input(
+                "IEEE Xplore API key",
+                key="ieee_api_key",
+                type="password",
+                placeholder="IEEE Xplore API key",
+                help="Used for IEEE Open Access or licensed full-text API retrieval.",
+                on_change=_keep_create_settings_preset_open,
+            )
+        publisher_key_cols = st.columns(2)
+        with publisher_key_cols[0]:
+            st.text_input(
+                "RSC API Key",
+                key="rsc_tdm_token",
+                type="password",
+                placeholder="RSC API Key",
+                help="Used for RSC API requests.",
+                on_change=_keep_create_settings_preset_open,
+            )
+        with publisher_key_cols[1]:
+            st.text_input(
+                "NCBI API key (optional)",
+                key="ncbi_api_key",
+                type="password",
+                placeholder="Optional PubMed/PMC key",
+                help="PubMed Central works without a key; a key permits higher NCBI request rates.",
                 on_change=_keep_create_settings_preset_open,
             )
 
         if use_figure_uploads:
             run_extract_figures = True
             run_extract_tables = False
+            run_pdf_page_ocr = False
             run_chemical_composition = False
             run_filter_tables = False
             exclude_full_text = True
@@ -3803,6 +4263,19 @@ with st.sidebar:
                 _STAGE_STATE_KEYS["run_extract_figures"],
                 _DEFAULT_STAGE_SETTINGS["run_extract_figures"],
             )
+            if use_docling_pdf_uploads:
+                run_pdf_page_ocr = _settings_checkbox(
+                    "OCR scanned PDF pages",
+                    _STAGE_STATE_KEYS["run_pdf_page_ocr"],
+                    _DEFAULT_STAGE_SETTINGS["run_pdf_page_ocr"],
+                    help=(
+                        "Use Docling OCR for scanned/image-only uploaded PDFs. "
+                        "Leave off for normal text PDFs; figure-data OCR is controlled "
+                        "by Extract data from figures."
+                    ),
+                )
+            else:
+                run_pdf_page_ocr = False
             run_filter_tables = _settings_checkbox(
                 "Filter tables",
                 _STAGE_STATE_KEYS["run_filter_tables"],
@@ -3868,7 +4341,9 @@ with st.sidebar:
             bypass_ocr_with_llm=bypass_ocr_with_llm,
             run_complete_dataset=run_complete_dataset,
         )
-        if ollama_available and _any_step_uses_ollama(llm_steps_to_render):
+        active_steps_use_ollama = _any_step_uses_ollama(llm_steps_to_render)
+        ollama_models = _ollama_models() if ollama_available and active_steps_use_ollama else []
+        if ollama_available and active_steps_use_ollama:
             st.number_input(
                 "Ollama context window (num_ctx)",
                 min_value=4096,
@@ -3883,6 +4358,8 @@ with st.sidebar:
             with st.container():
                 _render_step_llm_selector(
                     LLM_STEP_EXTRACT_TABLES,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_EXTRACT_TABLES),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_EXTRACT_TABLES]} settings",
                 )
@@ -3896,12 +4373,16 @@ with st.sidebar:
             with st.container():
                 _render_step_llm_selector(
                     LLM_STEP_CHEM_RELEVANT,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_CHEM_RELEVANT),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_RELEVANT]} settings",
                 )
                 st.divider()
                 _render_step_llm_selector(
                     LLM_STEP_CHEM_COMPOSITION,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_CHEM_COMPOSITION),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_COMPOSITION]} settings",
                 )
@@ -3916,6 +4397,8 @@ with st.sidebar:
             with st.container():
                 _render_step_llm_selector(
                     LLM_STEP_FILTER_FIGURES,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_FILTER_FIGURES),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_FIGURES]} settings",
                 )
@@ -3930,6 +4413,8 @@ with st.sidebar:
             with st.container():
                 _render_step_llm_selector(
                     LLM_STEP_FILTER_TABLES,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_FILTER_TABLES),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_TABLES]} settings",
                 )
@@ -3944,6 +4429,8 @@ with st.sidebar:
             with st.container():
                 _render_step_llm_selector(
                     LLM_STEP_FIGURE_DATA,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_FIGURE_DATA),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_FIGURE_DATA]} settings",
                 )
@@ -3962,6 +4449,8 @@ with st.sidebar:
             with st.container():
                 _render_step_llm_selector(
                     LLM_STEP_COMPLETE_DATASET,
+                    ollama_available=ollama_available,
+                    ollama_models=ollama_models,
                     caption=_llm_step_caption(LLM_STEP_COMPLETE_DATASET),
                     title=f"{LLM_STEP_LABELS[LLM_STEP_COMPLETE_DATASET]} settings",
                 )
@@ -4004,6 +4493,7 @@ with st.sidebar:
                         "exclude_full_text": exclude_full_text,
                         "run_extract_tables": run_extract_tables,
                         "run_extract_figures": run_extract_figures,
+                        "run_pdf_page_ocr": run_pdf_page_ocr,
                         "run_filter_tables": run_filter_tables and not use_figure_uploads,
                         "run_filter_figures": run_filter_figures,
                         "run_plextract": run_plextract,
@@ -4016,6 +4506,12 @@ with st.sidebar:
                     openai_api_key=str(st.session_state.get("openai_api_key", "")).strip(),
                     elsevier_api_key=str(st.session_state.get("elsevier_api_key", "")).strip(),
                     wiley_tdm_token=str(st.session_state.get("wiley_tdm_token", "")).strip(),
+                    springer_nature_api_key=str(
+                        st.session_state.get("springer_nature_api_key", "")
+                    ).strip(),
+                    rsc_tdm_token=str(st.session_state.get("rsc_tdm_token", "")).strip(),
+                    ncbi_api_key=str(st.session_state.get("ncbi_api_key", "")).strip(),
+                    ieee_api_key=str(st.session_state.get("ieee_api_key", "")).strip(),
                 )
                 _save_settings_preset(workspaces_root, clean_preset_name, current_settings)
                 _queue_settings_preset_state(
@@ -4265,12 +4761,26 @@ with st.sidebar:
         else:
             st.info("No workspaces exist yet. Create one above, then run the pipeline.")
 
-_ACTIVE_PIPELINE_RUN_KEY = "active_pipeline_run"
+class _RunCancelEvent:
+    def __init__(self, run_dir: Path):
+        self._event = threading.Event()
+        self._run_dir = run_dir
+
+    def is_set(self) -> bool:
+        return self._event.is_set() or (self._run_dir / "cancel_requested").exists()
+
+    def set(self) -> None:
+        self._event.set()
+        request_run_cancellation(self._run_dir)
 
 
 def _rerun_app() -> None:
     rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun")
     rerun()
+
+
+def _clear_loaded_run_for_pipeline_launch() -> None:
+    st.session_state.pop("rr", None)
 
 
 def _pipeline_status_snapshot(worker: dict[str, Any]) -> dict[str, Any]:
@@ -4292,6 +4802,9 @@ def _set_pipeline_status(worker: dict[str, Any], **updates: Any) -> None:
     status_path = worker.get("status_path")
     if status_path:
         disk_updates = dict(updates)
+        proc = worker.get("process")
+        if proc is not None and "pid" not in disk_updates:
+            disk_updates["pid"] = proc.pid
         result = disk_updates.pop("result", None)
         if result is not None:
             disk_updates["result_run_id"] = getattr(result, "run_id", None)
@@ -4299,20 +4812,80 @@ def _set_pipeline_status(worker: dict[str, Any], **updates: Any) -> None:
         write_run_status(status_path, **disk_updates)
 
 
+def _notify_run_finished(
+    worker: dict[str, Any],
+    auth_context: dict[str, Any],
+    *,
+    state: str,
+    rr: RunResult | None = None,
+    error: str = "",
+) -> None:
+    if not auth_context.get("notify_on_completion"):
+        return
+    email = str(auth_context.get("email") or "").strip()
+    if not email:
+        _set_pipeline_status(
+            worker,
+            notification_sent=False,
+            notification_error="No email address is available for this user.",
+        )
+        return
+
+    run_id = str(
+        getattr(rr, "run_id", None)
+        or auth_context.get("run_id")
+        or ""
+    )
+    workspace = str(
+        auth_context.get("workspace")
+        or (getattr(rr, "run_dir", Path()).parent.name if rr is not None else "")
+    )
+    run_dir = str(getattr(rr, "run_dir", "") or auth_context.get("run_dir") or "")
+    try:
+        sent = send_run_notification_email(
+            email,
+            display_name=str(auth_context.get("display_name") or auth_context.get("username") or ""),
+            run_id=run_id,
+            workspace=workspace,
+            state=state,
+            processed_count=len(rr.dois) if rr is not None else None,
+            failure_count=len(rr.failures) if rr is not None else None,
+            error=error,
+            run_dir=run_dir,
+        )
+    except Exception as exc:
+        _set_pipeline_status(
+            worker,
+            notification_sent=False,
+            notification_error=str(exc),
+        )
+        print(f"[SALSA email] Run notification failed: {exc}")
+        return
+
+    _set_pipeline_status(
+        worker,
+        notification_sent=bool(sent),
+        notification_error="" if sent else "Email delivery is not configured or no recipient was available.",
+    )
+
+
 def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> dict[str, Any]:
     lock = threading.Lock()
-    cancel_event = threading.Event()
-    auth_context = dict(pipeline_kwargs.pop("_auth_context", {}))
+    pipeline_payload = dict(pipeline_kwargs)
+    auth_context = dict(pipeline_payload.pop("_auth_context", {}))
     run_dir = safe_child_path(Path(pipeline_kwargs["run_root"]), str(pipeline_kwargs["run_id"]))
+    clear_run_cancellation(run_dir)
+    cancel_event = _RunCancelEvent(run_dir)
     status_path = run_dir / RUN_STATUS_FILE_NAME
     status: dict[str, Any] = {
+        "run_id": str(pipeline_kwargs.get("run_id") or ""),
         "state": "running",
         "stage": "Starting pipeline",
         "doi": dois[0] if len(dois) == 1 else f"{len(dois)} DOIs",
         "result": None,
         "error": None,
         "traceback": None,
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "updated_at": _now_eastern_iso(),
     }
     worker: dict[str, Any] = {
         "lock": lock,
@@ -4322,50 +4895,65 @@ def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> 
         "dois": list(dois),
     }
 
-    def on_status(stage: str, doi: Optional[str] = None) -> None:
+    payload = {
+        "pipeline_kwargs": pipeline_payload,
+        "auth_context": auth_context,
+    }
+    payload_file = tempfile.NamedTemporaryFile(
+        prefix="salsa_pipeline_",
+        suffix=".pkl",
+        dir="/tmp",
+        delete=False,
+    )
+    with payload_file:
+        pickle.dump(payload, payload_file)
+
+    scripts_root = Path(pipeline_kwargs["scripts_root"]).resolve()
+    worker_script = Path(__file__).resolve().with_name("pipeline_worker.py")
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    pythonpath_parts = [p for p in existing_pythonpath.split(os.pathsep) if p]
+    scripts_root_text = str(scripts_root)
+    if scripts_root_text not in pythonpath_parts:
+        env["PYTHONPATH"] = os.pathsep.join([scripts_root_text] + pythonpath_parts)
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_path = run_dir / "pipeline_worker.log"
+    try:
+        log_file = log_path.open("ab")
+    except OSError:
+        log_file = subprocess.DEVNULL
+
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(worker_script), payload_file.name],
+            cwd=str(scripts_root),
+            env=env,
+            start_new_session=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+        if log_file is not subprocess.DEVNULL:
+            log_file.close()
+    except Exception as exc:
+        if log_file is not subprocess.DEVNULL:
+            log_file.close()
+        try:
+            Path(payload_file.name).unlink()
+        except OSError:
+            pass
         _set_pipeline_status(
             worker,
-            state="running",
-            stage=stage,
-            doi=doi or status.get("doi"),
-            updated_at=datetime.now().isoformat(timespec="seconds"),
+            state="error",
+            error=str(exc),
+            traceback=traceback.format_exc(),
+            stage="Failed to start",
         )
+        return worker
 
-    def run_worker() -> None:
-        try:
-            rr = run_full_pipeline(
-                **pipeline_kwargs,
-                status_callback=on_status,
-                cancel_event=cancel_event,
-            )
-            if auth_context:
-                write_run_manifest(
-                    rr.run_dir,
-                    user_id=auth_context.get("user_id"),
-                    username=str(auth_context.get("username") or ""),
-                    workspace=str(auth_context.get("workspace") or rr.run_dir.parent.name),
-                    run_id=rr.run_id,
-                )
-            _set_pipeline_status(worker, state="done", result=rr, stage="Done")
-        except PipelineCancelled as exc:
-            _set_pipeline_status(
-                worker,
-                state="cancelled",
-                error=str(exc),
-                stage="Cancelled",
-            )
-        except Exception as exc:
-            _set_pipeline_status(
-                worker,
-                state="error",
-                error=str(exc),
-                traceback=traceback.format_exc(),
-                stage="Failed",
-            )
-
-    thread = threading.Thread(target=run_worker, name="salsa-pipeline-run", daemon=True)
-    worker["thread"] = thread
-    thread.start()
+    status["pid"] = proc.pid
+    worker["process"] = proc
+    worker["log_path"] = log_path
     return worker
 
 
@@ -4374,11 +4962,19 @@ def _render_active_pipeline_run() -> None:
     if not worker:
         return
 
+    st.session_state.pop("rr", None)
     snapshot = _pipeline_status_snapshot(worker)
-    thread = worker["thread"]
     state = snapshot.get("state", "running")
 
-    if thread.is_alive():
+    proc = worker.get("process")
+    thread = worker.get("thread")
+    is_alive = (
+        proc.poll() is None
+        if proc is not None
+        else bool(thread is not None and thread.is_alive())
+    )
+
+    if is_alive:
         if worker["cancel_event"].is_set():
             st.warning("Cancellation requested. Stopping the active pipeline step...")
         elif st.button("Cancel Run", type="secondary"):
@@ -4386,27 +4982,46 @@ def _render_active_pipeline_run() -> None:
             _set_pipeline_status(worker, state="cancelling", stage="Cancelling")
             st.warning("Cancellation requested. Stopping the active pipeline step...")
 
-        status_slot = st.empty()
-        while thread.is_alive():
-            snapshot = _pipeline_status_snapshot(worker)
-            status_slot.info(_run_progress_status_text(snapshot))
-            time.sleep(1)
+        snapshot = _pipeline_status_snapshot(worker)
+        st.info(_run_progress_status_text(snapshot))
+        time.sleep(1)
+        _rerun_app()
+        st.stop()
 
     snapshot = _pipeline_status_snapshot(worker)
     state = snapshot.get("state", state)
+    if state in {"running", "cancelling"} and proc is not None and proc.returncode is not None:
+        log_hint = f" See {worker.get('log_path')} for worker output." if worker.get("log_path") else ""
+        _set_pipeline_status(
+            worker,
+            state="error",
+            stage="Failed",
+            error=f"Pipeline worker exited unexpectedly (exit code {proc.returncode}).{log_hint}",
+        )
+        snapshot = _pipeline_status_snapshot(worker)
+        state = snapshot.get("state", "error")
     st.session_state.pop(_ACTIVE_PIPELINE_RUN_KEY, None)
     if state == "done":
         rr_done = snapshot.get("result")
+        if rr_done is None and snapshot.get("result_run_dir"):
+            try:
+                rr_done = discover_run(Path(str(snapshot["result_run_dir"])))
+            except Exception:
+                rr_done = None
         if rr_done is not None:
             st.session_state["rr"] = rr_done
-            st.success(f"Done. Run ID: {rr_done.run_id}")
+            _render_run_status_outcome(rr_done.run_id, snapshot)
             _render_cost_summary(rr_done.run_dir)
     elif state == "cancelled":
-        st.warning("Run cancelled.")
+        _render_run_status_outcome(
+            str(snapshot.get("result_run_id") or snapshot.get("run_id") or ""),
+            snapshot,
+        )
     elif state == "error":
-        st.error(f"Pipeline failed: {snapshot.get('error')}")
-        with st.expander("Traceback", expanded=False):
-            st.code(snapshot.get("traceback") or "", language="text")
+        _render_run_status_outcome(
+            str(snapshot.get("result_run_id") or snapshot.get("run_id") or ""),
+            snapshot,
+        )
 
 
 # ---------------- Run pipeline ----------------
@@ -4425,6 +5040,39 @@ if show_admin_page:
     if not show_loaded_run:
         st.stop()
     st.divider()
+
+_loaded_progress_rr: RunResult | None = st.session_state.get("rr")
+if _loaded_progress_rr is not None:
+    _loaded_progress_status_path = _loaded_progress_rr.run_dir / RUN_STATUS_FILE_NAME
+    _loaded_progress_status = _mark_inactive_run_status(
+        _loaded_progress_status_path,
+        read_run_status(_loaded_progress_status_path),
+    )
+    if _run_status_is_active(_loaded_progress_status):
+        st.info(f"Run ID: **{_loaded_progress_rr.run_id}**")
+        st.info(
+            "Workspace: "
+            f"**{_workspace_display_name_for_run(_loaded_progress_rr.run_dir, workspaces_root)}**"
+        )
+        _render_run_custom_instructions(_loaded_progress_rr.run_dir)
+        st.info(_run_progress_status_text(_loaded_progress_status))
+        if _loaded_progress_status.get("state") == "cancelling":
+            st.warning("Cancellation requested. Stopping the active pipeline step...")
+        elif st.button(
+            "Cancel Loaded Run",
+            type="secondary",
+            key=f"cancel_loaded_run_{_loaded_progress_rr.run_id}",
+        ):
+            request_run_cancellation(_loaded_progress_rr.run_dir)
+            write_run_status(
+                _loaded_progress_status_path,
+                state="cancelling",
+                stage="Cancelling",
+            )
+            st.warning("Cancellation requested. Stopping the active pipeline step...")
+        time.sleep(1)
+        _rerun_app()
+        st.stop()
 
 if use_docling_pdf_uploads:
     st.subheader("Input PDF(s)")
@@ -4471,7 +5119,12 @@ else:
     uploaded_figure_document_id = ""
     uploaded_figure_captions_text = ""
     st.subheader("Input DOI(s)")
-    doi_text = st.text_area(f"One DOI per line, max {MAX_INPUT_ITEMS}", height=140)
+    doi_text = st.text_area(
+        f"One DOI per line, max {MAX_INPUT_ITEMS} "
+        "(to increase quota, please reach out to SALSA creators at "
+        "wschertzer3@gatech.edu)",
+        height=140,
+    )
 
 st.subheader("Run configuration")
 default_run_id = st.session_state.get("pending_run_id", "")
@@ -4480,11 +5133,31 @@ run_id_input = st.text_input(
     value=default_run_id,
     help="Leave blank to auto-generate timestamp-based run name",
 )
+smtp_configured_for_runs = bool(
+    os.environ.get("SALSA_SMTP_HOST") and os.environ.get("SALSA_SMTP_FROM")
+)
+notify_run_complete = st.checkbox(
+    "Email me when this run finishes",
+    value=bool(smtp_configured_for_runs),
+    key="notify_run_complete",
+    disabled=not smtp_configured_for_runs,
+    help=(
+        f"Send a completion, failure, or cancellation notice to {current_user['email']}."
+        if smtp_configured_for_runs
+        else "Email delivery is not configured on this SALSA server."
+    ),
+)
+if not smtp_configured_for_runs:
+    st.caption("Run notification emails are unavailable until SMTP is configured.")
 
 st.session_state["pending_run_id"] = run_id_input
 
 
-if st.button("Run pipeline", type="primary"):
+if st.button(
+    "Run pipeline",
+    type="primary",
+    on_click=_clear_loaded_run_for_pipeline_launch,
+):
     uploaded_pdfs = []
     uploaded_figures = []
     figure_document_id = ""
@@ -4575,7 +5248,11 @@ if st.button("Run pipeline", type="primary"):
 
             if custom_run_id:
                 if target.exists():
-                    st.warning(f"Run directory already exists and may be overwritten: {target}")
+                    st.error(
+                        f"Run directory already exists: {target}. "
+                        "Choose a different run name or delete the existing run."
+                    )
+                    st.stop()
 
             # --- Save custom instructions for this run ---
             _run_ci = st.session_state.get("custom_instructions", default_instructions())
@@ -4589,7 +5266,18 @@ if st.button("Run pipeline", type="primary"):
                     pass
 
             # Debug: show what preset is being used
-            preset_name = st.session_state.get("current_preset_name", "defaults")
+            preset_name = (
+                st.session_state.get("current_settings_preset_name")
+                or st.session_state.get("current_preset_name")
+                or "custom"
+            )
+            if preset_name and _settings_preset_exists(workspaces_root, preset_name):
+                saved_preset_ci = _load_settings_preset(
+                    workspaces_root,
+                    preset_name,
+                ).get("custom_instructions", {})
+                if saved_preset_ci != _run_ci:
+                    preset_name = f"{preset_name} (modified)"
             st.info(f"Using custom instructions: **{preset_name}**")
             with st.expander("View custom instructions being used", expanded=False):
                 st.json(_run_ci)
@@ -4601,6 +5289,7 @@ if st.button("Run pipeline", type="primary"):
                 run_id=custom_run_id,
                 run_extract_figures=run_extract_figures,
                 run_extract_tables=run_extract_tables,
+                run_pdf_page_ocr=run_pdf_page_ocr if use_docling_pdf_uploads else False,
                 run_filter_figures=run_filter_figures,
                 run_filter_tables=run_filter_tables and not use_figure_uploads,
                 run_plextract=run_plextract and not bypass_ocr_with_llm,
@@ -4610,6 +5299,7 @@ if st.button("Run pipeline", type="primary"):
                 run_chemical_composition=run_chemical_composition,
                 exclude_full_text=exclude_full_text,
                 custom_instructions=_run_ci,
+                custom_instructions_name=preset_name,
                 uploaded_pdfs=uploaded_pdfs if use_docling_pdf_uploads else None,
                 uploaded_figures=uploaded_figures if use_figure_uploads else None,
                 uploaded_figure_document_id=figure_document_id if use_figure_uploads else None,
@@ -4617,14 +5307,21 @@ if st.button("Run pipeline", type="primary"):
                 _auth_context={
                     "user_id": int(current_user["id"]),
                     "username": current_user["username"],
+                    "display_name": current_user["display_name"] or current_user["username"],
+                    "email": current_user["email"],
                     "workspace": active_workspace_name,
+                    "run_id": custom_run_id,
+                    "run_dir": str(target),
+                    "notify_on_completion": bool(notify_run_complete),
                 },
             )
+            st.session_state.pop("rr", None)
             st.session_state[_ACTIVE_PIPELINE_RUN_KEY] = _start_pipeline_worker(
                 pipeline_kwargs,
                 dois,
             )
             _rerun_app()
+            st.stop()
 
 rr: RunResult | None = st.session_state.get("rr")
 if not rr:
@@ -4632,22 +5329,53 @@ if not rr:
 
 st.info(f"Run ID: **{rr.run_id}**")
 st.info(f"Workspace: **{_workspace_display_name_for_run(rr.run_dir, workspaces_root)}**")
+_render_run_custom_instructions(rr.run_dir)
 _loaded_run_status_path = rr.run_dir / RUN_STATUS_FILE_NAME
 _loaded_run_status = _mark_inactive_run_status(
     _loaded_run_status_path,
     read_run_status(_loaded_run_status_path),
 )
 if _run_status_is_active(_loaded_run_status):
-    _loaded_status_slot = st.empty()
-    while _run_status_is_active(_loaded_run_status):
-        _loaded_status_slot.info(_run_progress_status_text(_loaded_run_status))
-        time.sleep(1)
-        _loaded_run_status = _mark_inactive_run_status(
+    st.info(_run_progress_status_text(_loaded_run_status))
+    if _loaded_run_status.get("state") == "cancelling":
+        st.warning("Cancellation requested. Stopping the active pipeline step...")
+    elif st.button(
+        "Cancel Loaded Run",
+        type="secondary",
+        key=f"cancel_loaded_run_{rr.run_id}",
+    ):
+        request_run_cancellation(rr.run_dir)
+        write_run_status(
             _loaded_run_status_path,
-            read_run_status(_loaded_run_status_path),
+            state="cancelling",
+            stage="Cancelling",
         )
-    _loaded_status_slot.info(_run_progress_status_text(_loaded_run_status))
+        st.warning("Cancellation requested. Stopping the active pipeline step...")
+    time.sleep(1)
+    _rerun_app()
+    st.stop()
+_render_run_status_outcome(rr.run_id, _loaded_run_status)
 _render_cost_summary(rr.run_dir)
+
+if rr.failures:
+    st.subheader("Failed DOIs")
+    st.caption(
+        "The most specific failure found for each DOI is shown below."
+    )
+    failed_rows = [
+        {
+            "DOI": failure.doi,
+            "Publisher": failure.publisher,
+            "Stage": failure.stage,
+            "Reason": failure.message,
+        }
+        for failure in rr.failures
+    ]
+    st.dataframe(
+        pd.DataFrame(failed_rows),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 # ---------------- DOI summary table + DOI selector ----------------
 st.subheader("Processed DOIs")
@@ -4762,7 +5490,6 @@ if selected_doi_view == "Tables":
                     st.data_editor(df, use_container_width=True, key=f"table_{selected_doi}_{t.id}")
                 else:
                     st.code(t.table_path.read_text(errors="ignore")[:20000])
-                st.caption(str(t.table_path))
 
         # --- Display LLM-generated emit_rows from row_cache ---
         emit_rows_path = find_emit_rows_for_source(rr.run_dir, selected_doi, "table", t.id)
@@ -5498,8 +6225,8 @@ if selected_doi_view == "Figures":
                                     )
                                     Path(_tmp_path_er).unlink(missing_ok=True)
                                 else:
-                                    _ci_path_er = rr.run_dir.parent / "custom_instructions" / "default.json"
-                                    if _ci_path_er.exists():
+                                    _ci_path_er = _run_custom_instructions_path(rr.run_dir)
+                                    if _ci_path_er is not None and _ci_path_er.exists():
                                         _env_er["SALSA_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
                                     _env_er["SALSA_RUN_ID"] = rr.run_id
                                     _env_er["SALSA_RUN_DIR"] = str(rr.run_dir)
@@ -5936,6 +6663,7 @@ if selected_doi_view == "Chemical Composition":
     )
     from chemical_composition.drawing_tool import (
         render_jsme_editor_local,
+        render_ketcher_editor,
         load_drawn_structures,
         save_drawn_structure,
         delete_drawn_structure,
@@ -6118,13 +6846,14 @@ if selected_doi_view == "Chemical Composition":
             "or use the **Run Extraction** dropdown below to extract on demand."
         )
 
-    # --- Chemical Structure Drawing Tool ---
-    with st.expander("Draw Chemical Structures", expanded=False):
+    # --- Chemical Structure Drawing Tools ---
+    with st.expander("Draw Chemical Structures - JSME", expanded=False):
         render_jsme_editor_local(height=550, key=f"jsme_{_cc_safe}")
 
-        st.divider()
-        st.markdown("#### Save Drawn Structure")
+    with st.expander("Draw Chemical Structures - Ketcher", expanded=False):
+        render_ketcher_editor(height=720, key=f"ketcher_{_cc_safe}")
 
+    with st.expander("Save Drawn Structure", expanded=False):
         draw_sample_name = st.text_input(
             "Sample name for this structure",
             key=f"draw_sample_{_cc_safe}",
@@ -6213,6 +6942,10 @@ if selected_doi_view == "Chemical Composition":
                         parsed_json_path=parsed_json,
                         tables_dir=tables_d if tables_d.exists() else None,
                         figures_dir=figures_d if figures_d.exists() else None,
+                        composition_rules=st.session_state.get("custom_instructions", {}).get(
+                            "chemical_composition_rules",
+                            "",
+                        ),
                     )
 
                 st.success("Extraction complete!")

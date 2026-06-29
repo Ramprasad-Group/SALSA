@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JSME</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; font-family: sans-serif; }
+  #editor-wrapper { width: 100%; }
+  #jsme_container { width: 100%; height: 460px; border: 1px solid #ccc; }
+  .toolbar {
+    display: flex; gap: 8px; padding: 8px 4px; background: #f5f5f5;
+    border-bottom: 1px solid #ddd; align-items: center; flex-wrap: wrap;
+  }
+  .toolbar button {
+    padding: 6px 16px; border: 1px solid #999; border-radius: 4px;
+    background: #fff; cursor: pointer; font-size: 14px;
+  }
+  .toolbar button.primary {
+    background: #1976d2; color: #fff; border-color: #1565c0;
+  }
+  .toolbar .info { font-size: 13px; color: #555; margin-left: auto; }
+  .load-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    padding: 8px 4px;
+    background: #fafafa;
+    border-bottom: 1px solid #ddd;
+  }
+  .load-row input {
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 13px;
+  }
+  .load-row button {
+    padding: 6px 16px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  #output-area {
+    font-family: monospace; font-size: 13px; padding: 8px;
+    background: #fafafa; border-top: 1px solid #ddd;
+    min-height: 28px; word-break: break-all; white-space: pre-wrap;
+  }
+  .loading-step { color: #1976d2; font-weight: 500; }
+</style>
+<script>
+  var jsmeApp = null;
+  var jsmeLoaded = false;
+  var renderArgs = null;
+  var sizeObserver = null;
+  var lastEditorWidth = 0;
+  var lastLoadToken = 0;
+  var lastAppliedServerLoadId = "";
+
+  function sendToStreamlit(type, data) {
+    window.parent.postMessage(Object.assign({
+      isStreamlitMessage: true,
+      type: type
+    }, data || {}), "*");
+  }
+
+  function setStatus(message) {
+    var output = document.getElementById("output-area");
+    if (output) output.textContent = message;
+  }
+
+  function normalizePolymerSmilesForJSME(smiles) {
+    return (smiles || "").trim().replace(/\[\*(?::\d+)?\]/g, "*");
+  }
+
+  function normalizeJSMESmilesForDisplay(smiles) {
+    var marker = "\uE000";
+    return (smiles || "")
+      .replace(/\[R\]/g, marker)
+      .replace(/\[\*(?::\d+)?\]/g, marker)
+      .replace(/\*/g, "[*]")
+      .replace(new RegExp(marker, "g"), "[*]");
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {}
+    }
+
+    var textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.setAttribute("readonly", "");
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      return document.execCommand && document.execCommand("copy");
+    } catch (error) {
+      return false;
+    } finally {
+      textArea.remove();
+    }
+  }
+
+  function applyServerLoadIfReady() {
+    if (!jsmeApp || !renderArgs) return;
+
+    var requestId = String(renderArgs.load_request_id || "");
+    if (!requestId || requestId === lastAppliedServerLoadId) return;
+    lastAppliedServerLoadId = requestId;
+
+    if (renderArgs.load_error) {
+      setStatus("Could not convert this SMILES:\n" + renderArgs.load_error);
+      return;
+    }
+
+    var molfile = renderArgs.load_molfile || "";
+    if (!molfile) return;
+
+    try {
+      jsmeApp.reset();
+      jsmeApp.readMolFile(molfile);
+      repaintAfterLoad();
+      window.setTimeout(function() {
+        var loadedSmiles = normalizeJSMESmilesForDisplay(jsmeApp.smiles());
+        setStatus(
+          "Loaded SMILES." +
+          (loadedSmiles ? "\nSMILES: " + loadedSmiles : "")
+        );
+      }, 80);
+    } catch (error) {
+      setStatus("JSME could not draw the converted structure: " + (error.message || error));
+    }
+  }
+
+  function syncJSMESize() {
+    if (!renderArgs) return;
+
+    var container = document.getElementById("jsme_container");
+    var editorWidth = Math.floor(container.getBoundingClientRect().width);
+    if (editorWidth < 100) return;
+
+    var editorHeight = Math.max(Number(renderArgs.editor_height) || 460, 350);
+    var frameHeight = Math.max(Number(renderArgs.frame_height) || 550, editorHeight + 140);
+    container.style.height = editorHeight + "px";
+
+    if (jsmeApp) {
+      if (editorWidth !== lastEditorWidth) {
+        var widthValue = editorWidth + "px";
+        var heightValue = editorHeight + "px";
+        try {
+          jsmeApp.setSize(widthValue, heightValue);
+        } catch (error) {
+          if (typeof jsmeApp.setWidth === "function") jsmeApp.setWidth(widthValue);
+          if (typeof jsmeApp.setHeight === "function") jsmeApp.setHeight(heightValue);
+        }
+        lastEditorWidth = editorWidth;
+      }
+      sendToStreamlit("streamlit:setFrameHeight", {height: frameHeight});
+      return;
+    }
+
+    if (!jsmeLoaded) return;
+
+    try {
+      jsmeApp = new JSApplet.JSME(
+        "jsme_container",
+        editorWidth + "px",
+        editorHeight + "px",
+        {"options": "query,hydrogens,multipart"}
+      );
+      lastEditorWidth = editorWidth;
+      setStatus("JSME ready! Draw your structure, then click Get SMILES.");
+      sendToStreamlit("streamlit:setFrameHeight", {height: frameHeight});
+      applyServerLoadIfReady();
+    } catch (error) {
+      setStatus("JSME initialization error: " + (error.message || error));
+    }
+  }
+
+  function jsmeOnLoad() {
+    jsmeLoaded = true;
+    setStatus("JSME library loaded, creating editor...");
+    syncJSMESize();
+  }
+
+  function getSMILES() {
+    if (!jsmeApp) {
+      setStatus("Editor not ready yet, please wait...");
+      return;
+    }
+    var smiles = normalizeJSMESmilesForDisplay(jsmeApp.smiles());
+    setStatus("SMILES: " + (smiles || "(empty)"));
+  }
+
+  async function copySMILES() {
+    if (!jsmeApp) {
+      setStatus("Editor not ready yet, please wait...");
+      return;
+    }
+    var smiles = normalizeJSMESmilesForDisplay(jsmeApp.smiles());
+    if (!smiles) {
+      setStatus("SMILES: (empty)");
+      return;
+    }
+    var copied = await copyTextToClipboard(smiles);
+    setStatus(
+      "SMILES: " + smiles + "\n" +
+      (copied ? "SMILES copied." : "Press Ctrl+C or Cmd+C to copy the SMILES above.")
+    );
+  }
+
+  function repaintAfterLoad() {
+    window.setTimeout(function() {
+      try {
+        if (typeof jsmeApp.repaint === "function") jsmeApp.repaint();
+      } catch (error) {}
+      syncJSMESize();
+    }, 50);
+  }
+
+  function drawSMILES(smiles) {
+    if (typeof jsmeApp.readGenericMolecularInput === "function") {
+      return jsmeApp.readGenericMolecularInput(smiles);
+    }
+    if (typeof jsmeApp.readSMILES === "function") {
+      return jsmeApp.readSMILES(smiles);
+    }
+    if (typeof jsmeApp.readMolecule === "function") {
+      return jsmeApp.readMolecule(smiles);
+    }
+    throw new Error("No supported JSME SMILES-loading method was found.");
+  }
+
+  function drawSMILESAndCaptureParserMessages(smiles) {
+    var parserMessages = [];
+    var previousAlert = window.alert;
+    window.alert = function(message) {
+      parserMessages.push(String(message || ""));
+    };
+    try {
+      var result = drawSMILES(smiles);
+      return {result: result, parserMessages: parserMessages};
+    } finally {
+      window.alert = previousAlert;
+    }
+  }
+
+  function loadSMILES() {
+    if (!jsmeApp) {
+      setStatus("Editor not ready yet, please wait...");
+      return;
+    }
+
+    var input = document.getElementById("smiles-input");
+    var originalSmiles = input ? input.value : "";
+    if (!originalSmiles.trim()) {
+      setStatus("Paste a SMILES string first.");
+      return;
+    }
+
+    var requestId = String(Date.now()) + "-" + String(Math.random()).slice(2);
+    setStatus("Converting SMILES...");
+    sendToStreamlit("streamlit:setComponentValue", {
+      value: {
+        action: "load_smiles",
+        smiles: originalSmiles.trim(),
+        request_id: requestId
+      }
+    });
+  }
+
+  function getMolfile() {
+    if (!jsmeApp) {
+      setStatus("Editor not ready yet, please wait...");
+      return;
+    }
+    var mol = jsmeApp.molFile();
+    setStatus("Molfile (" + mol.length + " chars):\n" + mol);
+  }
+
+  function clearEditor() {
+    if (jsmeApp) jsmeApp.reset();
+    setStatus("Cleared. Draw your structure, then click Get SMILES.");
+  }
+
+  window.addEventListener("message", function(event) {
+    if (!event.data || event.data.type !== "streamlit:render") return;
+    renderArgs = event.data.args || {};
+    syncJSMESize();
+    applyServerLoadIfReady();
+  });
+
+  document.addEventListener("DOMContentLoaded", function() {
+    var container = document.getElementById("jsme_container");
+    sizeObserver = new ResizeObserver(function() {
+      syncJSMESize();
+    });
+    sizeObserver.observe(container);
+    syncJSMESize();
+  });
+
+  sendToStreamlit("streamlit:componentReady", {apiVersion: 1});
+</script>
+</head>
+<body>
+<div id="editor-wrapper">
+  <div class="toolbar">
+    <button class="primary" onclick="getSMILES()">Get SMILES</button>
+    <button onclick="copySMILES()">Copy SMILES</button>
+    <button onclick="getMolfile()">Get Molfile</button>
+    <button onclick="clearEditor()">Clear</button>
+    <span class="info">Draw your chemical structure below</span>
+  </div>
+  <div class="load-row">
+    <input
+      id="smiles-input"
+      placeholder="Paste SMILES, including polymer wildcards such as [*]..."
+      onkeydown="if (event.key === 'Enter') loadSMILES();"
+    />
+    <button onclick="loadSMILES()">Load SMILES</button>
+  </div>
+  <div id="jsme_container"></div>
+  <div id="output-area" class="loading-step">Loading JSME library...</div>
+</div>
+<script src="./jsme/jsme.nocache.js"></script>
+</body>
+</html>

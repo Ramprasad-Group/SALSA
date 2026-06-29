@@ -54,6 +54,29 @@ class TestCompositionTableSchema(unittest.TestCase):
         self.assertIn("smiles3", rows[0])
         self.assertIn("additive_smiles3", rows[0])
 
+    def test_custom_sample_fields_are_preserved(self):
+        samples = [
+            {
+                "sample_name": "PFT60-x60",
+                "smiles1": "[*]CC[*]",
+                "c1": 1,
+                "contains_add": 0,
+                "contains_crosslink": 1,
+                "notes": "fixture",
+            }
+        ]
+
+        rows, columns = build_composition_table_rows(samples, doi="10.1000/example")
+
+        self.assertIn("contains_add", columns)
+        self.assertIn("contains_crosslink", columns)
+        self.assertEqual(rows[0]["contains_add"], "0")
+        self.assertEqual(rows[0]["contains_crosslink"], "1")
+        self.assertEqual(
+            columns.index("contains_add") < columns.index("notes"),
+            True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

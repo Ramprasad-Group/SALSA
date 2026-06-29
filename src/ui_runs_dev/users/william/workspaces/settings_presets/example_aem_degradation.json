@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "openai_api_key": "",
+  "elsevier_api_key": "",
+  "wiley_tdm_token": "",
+  "springer_nature_api_key": "",
+  "rsc_tdm_token": "",
+  "ncbi_api_key": "",
+  "ieee_api_key": "",
+  "openai_base_url": "https://api.openai.com/v1",
+  "ollama_host": "",
+  "ollama_models_dir": "",
+  "ollama_num_ctx": 16384,
+  "stages": {
+    "exclude_full_text": true,
+    "run_extract_tables": true,
+    "run_extract_figures": true,
+    "run_pdf_page_ocr": false,
+    "run_filter_tables": true,
+    "run_filter_figures": true,
+    "run_plextract": true,
+    "bypass_ocr_with_llm": false,
+    "run_chemical_composition": true,
+    "run_complete_dataset": true
+  },
+  "llm_steps": {
+    "extract_tables": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1"
+    },
+    "chem_relevant": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1"
+    },
+    "chem_composition": {
+      "provider": "Chat GPT",
+      "model": "gpt-5.5"
+    },
+    "filter_figures": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "filter_tables": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1"
+    },
+    "figure_data": {
+      "provider": "Chat GPT",
+      "model": "gpt-5.5"
+    },
+    "complete_dataset": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1"
+    }
+  },
+  "custom_instructions": {
+    "table_extraction_rules": "- If a parent header spans multiple columns, and there is a second header row that contains labels such as \"Before\" / \"After\", \"30\u00b0C\" / \"80\u00b0C\", \"Cal.\"/\"Exp\", \"in-plane\"/\"through-plane\", etc., you MUST factor them into final column headers.",
+    "figure_filter_criteria": "A figure qualifies if ANY of the following are true:\n- It shows ionic/hydroxide/alkaline conductivity versus time OR ionic/hydroxide/alkaline/ conductivity retention versus time\n- It shows IEC versus time OR IEC retention versus time\n- It shows water uptake, swelling, IEC, or conductivity as a function of temperature\n- It shows water uptake, swelling, IEC, or conductivity as a function of inverse temperature\n- It shows an Arrhenius relationship\n",
+    "table_filter_criteria": "Return \"YES\" if the table  contains data related to:\n(a) ionic/hydroxide/alkaline conductivity versus time OR ionic/hydroxide/alkaline/ conductivity retention versus time\n(b) water uptake\n(c) swelling ratio\n(d) ion exchange capacity\n(e) mechanical properties\nReturn \"NO\" otherwise.\"\n",
+    "data_processing_rules": "- Measurements taken before or at the beginning of stability tests MUST have time(h) = 0",
+    "output_columns": [
+      "Sample Name",
+      "time(h)",
+      "relative humidity(%)",
+      "solvent type",
+      "solvent molarity (M)",
+      "degradation test temp (C)",
+      "prop test temp (C)",
+      "dependant variable",
+      "dependent value",
+      "dependent unit",
+      "DOI",
+      "source_kind",
+      "source_name"
+    ],
+    "missing_value_defaults": {
+      "Sample Name": "None Not Found",
+      "time(h)": "0 Not Found",
+      "relative humidity(%)": "100 Not Found",
+      "solvent type": "None Not Found",
+      "solvent molarity (M)": "None Not Found",
+      "degradation test temp (C)": "None Not Found",
+      "prop test temp (C)": "25 Not Found",
+      "dependant variable": "None Not Found"
+    }
+  }
+}

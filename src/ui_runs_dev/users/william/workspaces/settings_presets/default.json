@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "openai_api_key": "",
+  "elsevier_api_key": "",
+  "wiley_tdm_token": "",
+  "springer_nature_api_key": "",
+  "rsc_tdm_token": "",
+  "ncbi_api_key": "",
+  "ieee_api_key": "",
+  "openai_base_url": "https://api.openai.com/v1",
+  "ollama_host": "",
+  "ollama_models_dir": "",
+  "ollama_num_ctx": 16384,
+  "stages": {
+    "exclude_full_text": true,
+    "run_extract_tables": true,
+    "run_extract_figures": true,
+    "run_pdf_page_ocr": false,
+    "run_filter_tables": false,
+    "run_filter_figures": false,
+    "run_plextract": true,
+    "bypass_ocr_with_llm": false,
+    "run_chemical_composition": false,
+    "run_complete_dataset": true
+  },
+  "llm_steps": {
+    "extract_tables": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "chem_relevant": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "chem_composition": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "filter_figures": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "filter_tables": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "figure_data": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    },
+    "complete_dataset": {
+      "provider": "Chat GPT",
+      "model": "gpt-4.1-mini"
+    }
+  },
+  "custom_instructions": {
+    "table_extraction_rules": "- If a parent header spans multiple columns, and there is a second header row that contains labels such as \"Before\" / \"After\", \"30\u00b0C\" / \"80\u00b0C\", \"Cal.\"/\"Exp\", \"in-plane\"/\"through-plane\", etc., you MUST factor them into final column headers.",
+    "figure_filter_criteria": "",
+    "table_filter_criteria": "",
+    "chemical_composition_rules": "",
+    "figure_data_extraction_rules": "",
+    "data_processing_rules": "",
+    "output_columns": [
+      "Sample Name",
+      "independent variable",
+      "independent value",
+      "independent unit",
+      "dependant variable",
+      "dependent value",
+      "dependent unit",
+      "DOI",
+      "source_kind",
+      "source_name"
+    ],
+    "missing_value_defaults": {}
+  }
+}

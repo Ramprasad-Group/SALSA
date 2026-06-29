@@ -51,6 +51,41 @@ Important remote-access note:
 - Set `SALSA_JSME_PUBLIC_URL` to a browser-reachable URL
 - If you proxy through Nginx, use a subpath such as `https://your-host.example.org/jsme-assets`
 
+Georgia Tech outbound email:
+
+- Set `SALSA_SMTP_HOST=outbound.mail.gatech.edu`, `SALSA_SMTP_PORT=25`, and `SALSA_SMTP_TLS=0`
+- Set `SALSA_SMTP_LOCAL_HOSTNAME` to the hostname registered on Georgia Tech's Authorized Senders list
+- Set `SALSA_SMTP_FROM` to an authorized sender address for the relay, such as `no-reply@polymergenome.org`
+- Campus relay connections do not use SMTP username/password authentication
+- Request Authorized Sender access from Georgia Tech OIT if the relay rejects the host
+- Password-reset messages contain only the one-time token, not a reset URL
+- Public account creation produces a pending request; approved admins receive the submitted name, username, email, institution, and request time by email
+- Pending users cannot sign in until an admin approves them from the SALSA Admin page
+
+Publisher full-text access:
+
+- SALSA does not use Georgia Tech IP access, browser cookies, or publisher landing pages
+- DOI redirects provide location metadata only; they do not authorize automated full-text downloads
+- Elsevier requires `ELSEVIER_API_KEY`
+- Wiley requires `WILEY_API_KEY`
+- Springer Nature open-access JATS requires `SPRINGER_NATURE_API_KEY`
+- RSC requires an RSC-issued `RSC_API_KEY`; SALSA uses the RSC publications endpoint directly
+- IEEE Open Access or licensed full text requires an approved `IEEE_API_KEY`
+- PubMed Central and PLOS open-access retrieval require no key; `NCBI_API_KEY` is optional for higher request limits
+- APS open-access articles are retrieved through APS Harvest without a user credential
+- IOP articles are discovered through Crossref text-mining links without a user credential, but IOP blocks systematic platform downloads and directs TDM users to arrange SFTP delivery through `contentsupport@ioppublishing.org`
+- ACS, ECS, AIP, Hindawi, and Informa papers must currently be supplied as authorized PDF uploads
+
+For `polymergenome.storm.gatech.edu`, the authorization request should identify:
+
+- Hostname: `polymergenome.storm.gatech.edu`
+- Canonical hostname: `mselweb0001.storm.gatech.edu`
+- Source IP: `143.215.76.191`
+- Relay: `outbound.mail.gatech.edu`, port `25`
+- Sender: `no-reply@polymergenome.org`
+- Rejection when unauthorized: `550 5.7.1 Your access to submit messages to this e-mail system has been rejected.`
+- A successful SMTP `EHLO`, `MAIL FROM`, and `RCPT TO` does not prove authorization; the relay may reject the message at the final `DATA` step
+
 ### 4. Test the app manually
 
 ```bash
@@ -61,7 +96,8 @@ source .env.production
 set +a
 python -m streamlit run src/ui/streamlit_app.py \
   --server.address 0.0.0.0 \
-  --server.port 8501
+  --server.port 8501 \
+  --server.fileWatcherType auto
 ```
 
 If that works, browse to:
@@ -79,11 +115,38 @@ sudo systemctl enable --now salsa
 sudo systemctl status salsa
 ```
 
+Production disables Streamlit source-file watching in
+`deploy/systemd/salsa.service` so edits to this working tree do not reload the
+production app and kill in-process runs. After testing changes, restart
+production deliberately:
+
+```bash
+sudo systemctl restart salsa
+```
+
 Logs:
 
 ```bash
 journalctl -u salsa -f
 ```
+
+### 5a. Run a separate development app
+
+Use the development service when changing or testing code. It listens on port
+`8602` by default and stores data under `src/ui_runs_dev`, separate from
+production workspaces and auth.
+
+```bash
+cp deploy/env/salsa-dev.env.example .env.development
+sudo cp deploy/systemd/salsa-dev.service /etc/systemd/system/salsa-dev.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now salsa-dev
+sudo systemctl status salsa-dev
+```
+
+Open the development app at `http://<server-host>:8602` or proxy it separately.
+Because the dev service uses Streamlit file watching, source edits reload only
+the development app. They should not interrupt production runs.
 
 ### 6. Expose it through a URL
 
@@ -118,6 +181,23 @@ Then the app can live at:
 and the chemical editor helper assets can live at:
 
 - `https://salsa.example.org/jsme-assets`
+
+#### Docker-managed certificate renewal
+
+When Nginx and Certbot run from `/root/pgV2/docker-compose.yml`, the host's
+standard `certbot.timer` does not renew certificates in the Compose-mounted
+`/root/pgV2/certbot/conf` directory. Install the dedicated timer instead:
+
+```bash
+sudo cp deploy/systemd/pgv2-certbot-renew.service /etc/systemd/system/
+sudo cp deploy/systemd/pgv2-certbot-renew.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pgv2-certbot-renew.timer
+```
+
+The timer checks twice daily. Certbot renews only certificates near expiry;
+after a successful check, the service validates and reloads the Docker Nginx
+container so renewed certificates take effect.
 
 ### 7. Firewall and DNS
 

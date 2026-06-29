@@ -4,7 +4,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from chemical_composition.extract_composition import _parsed_json_to_text  # noqa: E402
+from chemical_composition.extract_composition import (  # noqa: E402
+    _build_composition_prompt,
+    _parsed_json_to_text,
+)
 
 
 class TestChemicalPromptText(unittest.TestCase):
@@ -37,6 +40,22 @@ class TestChemicalPromptText(unittest.TestCase):
         self.assertIn("Synthesis", text)
         self.assertIn("Step one.", text)
         self.assertNotIn("Should not appear.", text)
+
+    def test_composition_prompt_includes_custom_composition_rules(self):
+        prompt = _build_composition_prompt(
+            [
+                {
+                    "source_type": "text",
+                    "source_id": "body_text",
+                    "content": "Sample A contains additive X.",
+                }
+            ],
+            composition_rules="include contains_add as 1 or 0",
+        )
+
+        self.assertIn("User-provided extraction instructions:", prompt)
+        self.assertIn("include contains_add as 1 or 0", prompt)
+        self.assertIn("Sample A contains additive X.", prompt)
 
 
 if __name__ == "__main__":

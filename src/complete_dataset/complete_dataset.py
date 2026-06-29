@@ -93,7 +93,7 @@ args = parser.parse_args()
 
 # --- Load custom instructions ---
 _ci = load_instructions_from_env_or_path(args.custom_instructions or None)
-DATASET_COLUMNS = _ci.get("output_columns", list(_DEFAULT_COLUMNS))
+DATASET_COLUMNS = _ci.get("output_columns") or list(_DEFAULT_COLUMNS)
 _MISSING_DEFAULTS = _ci.get("missing_value_defaults", {})
 _EXTRA_RULES = _ci.get("data_processing_rules", "")
 

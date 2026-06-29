@@ -13,8 +13,18 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from discover import discover_run
-from docling_pdf import PdfUpload, extract_uploaded_pdfs_with_docling
-from run_progress import RUN_STATUS_FILE_ENV, RUN_STATUS_FILE_NAME, write_run_status
+from docling_pdf import (
+    PdfUpload,
+    extract_downloaded_pdfs_with_docling,
+    extract_uploaded_pdfs_with_docling,
+)
+from run_progress import (
+    CANCEL_REQUEST_FILE_NAME,
+    RUN_STATUS_FILE_ENV,
+    RUN_STATUS_FILE_NAME,
+    cancel_request_path,
+    write_run_status,
+)
 from uploaded_figures import FigureUpload, stage_uploaded_figures
 from llm_step_config import (
     GENERAL_LLM_ENV_VARS,
@@ -29,7 +39,7 @@ from schemas import RunResult
 
 StatusCallback = Callable[[str, Optional[str]], None]
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-DEFAULT_INPUT_ITEM_LIMIT = 50
+DEFAULT_INPUT_ITEM_LIMIT = 10
 ADMIN_INPUT_ITEM_LIMIT = 100
 MAX_INPUT_ITEMS = DEFAULT_INPUT_ITEM_LIMIT
 
@@ -45,6 +55,7 @@ def _run(
     cwd: Optional[Path] = None,
     env: Optional[Dict[str, str]] = None,
     cancel_event: Any = None,
+    status_file: str | Path | None = None,
 ):
     proc = subprocess.Popen(
         cmd,
@@ -59,7 +70,16 @@ def _run(
                 raise subprocess.CalledProcessError(returncode, cmd)
             return
 
-        if cancel_event is not None and cancel_event.is_set():
+        status_file_raw = (
+            str(status_file)
+            if status_file is not None
+            else (env or {}).get(RUN_STATUS_FILE_ENV, "") or os.environ.get(RUN_STATUS_FILE_ENV, "")
+        ).strip()
+        disk_cancelled = bool(
+            status_file_raw
+            and cancel_request_path(Path(status_file_raw).parent).exists()
+        )
+        if (cancel_event is not None and cancel_event.is_set()) or disk_cancelled:
             try:
                 os.killpg(proc.pid, signal.SIGTERM)
             except Exception:
@@ -77,8 +97,17 @@ def _run(
         time.sleep(0.5)
 
 
-def _raise_if_cancelled(cancel_event: Any = None) -> None:
-    if cancel_event is not None and cancel_event.is_set():
+def _raise_if_cancelled(cancel_event: Any = None, status_file: str | Path | None = None) -> None:
+    status_file_raw = (
+        str(status_file)
+        if status_file is not None
+        else os.environ.get(RUN_STATUS_FILE_ENV, "")
+    ).strip()
+    disk_cancelled = bool(
+        status_file_raw
+        and cancel_request_path(Path(status_file_raw).parent).exists()
+    )
+    if (cancel_event is not None and cancel_event.is_set()) or disk_cancelled:
         raise PipelineCancelled("Pipeline run cancelled by user.")
 
 
@@ -114,9 +143,10 @@ def _report_status(
     stage: str,
     doi: str | None,
     cancel_event: Any = None,
+    status_file: str | Path | None = None,
 ) -> None:
-    _raise_if_cancelled(cancel_event)
-    write_run_status(state="running", stage=stage, doi=doi)
+    _raise_if_cancelled(cancel_event, status_file=status_file)
+    write_run_status(status_file, state="running", stage=stage, doi=doi)
     if status_callback is not None:
         status_callback(stage, doi)
 
@@ -261,6 +291,7 @@ def run_full_pipeline(
     run_id: str | None = None,
     run_extract_tables: bool = True,
     run_extract_figures: bool = True,
+    run_pdf_page_ocr: bool = False,
     run_filter_figures: bool = True,
     run_filter_tables: bool = True,
     run_plextract: bool = True,
@@ -270,6 +301,7 @@ def run_full_pipeline(
     run_chemical_composition: bool = False,
     exclude_full_text: bool = True,
     custom_instructions: Dict[str, Any] | None = None,
+    custom_instructions_name: str | None = None,
     uploaded_pdfs: list[dict[str, Any]] | None = None,
     uploaded_figures: list[dict[str, Any]] | None = None,
     uploaded_figure_document_id: str | None = None,
@@ -326,32 +358,86 @@ def run_full_pipeline(
         doi_scope = f"{len(figure_uploads)} uploaded figure" + ("" if len(figure_uploads) == 1 else "s")
 
     if run_dir.exists():
-        raise FileExistsError(
-            f"Run directory already exists: {run_dir}\n"
-            "Choose a different run ID or delete the existing run."
-        )
+        allowed_preexisting = {
+            RUN_STATUS_FILE_NAME,
+            CANCEL_REQUEST_FILE_NAME,
+            "pipeline_worker.log",
+        }
+        existing_outputs = [
+            child
+            for child in run_dir.iterdir()
+            if child.name not in allowed_preexisting
+        ]
+        if existing_outputs:
+            raise FileExistsError(
+                f"Run directory already exists: {run_dir}\n"
+                "Choose a different run ID or delete the existing run."
+            )
 
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Set run dir and run ID so cost logging writes to <run_dir>/cost/usage.jsonl ---
-    import os
-    os.environ["SALSA_RUN_DIR"] = str(run_dir)
-    os.environ["SALSA_RUN_ID"] = run_id
-    os.environ[RUN_STATUS_FILE_ENV] = str(run_dir / RUN_STATUS_FILE_NAME)
-    _report_status(status_callback, "Preparing run workspace", doi_scope, cancel_event)
+    status_file = run_dir / RUN_STATUS_FILE_NAME
+    ci_path: Path | None = None
 
-    # --- Reference workspace-level custom instructions ---
-    # Instructions are saved in workspace/custom_instructions/default.json
-    # We pass them via environment variable to downstream scripts
-    ci_path = None
+    def _with_run_env(env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        out = (env or os.environ.copy()).copy()
+        out["SALSA_RUN_DIR"] = str(run_dir)
+        out["SALSA_RUN_ID"] = run_id
+        out[RUN_STATUS_FILE_ENV] = str(status_file)
+        if ci_path is not None:
+            out["SALSA_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+        return out
+
+    def _stage_env(stage: str, env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        return _progress_env(
+            scripts_root=scripts_root,
+            stage=stage,
+            env=_with_run_env(env),
+        )
+
+    def _status(stage: str, doi: str | None) -> None:
+        _report_status(
+            status_callback,
+            stage,
+            doi,
+            cancel_event,
+            status_file=status_file,
+        )
+
+    _status("Preparing run workspace", doi_scope)
+
+    # --- Snapshot custom instructions for this run ---
+    # Keep a run-local copy so completed runs can show and reuse exactly the
+    # instruction set that was active when the run started.
     if custom_instructions:
-        # Create a temporary reference file in the workspace (not run) directory
-        workspace_ci_dir = run_root / "custom_instructions"
-        workspace_ci_dir.mkdir(parents=True, exist_ok=True)
-        ci_path = workspace_ci_dir / "default.json"
+        instruction_name = (custom_instructions_name or "").strip() or "custom"
+        ci_path = run_dir / "custom_instructions.json"
         with open(ci_path, "w") as f:
             json.dump(custom_instructions, f, indent=2)
-        os.environ["SALSA_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+        ci_manifest_path = run_dir / "custom_instructions_manifest.json"
+        with open(ci_manifest_path, "w") as f:
+            json.dump(
+                {
+                    "name": instruction_name,
+                    "source": "run_snapshot",
+                    "path": ci_path.name,
+                    "saved_at": datetime.now().isoformat(timespec="seconds"),
+                },
+                f,
+                indent=2,
+            )
+
+        # Preserve the workspace-level reference for older manual rerun paths.
+        workspace_ci_dir = run_root / "custom_instructions"
+        workspace_ci_dir.mkdir(parents=True, exist_ok=True)
+        workspace_ci_path = workspace_ci_dir / "default.json"
+        with open(workspace_ci_path, "w") as f:
+            json.dump(custom_instructions, f, indent=2)
+        write_run_status(
+            status_file,
+            custom_instructions_name=instruction_name,
+            custom_instructions_path=str(ci_path),
+        )
         print(f"[Pipeline] Saved custom instructions to: {ci_path}")
         print(f"[Pipeline] Missing value defaults: {custom_instructions.get('missing_value_defaults', {})}")
     else:
@@ -373,19 +459,20 @@ def run_full_pipeline(
     # download_records script default expects column name "DOI"
     doi_csv = records_dir / "input_dois.csv"
     if pdf_uploads:
-        _report_status(status_callback, "Extracting uploaded PDFs with Docling", doi_scope, cancel_event)
+        _status("Processing uploaded PDFs", doi_scope)
         docling_result = extract_uploaded_pdfs_with_docling(
             pdf_uploads,
             run_dir=run_dir,
             run_extract_tables=run_extract_tables,
             run_extract_figures=run_extract_figures,
-            status_callback=status_callback,
+            use_ocr=run_pdf_page_ocr,
+            status_callback=_status,
             cancel_event=cancel_event,
         )
         dois = docling_result.dois
         doi_scope = _doi_scope(dois)
     elif figure_uploads:
-        _report_status(status_callback, "Staging uploaded figures", doi_scope, cancel_event)
+        _status("Staging uploaded figures", doi_scope)
         figure_result = stage_uploaded_figures(
             figure_uploads,
             run_dir=run_dir,
@@ -415,7 +502,7 @@ def run_full_pipeline(
     if not (pdf_uploads or figure_uploads):
         # --- 1) download_records_multiple_dois_webofscience.py ---
         # writes download_results_*.csv into --log_file directory.
-        _report_status(status_callback, "Downloading DOI records", doi_scope, cancel_event)
+        _status("Downloading DOI records", doi_scope)
         _run([
             sys.executable, str(p_download_records),
             "--file_path", str(doi_csv),
@@ -423,13 +510,13 @@ def run_full_pipeline(
             "--no_db",
             "--log_file", str(records_dir),
             "--output_dir", str(records_dir),
-        ], env=_progress_env(scripts_root=scripts_root, stage="Downloading DOI records"), cancel_event=cancel_event)
+        ], env=_stage_env("Downloading DOI records"), cancel_event=cancel_event)
 
         results_csv = _latest_matching_csv(records_dir, "download_results_*.csv")
 
         # --- 2) download_papers.py (no_db) ---
         # Writes structured_files under --download_dir/structured_files
-        _report_status(status_callback, "Downloading papers", doi_scope, cancel_event)
+        _status("Downloading papers", doi_scope)
         _run([
             sys.executable, str(p_download_papers),
             "--no_db",
@@ -437,18 +524,18 @@ def run_full_pipeline(
             "--download_dir", str(papers_dir),
             "--log_file", str(papers_dir / "logs"),
             "--sample_size", "None",
-        ], env=_progress_env(scripts_root=scripts_root, stage="Downloading papers"), cancel_event=cancel_event)
+        ], env=_stage_env("Downloading papers"), cancel_event=cancel_event)
 
         # --- 3) reparse_filtered_dois.py ---
         # Produces reparsed/index.csv and per-doi parsed.json
-        _report_status(status_callback, "Re-parsing downloaded papers", doi_scope, cancel_event)
+        _status("Re-parsing downloaded papers", doi_scope)
         _run([
             sys.executable, str(p_reparse),
             "--csv_path", str(results_csv),
             "--structured_root", str(structured_root),
             "--output_dir", str(reparsed_dir),
             "--doi_column", "doi",   # output from download_records is lower 'doi'
-        ], env=_progress_env(scripts_root=scripts_root, stage="Re-parsing downloaded papers"), cancel_event=cancel_event)
+        ], env=_stage_env("Re-parsing downloaded papers"), cancel_event=cancel_event)
 
         # --- 4) extract_figures_tables_llm.py (extraction only, no filtering yet) ---
         cmd_extract = [
@@ -462,16 +549,24 @@ def run_full_pipeline(
             cmd_extract.append("--extract_figures")
         if run_extract_tables:
             cmd_extract.append("--extract_tables")
-        _report_status(status_callback, "Extracting figures and tables", doi_scope, cancel_event)
+        _status("Extracting figures and tables", doi_scope)
         _run(
             cmd_extract,
-            env=_progress_env(
-                scripts_root=scripts_root,
-                stage="Extracting figures and tables",
+            env=_stage_env(
+                "Extracting figures and tables",
                 env=_subprocess_env_for_llm_step(LLM_STEP_EXTRACT_TABLES)
                 if run_extract_tables
                 else None,
             ),
+            cancel_event=cancel_event,
+        )
+
+        _status("Processing downloaded PDFs", doi_scope)
+        extract_downloaded_pdfs_with_docling(
+            run_dir=run_dir,
+            run_extract_tables=run_extract_tables,
+            run_extract_figures=run_extract_figures,
+            status_callback=_status,
             cancel_event=cancel_event,
         )
 
@@ -507,7 +602,7 @@ def run_full_pipeline(
         run_chemical_composition_extraction = _cc_module.run_chemical_composition_extraction
 
         for doi in dois:
-            _report_status(status_callback, "Extracting chemical composition", doi.strip(), cancel_event)
+            _status("Extracting chemical composition", doi.strip())
             safe = doi_to_safe(doi.strip())
             parsed_json = reparsed_dir / safe / "parsed.json"
             tables_d = figures_tables_dir / "tables" / safe
@@ -520,6 +615,7 @@ def run_full_pipeline(
                     parsed_json_path=parsed_json if parsed_json.exists() else None,
                     tables_dir=tables_d if tables_d.exists() else None,
                     figures_dir=figures_d if figures_d.exists() else None,
+                    composition_rules=(custom_instructions or {}).get("chemical_composition_rules", ""),
                 )
                 run_chemical_composition_extraction(**cc_kwargs)
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
@@ -528,7 +624,7 @@ def run_full_pipeline(
 
     # --- 6) filter figures/tables (after chemical composition extraction) ---
     if run_filter_figures:
-        _report_status(status_callback, "Filtering figures", doi_scope, cancel_event)
+        _status("Filtering figures", doi_scope)
         _run(
             [
                 sys.executable, str(p_extract_ft),
@@ -538,15 +634,14 @@ def run_full_pipeline(
                 "--output_dir", str(figures_tables_dir),
                 "--filter_figures",
             ],
-            env=_progress_env(
-                scripts_root=scripts_root,
-                stage="Filtering figures",
+            env=_stage_env(
+                "Filtering figures",
                 env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_FIGURES),
             ),
             cancel_event=cancel_event,
         )
     if run_filter_tables:
-        _report_status(status_callback, "Filtering tables", doi_scope, cancel_event)
+        _status("Filtering tables", doi_scope)
         _run(
             [
                 sys.executable, str(p_extract_ft),
@@ -556,9 +651,8 @@ def run_full_pipeline(
                 "--output_dir", str(figures_tables_dir),
                 "--filter_tables",
             ],
-            env=_progress_env(
-                scripts_root=scripts_root,
-                stage="Filtering tables",
+            env=_stage_env(
+                "Filtering tables",
                 env=_subprocess_env_for_llm_step(LLM_STEP_FILTER_TABLES),
             ),
             cancel_event=cancel_event,
@@ -568,7 +662,7 @@ def run_full_pipeline(
     # It expects input dir = figures_tables/figures which contains subdirs per DOI (safe doi)
     _figures_dir = figures_tables_dir / "figures"
     if run_plextract:
-        _report_status(status_callback, "Extracting figure data with OCR", doi_scope, cancel_event)
+        _status("Extracting figure data with OCR", doi_scope)
         if not _figures_dir.exists() or not any(_figures_dir.iterdir()):
             print(f"[Pipeline] WARNING: No figures were extracted — skipping plextract "
                   f"(figures dir missing or empty: {_figures_dir})")
@@ -577,7 +671,7 @@ def run_full_pipeline(
                 sys.executable, str(p_plextract),
                 "--input", str(_figures_dir),
                 "--workdir", str(plextract_workdir),
-            ], env=_progress_env(scripts_root=scripts_root, stage="Extracting figure data with OCR"), cancel_event=cancel_event)
+            ], env=_stage_env("Extracting figure data with OCR"), cancel_event=cancel_event)
 
     if run_plextract and _figures_dir.exists() and any(_figures_dir.iterdir()):
         plextract_results_root = _plextract_results_root(plextract_workdir)
@@ -588,7 +682,7 @@ def run_full_pipeline(
     # Writes the same final_dataset.csv shape as plextract so the existing
     # complete-dataset stage can consume it through --extracted_figures_root.
     if run_llm_figure_extraction:
-        _report_status(status_callback, "Extracting figure data with LLM", doi_scope, cancel_event)
+        _status("Extracting figure data with LLM", doi_scope)
         if not _figures_dir.exists() or not any(_figures_dir.iterdir()):
             print(f"[Pipeline] WARNING: No figures were extracted — skipping direct LLM figure extraction "
                   f"(figures dir missing or empty: {_figures_dir})")
@@ -605,11 +699,11 @@ def run_full_pipeline(
                 workdir=llm_figure_workdir,
                 run_dir=run_dir,
             )
-            _raise_if_cancelled(cancel_event)
+            _raise_if_cancelled(cancel_event, status_file=status_file)
 
     # --- 8) complete-dataset.py ---
     if run_complete_dataset:
-        _report_status(status_callback, "Completing dataset rows", doi_scope, cancel_event)
+        _status("Completing dataset rows", doi_scope)
         cmd = [
             sys.executable, str(p_complete_dataset),
             "--file_path", str(doi_csv),
@@ -637,14 +731,13 @@ def run_full_pipeline(
 
         _run(
             cmd,
-            env=_progress_env(
-                scripts_root=scripts_root,
-                stage="Completing dataset rows",
+            env=_stage_env(
+                "Completing dataset rows",
                 env=_subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET),
             ),
             cancel_event=cancel_event,
         )
 
     # --- discover everything for UI ---
-    _report_status(status_callback, "Loading run results", doi_scope, cancel_event)
+    _status("Loading run results", doi_scope)
     return discover_run(run_dir)

@@ -93,6 +93,11 @@ def get_query():
 def main():
     args = parse_arguments()
     log, log_file, sample_size, db, download_directory = setup_environment(args)
+    local_status_log = (
+        os.path.join(args.log_file, "download_status.jsonl")
+        if args.no_db
+        else None
+    )
 
     # Input “cursor” source differs by mode
     records_df = None
@@ -104,6 +109,10 @@ def main():
         if not required.issubset(df.columns):
             missing = required - set(df.columns)
             raise ValueError(f"--input_csv missing columns: {missing}")
+        if 'success' in df.columns:
+            success_values = df['success'].astype(str).str.strip().str.lower()
+            df = df[success_values.isin({'true', '1', 'yes'})].copy()
+            log.info(f"[NO-DB] Retained {len(df)} successful record rows for paper download")
         # Build columns expected by downloader.article_downloader:
         df = df.copy()
         df['pi_id'] = range(1, len(df) + 1)
@@ -158,13 +167,13 @@ def main():
                     logger=log,
                     logger_file=log_file,
                     sample_size=sample_size,
-                    download_pdf=False,
+                    download_pdf=True,
                     scanned_records=completed_files,
                     last_processed_id=last_processed_id,
                     # pass a DataFrame in No-DB mode
                     records_df=records_df,
                     # where to write “DB updates” locally
-                    local_status_log=args.log_file if args.no_db else None
+                    local_status_log=local_status_log
                 )
             else:
                 status = False

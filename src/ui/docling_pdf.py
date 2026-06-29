@@ -4,15 +4,19 @@ import csv
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import pandas as pd
+
+from run_progress import RUN_STATUS_FILE_ENV, RUN_STATUS_FILE_NAME, write_current_doi
 
 
 @dataclass(frozen=True)
@@ -314,7 +318,12 @@ def _save_picture(picture: Any, doc: Any, figure_dir: Path, doi: str, idx: int) 
     return True
 
 
-def _build_docling_converter() -> Any:
+def _build_docling_converter(
+    *,
+    run_extract_tables: bool,
+    run_extract_figures: bool,
+    use_ocr: bool,
+) -> Any:
     try:
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -328,9 +337,13 @@ def _build_docling_converter() -> Any:
         ) from exc
 
     pipeline_options = PdfPipelineOptions()
-    pipeline_options.images_scale = 2.0
+    pipeline_options.do_ocr = use_ocr
+    pipeline_options.do_table_structure = run_extract_tables
+    pipeline_options.images_scale = 1.5
+    # Page images are saved as review artifacts. They are not what controls OCR;
+    # Docling page OCR is controlled solely by do_ocr above.
     pipeline_options.generate_page_images = True
-    pipeline_options.generate_picture_images = True
+    pipeline_options.generate_picture_images = run_extract_figures
 
     return DocumentConverter(
         format_options={
@@ -379,6 +392,7 @@ def _extract_manifest_with_docling(
     run_extract_figures: bool = True,
     status_callback: Any = None,
     cancel_event: Any = None,
+    use_ocr: bool = True,
 ) -> None:
     def report(stage: str, doi: str | None = None) -> None:
         if cancel_event is not None and cancel_event.is_set():
@@ -388,7 +402,11 @@ def _extract_manifest_with_docling(
         if status_callback is not None:
             status_callback(stage, doi)
 
-    converter = _build_docling_converter()
+    converter = _build_docling_converter(
+        run_extract_tables=run_extract_tables,
+        run_extract_figures=run_extract_figures,
+        use_ocr=use_ocr,
+    )
 
     reparsed_dir = run_dir / "reparsed"
     figures_tables_dir = run_dir / "figures_tables"
@@ -398,12 +416,13 @@ def _extract_manifest_with_docling(
 
     index_rows: list[dict[str, Any]] = []
 
-    for entry in manifest:
+    total = len(manifest)
+    for item_number, entry in enumerate(manifest, start=1):
         doi = entry["doi"]
         safe_doi = entry["safe_doi"]
         pdf_path = Path(entry["pdf_path"])
         filename = entry.get("filename") or pdf_path.name
-        report("Extracting uploaded PDF with Docling", doi)
+        report(f"Processing PDF ({item_number}/{total})", doi)
 
         result = converter.convert(pdf_path)
         doc = result.document
@@ -464,12 +483,40 @@ def _extract_manifest_with_docling(
         })
 
     index_csv = reparsed_dir / "index.csv"
-    pd.DataFrame(index_rows).to_csv(index_csv, index=False)
+    new_index = pd.DataFrame(index_rows)
+    if index_csv.exists():
+        try:
+            existing_index = pd.read_csv(index_csv)
+        except Exception:
+            existing_index = pd.DataFrame()
+        if not existing_index.empty and "doi" in existing_index.columns:
+            replaced_dois = set(new_index.get("doi", pd.Series(dtype=str)).astype(str))
+            existing_index = existing_index[
+                ~existing_index["doi"].astype(str).isin(replaced_dois)
+            ]
+        new_index = pd.concat([existing_index, new_index], ignore_index=True, sort=False)
+    new_index.to_csv(index_csv, index=False)
 
     structured_pdf_dir = run_dir / "papers" / "structured_files" / "docling_pdf"
     structured_pdf_dir.mkdir(parents=True, exist_ok=True)
     for pdf_path in (run_dir / "uploaded_pdfs").glob("*.pdf"):
         shutil.copy2(pdf_path, structured_pdf_dir / pdf_path.name)
+
+
+def _downloaded_pdf_manifest(run_dir: Path) -> list[dict[str, str]]:
+    pdf_root = run_dir / "papers" / "unstructured_files"
+    manifest: list[dict[str, str]] = []
+    if not pdf_root.exists():
+        return manifest
+    for pdf_path in sorted(pdf_root.glob("*/*.pdf")):
+        safe_doi = pdf_path.stem
+        manifest.append({
+            "doi": safe_doi.replace("@", "/"),
+            "safe_doi": safe_doi,
+            "filename": pdf_path.name,
+            "pdf_path": str(pdf_path),
+        })
+    return manifest
 
 
 def _docling_available_here() -> bool:
@@ -487,6 +534,8 @@ def _run_docling_sidecar(
     manifest_path: Path,
     run_extract_tables: bool,
     run_extract_figures: bool,
+    cancel_event: Any = None,
+    use_ocr: bool = True,
 ) -> None:
     sidecar_python = os.environ.get("DOCLING_PYTHON", "").strip()
     if not sidecar_python:
@@ -507,18 +556,53 @@ def _run_docling_sidecar(
         cmd.append("--extract-tables")
     if run_extract_figures:
         cmd.append("--extract-figures")
+    if not use_ocr:
+        cmd.append("--no-ocr")
 
     env = os.environ.copy()
+    env["SALSA_RUN_DIR"] = str(run_dir)
+    env["SALSA_RUN_ID"] = run_dir.name
+    env[RUN_STATUS_FILE_ENV] = str(run_dir / RUN_STATUS_FILE_NAME)
     src_root = str(Path(__file__).resolve().parents[1])
     existing = env.get("PYTHONPATH", "")
     parts = [p for p in existing.split(os.pathsep) if p]
     if src_root not in parts:
         env["PYTHONPATH"] = os.pathsep.join([src_root] + parts)
 
-    proc = subprocess.run(cmd, env=env, text=True, capture_output=True)
-    if proc.returncode != 0:
-        details = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(f"Docling sidecar extraction failed: {details}")
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            text=True,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        while proc.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except Exception:
+                    proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except Exception:
+                        proc.kill()
+                    proc.wait()
+                from pipeline import PipelineCancelled
+
+                raise PipelineCancelled("Pipeline run cancelled by user.")
+            import time
+
+            time.sleep(0.5)
+
+        if proc.returncode != 0:
+            output.seek(0)
+            details = output.read().strip()
+            raise RuntimeError(f"Docling sidecar extraction failed: {details}")
 
 
 def extract_uploaded_pdfs_with_docling(
@@ -527,6 +611,7 @@ def extract_uploaded_pdfs_with_docling(
     run_dir: Path,
     run_extract_tables: bool = True,
     run_extract_figures: bool = True,
+    use_ocr: bool = False,
     status_callback: Any = None,
     cancel_event: Any = None,
 ) -> DoclingExtractionResult:
@@ -547,6 +632,7 @@ def extract_uploaded_pdfs_with_docling(
             run_extract_figures=run_extract_figures,
             status_callback=status_callback,
             cancel_event=cancel_event,
+            use_ocr=use_ocr,
         )
     else:
         _run_docling_sidecar(
@@ -554,12 +640,55 @@ def extract_uploaded_pdfs_with_docling(
             manifest_path=manifest_path,
             run_extract_tables=run_extract_tables,
             run_extract_figures=run_extract_figures,
+            cancel_event=cancel_event,
+            use_ocr=use_ocr,
         )
 
     return DoclingExtractionResult(
         dois=dois,
         index_csv=run_dir / "reparsed" / "index.csv",
         source_pdf_dir=run_dir / "uploaded_pdfs",
+    )
+
+
+def extract_downloaded_pdfs_with_docling(
+    *,
+    run_dir: Path,
+    run_extract_tables: bool = True,
+    run_extract_figures: bool = True,
+    status_callback: Any = None,
+    cancel_event: Any = None,
+) -> DoclingExtractionResult | None:
+    manifest = _downloaded_pdf_manifest(run_dir)
+    if not manifest:
+        return None
+
+    manifest_path = run_dir / "downloaded_pdf_manifest.json"
+    _write_json(manifest_path, manifest)
+    if _docling_available_here():
+        _extract_manifest_with_docling(
+            manifest,
+            run_dir=run_dir,
+            run_extract_tables=run_extract_tables,
+            run_extract_figures=run_extract_figures,
+            status_callback=status_callback,
+            cancel_event=cancel_event,
+            use_ocr=False,
+        )
+    else:
+        _run_docling_sidecar(
+            run_dir=run_dir,
+            manifest_path=manifest_path,
+            run_extract_tables=run_extract_tables,
+            run_extract_figures=run_extract_figures,
+            cancel_event=cancel_event,
+            use_ocr=False,
+        )
+
+    return DoclingExtractionResult(
+        dois=[entry["doi"] for entry in manifest],
+        index_csv=run_dir / "reparsed" / "index.csv",
+        source_pdf_dir=run_dir / "papers" / "unstructured_files",
     )
 
 
@@ -572,6 +701,7 @@ def _worker_main(argv: list[str]) -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--extract-tables", action="store_true")
     parser.add_argument("--extract-figures", action="store_true")
+    parser.add_argument("--no-ocr", action="store_true")
     args = parser.parse_args(argv)
 
     run_dir = Path(args.run_dir)
@@ -581,6 +711,8 @@ def _worker_main(argv: list[str]) -> int:
         run_dir=run_dir,
         run_extract_tables=args.extract_tables,
         run_extract_figures=args.extract_figures,
+        status_callback=lambda stage, doi: write_current_doi(doi, stage=stage),
+        use_ocr=not args.no_ocr,
     )
     return 0
 

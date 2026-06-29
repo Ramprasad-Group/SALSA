@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew Polymer Genome and SALSA TLS certificates
+Wants=network-online.target
+After=network-online.target docker.service
+ConditionPathExists=/root/pgV2/docker-compose.yml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker compose -f /root/pgV2/docker-compose.yml run --rm certbot renew --quiet
+ExecStart=/usr/bin/docker exec pgv2-nginx-1 nginx -t
+ExecStart=/usr/bin/docker exec pgv2-nginx-1 nginx -s reload

@@ -17,10 +17,10 @@ from pipeline import (  # noqa: E402
 
 
 class TestPipelineInputLimit(unittest.TestCase):
-    def test_default_limit_remains_fifty(self):
-        self.assertEqual(_validate_input_item_limit(50), DEFAULT_INPUT_ITEM_LIMIT)
-        with self.assertRaisesRegex(ValueError, "at most 50"):
-            _validate_input_item_limit(51)
+    def test_default_limit_is_ten(self):
+        self.assertEqual(_validate_input_item_limit(10), DEFAULT_INPUT_ITEM_LIMIT)
+        with self.assertRaisesRegex(ValueError, "at most 10"):
+            _validate_input_item_limit(11)
 
     def test_admin_limit_allows_one_hundred(self):
         self.assertEqual(

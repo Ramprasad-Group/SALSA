@@ -9,6 +9,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from pathlib import Path
 from urllib.parse import urlencode
 from typing import Any, Iterator, Optional
@@ -20,6 +21,7 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
 _SLUG_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 RUN_MANIFEST_NAME = "run_manifest.json"
 VALID_ROLES = {"admin", "user"}
+VALID_ACCOUNT_STATUSES = {"pending", "approved", "rejected"}
 BOOTSTRAP_ADMIN_USERNAME = "william"
 BOOTSTRAP_ADMIN_EMAIL = "schertzer.william@gmail.com"
 
@@ -131,6 +133,9 @@ class AuthStore:
                     profile_slug TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'user',
+                    account_status TEXT NOT NULL DEFAULT 'approved',
+                    approved_at TEXT,
+                    approved_by_user_id INTEGER,
                     is_active INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -168,6 +173,15 @@ class AuthStore:
                     conn.execute(
                         f"ALTER TABLE users ADD COLUMN {column_name} TEXT NOT NULL DEFAULT ''"
                     )
+            if "account_status" not in existing_columns:
+                conn.execute(
+                    "ALTER TABLE users ADD COLUMN account_status "
+                    "TEXT NOT NULL DEFAULT 'approved'"
+                )
+            if "approved_at" not in existing_columns:
+                conn.execute("ALTER TABLE users ADD COLUMN approved_at TEXT")
+            if "approved_by_user_id" not in existing_columns:
+                conn.execute("ALTER TABLE users ADD COLUMN approved_by_user_id INTEGER")
 
     def user_count(self) -> int:
         with self.connect() as conn:
@@ -177,7 +191,12 @@ class AuthStore:
         with self.connect() as conn:
             return int(
                 conn.execute(
-                    "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role = 'admin'"
+                    """
+                    SELECT COUNT(*) FROM users
+                    WHERE is_active = 1
+                      AND account_status = 'approved'
+                      AND role = 'admin'
+                    """
                 ).fetchone()[0]
             )
 
@@ -198,6 +217,7 @@ class AuthStore:
         last_name: str = "",
         institution: str = "",
         display_name: str = "",
+        account_status: str = "approved",
     ) -> sqlite3.Row:
         username = validate_username(username)
         email = validate_email(email)
@@ -205,10 +225,36 @@ class AuthStore:
         last_name = validate_required_profile_field(last_name, "Last name")
         institution = validate_required_profile_field(institution, "Institution")
         display_name = (display_name or "").strip() or f"{first_name} {last_name}".strip()
+        account_status = (account_status or "").strip().lower()
+        if account_status not in VALID_ACCOUNT_STATUSES:
+            raise ValueError("Invalid account status.")
         password_hash = hash_password(password)
         now = utc_now_iso()
         with self.connect() as conn:
-            role = "admin" if self.user_count() == 0 else "user"
+            # Rejected requests from older versions are not accounts and must not
+            # permanently reserve their username or email address.
+            rejected_user_ids = """
+                SELECT id FROM users
+                WHERE account_status = 'rejected'
+                  AND (lower(username) = ? OR lower(email) = ?)
+            """
+            conn.execute(
+                f"DELETE FROM password_reset_tokens WHERE user_id IN ({rejected_user_ids})",
+                (username, email),
+            )
+            conn.execute(
+                f"DELETE FROM auth_sessions WHERE user_id IN ({rejected_user_ids})",
+                (username, email),
+            )
+            conn.execute(
+                f"DELETE FROM users WHERE id IN ({rejected_user_ids})",
+                (username, email),
+            )
+            role = (
+                "admin"
+                if account_status == "approved" and self.user_count() == 0
+                else "user"
+            )
             slug = self._unique_profile_slug(conn, username)
             try:
                 cur = conn.execute(
@@ -216,9 +262,10 @@ class AuthStore:
                     INSERT INTO users (
                         username, email, first_name, last_name, institution,
                         display_name, profile_slug,
-                        password_hash, role, created_at, updated_at
+                        password_hash, role, account_status, approved_at,
+                        created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         username,
@@ -230,6 +277,8 @@ class AuthStore:
                         slug,
                         password_hash,
                         role,
+                        account_status,
+                        now if account_status == "approved" else None,
                         now,
                         now,
                     ),
@@ -241,6 +290,11 @@ class AuthStore:
                 (cur.lastrowid,),
             ).fetchone()
 
+    def request_account(self, **profile: Any) -> sqlite3.Row:
+        if self.admin_count() == 0:
+            raise ValueError("Account requests require an existing SALSA administrator.")
+        return self.create_user(account_status="pending", **profile)
+
     def list_users(self) -> list[sqlite3.Row]:
         with self.connect() as conn:
             return list(
@@ -249,15 +303,51 @@ class AuthStore:
                     SELECT *
                     FROM users
                     WHERE is_active = 1
+                      AND account_status = 'approved'
                     ORDER BY lower(username)
                     """
                 ).fetchall()
             )
 
+    def list_pending_users(self) -> list[sqlite3.Row]:
+        with self.connect() as conn:
+            return list(
+                conn.execute(
+                    """
+                    SELECT *
+                    FROM users
+                    WHERE is_active = 1
+                      AND account_status = 'pending'
+                    ORDER BY created_at
+                    """
+                ).fetchall()
+            )
+
+    def list_admin_emails(self) -> list[str]:
+        with self.connect() as conn:
+            return [
+                str(row["email"])
+                for row in conn.execute(
+                    """
+                    SELECT email
+                    FROM users
+                    WHERE is_active = 1
+                      AND account_status = 'approved'
+                      AND role = 'admin'
+                    ORDER BY lower(email)
+                    """
+                ).fetchall()
+            ]
+
     def get_user(self, user_id: int) -> Optional[sqlite3.Row]:
         with self.connect() as conn:
             return conn.execute(
-                "SELECT * FROM users WHERE id = ? AND is_active = 1",
+                """
+                SELECT * FROM users
+                WHERE id = ?
+                  AND is_active = 1
+                  AND account_status = 'approved'
+                """,
                 (user_id,),
             ).fetchone()
 
@@ -268,6 +358,7 @@ class AuthStore:
                 """
                 SELECT * FROM users
                 WHERE is_active = 1
+                  AND account_status = 'approved'
                   AND (lower(username) = ? OR lower(email) = ?)
                 """,
                 (ident, ident),
@@ -314,6 +405,7 @@ class AuthStore:
                   AND auth_sessions.revoked_at IS NULL
                   AND auth_sessions.expires_at > ?
                   AND users.is_active = 1
+                  AND users.account_status = 'approved'
                 """,
                 (digest, now),
             ).fetchone()
@@ -354,7 +446,12 @@ class AuthStore:
             if user["role"] == "admin" and role != "admin":
                 admin_count = int(
                     conn.execute(
-                        "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role = 'admin'"
+                        """
+                        SELECT COUNT(*) FROM users
+                        WHERE is_active = 1
+                          AND account_status = 'approved'
+                          AND role = 'admin'
+                        """
                     ).fetchone()[0]
                 )
                 if admin_count <= 1:
@@ -368,6 +465,114 @@ class AuthStore:
                 "SELECT * FROM users WHERE id = ? AND is_active = 1",
                 (user_id,),
             ).fetchone()
+
+    def delete_user(self, user_id: int, deleted_by_user_id: int) -> None:
+        with self.connect() as conn:
+            actor = conn.execute(
+                """
+                SELECT * FROM users
+                WHERE id = ?
+                  AND is_active = 1
+                  AND account_status = 'approved'
+                  AND role = 'admin'
+                """,
+                (deleted_by_user_id,),
+            ).fetchone()
+            if actor is None:
+                raise PermissionError("Only an approved admin can delete accounts.")
+            if user_id == deleted_by_user_id:
+                raise ValueError("You cannot delete your own account.")
+
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ? AND is_active = 1",
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                raise ValueError("User not found.")
+            if user["role"] == "admin" and user["account_status"] == "approved":
+                admin_count = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*) FROM users
+                        WHERE is_active = 1
+                          AND account_status = 'approved'
+                          AND role = 'admin'
+                        """
+                    ).fetchone()[0]
+                )
+                if admin_count <= 1:
+                    raise ValueError("Cannot delete the last admin.")
+
+            conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+    def approve_account(self, user_id: int, approved_by_user_id: int) -> sqlite3.Row:
+        now = utc_now_iso()
+        with self.connect() as conn:
+            approver = conn.execute(
+                """
+                SELECT 1 FROM users
+                WHERE id = ?
+                  AND is_active = 1
+                  AND account_status = 'approved'
+                  AND role = 'admin'
+                """,
+                (approved_by_user_id,),
+            ).fetchone()
+            if approver is None:
+                raise PermissionError("Only an approved admin can approve accounts.")
+            user = conn.execute(
+                """
+                SELECT * FROM users
+                WHERE id = ? AND is_active = 1 AND account_status = 'pending'
+                """,
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                raise ValueError("Pending account request not found.")
+            conn.execute(
+                """
+                UPDATE users
+                SET account_status = 'approved',
+                    approved_at = ?,
+                    approved_by_user_id = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, approved_by_user_id, now, user_id),
+            )
+            return conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+
+    def reject_account(self, user_id: int, rejected_by_user_id: int) -> None:
+        with self.connect() as conn:
+            approver = conn.execute(
+                """
+                SELECT 1 FROM users
+                WHERE id = ?
+                  AND is_active = 1
+                  AND account_status = 'approved'
+                  AND role = 'admin'
+                """,
+                (rejected_by_user_id,),
+            ).fetchone()
+            if approver is None:
+                raise PermissionError("Only an approved admin can reject accounts.")
+            user = conn.execute(
+                """
+                SELECT 1 FROM users
+                WHERE id = ? AND is_active = 1 AND account_status = 'pending'
+                """,
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                raise ValueError("Pending account request not found.")
+            conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
     def bootstrap_default_admin(self) -> Optional[sqlite3.Row]:
         """
@@ -392,10 +597,17 @@ class AuthStore:
             ).fetchone()
             if user is None:
                 return None
-            if user["role"] != "admin":
+            if user["role"] != "admin" or user["account_status"] != "approved":
                 conn.execute(
-                    "UPDATE users SET role = 'admin', updated_at = ? WHERE id = ?",
-                    (utc_now_iso(), user["id"]),
+                    """
+                    UPDATE users
+                    SET role = 'admin',
+                        account_status = 'approved',
+                        approved_at = COALESCE(approved_at, ?),
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (utc_now_iso(), utc_now_iso(), user["id"]),
                 )
             return conn.execute(
                 "SELECT * FROM users WHERE id = ? AND is_active = 1",
@@ -554,13 +766,13 @@ def build_reset_url(public_url: str, token: str, identifier: str = "") -> str:
     return f"{public_url}/?{urlencode(params)}"
 
 
-def send_password_reset_email(email: str, reset_url: str) -> bool:
+def _send_email(message: EmailMessage) -> bool:
     host = os.environ.get("SALSA_SMTP_HOST")
-    sender = os.environ.get("SALSA_SMTP_FROM")
-    if not host or not sender:
+    if not host or not message.get("From"):
         return False
 
     port = int(os.environ.get("SALSA_SMTP_PORT", "587"))
+    local_hostname = os.environ.get("SALSA_SMTP_LOCAL_HOSTNAME")
     username = os.environ.get("SALSA_SMTP_USERNAME")
     password = os.environ.get("SALSA_SMTP_PASSWORD")
     use_tls = os.environ.get("SALSA_SMTP_TLS", "1").strip().lower() not in {
@@ -569,20 +781,138 @@ def send_password_reset_email(email: str, reset_url: str) -> bool:
         "no",
     }
 
-    msg = EmailMessage()
-    msg["Subject"] = "Reset your SALSA password"
-    msg["From"] = sender
-    msg["To"] = email
-    msg.set_content(
-        "Use this link or token to reset your SALSA password. "
-        "It expires soon and can only be used once.\n\n"
-        f"{reset_url}\n"
-    )
-
-    with smtplib.SMTP(host, port, timeout=10) as smtp:
+    with smtplib.SMTP(
+        host,
+        port,
+        local_hostname=local_hostname,
+        timeout=10,
+    ) as smtp:
         if use_tls:
             smtp.starttls()
         if username and password:
             smtp.login(username, password)
-        smtp.send_message(msg)
+        smtp.send_message(message)
     return True
+
+
+def _new_email(*, subject: str, recipients: list[str]) -> Optional[EmailMessage]:
+    sender = os.environ.get("SALSA_SMTP_FROM")
+    recipients = [email.strip() for email in recipients if email and email.strip()]
+    if not sender or not recipients:
+        return None
+    local_hostname = os.environ.get("SALSA_SMTP_LOCAL_HOSTNAME")
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = sender
+    message["To"] = ", ".join(recipients)
+    message["Date"] = formatdate(localtime=False)
+    message["Message-ID"] = make_msgid(domain=local_hostname)
+    return message
+
+
+def send_password_reset_email(email: str, token: str) -> bool:
+    message = _new_email(
+        subject="Reset your SALSA password",
+        recipients=[email],
+    )
+    if message is None:
+        return False
+    message.set_content(
+        "Use this one-time token to reset your SALSA password. "
+        "It expires soon and can only be used once.\n\n"
+        f"Reset token: {token}\n"
+    )
+    return _send_email(message)
+
+
+def send_account_request_email(
+    admin_emails: list[str],
+    requested_user: sqlite3.Row,
+) -> bool:
+    message = _new_email(
+        subject=f"SALSA account request: {requested_user['username']}",
+        recipients=admin_emails,
+    )
+    if message is None:
+        return False
+    message.set_content(
+        "A new user is requesting access to SALSA.\n\n"
+        f"Name: {requested_user['first_name']} {requested_user['last_name']}\n"
+        f"Username: {requested_user['username']}\n"
+        f"Email: {requested_user['email']}\n"
+        f"Institution/organization: {requested_user['institution']}\n"
+        f"Requested at: {requested_user['created_at']}\n\n"
+        "An administrator must approve this request from the SALSA Admin page "
+        "before the user can sign in.\n"
+    )
+    return _send_email(message)
+
+
+def send_account_approved_email(approved_user: sqlite3.Row) -> bool:
+    public_url = os.environ.get("SALSA_PUBLIC_URL", "").strip().rstrip("/")
+    if not public_url:
+        return False
+    message = _new_email(
+        subject="Your SALSA account has been approved",
+        recipients=[approved_user["email"]],
+    )
+    if message is None:
+        return False
+    message.set_content(
+        f"Hello {approved_user['first_name']},\n\n"
+        "Your SALSA account has been approved. You can now sign in using "
+        "the username and password you chose when requesting access.\n\n"
+        f"Open SALSA: {public_url}\n"
+        f"Username: {approved_user['username']}\n"
+    )
+    return _send_email(message)
+
+
+def send_run_notification_email(
+    email: str,
+    *,
+    display_name: str = "",
+    run_id: str,
+    workspace: str,
+    state: str,
+    processed_count: int | None = None,
+    failure_count: int | None = None,
+    error: str = "",
+    run_dir: str = "",
+) -> bool:
+    state_label = (state or "finished").strip().lower()
+    subject_state = {
+        "done": "completed",
+        "error": "failed",
+        "cancelled": "was cancelled",
+    }.get(state_label, state_label or "finished")
+    message = _new_email(
+        subject=f"SALSA run {subject_state}: {run_id}",
+        recipients=[email],
+    )
+    if message is None:
+        return False
+
+    public_url = os.environ.get("SALSA_PUBLIC_URL", "").strip().rstrip("/")
+    greeting = f"Hello {display_name}," if display_name else "Hello,"
+    lines = [
+        greeting,
+        "",
+        f"Your SALSA run has {subject_state}.",
+        "",
+        f"Run ID: {run_id}",
+        f"Workspace: {workspace}",
+        f"Status: {subject_state}",
+    ]
+    if processed_count is not None:
+        lines.append(f"Processed DOIs/items: {processed_count}")
+    if failure_count is not None:
+        lines.append(f"Failed DOIs/items: {failure_count}")
+    if error:
+        lines.extend(["", "Error:", error])
+    if public_url:
+        lines.extend(["", f"Open SALSA: {public_url}"])
+    if run_dir:
+        lines.append(f"Run directory: {run_dir}")
+    message.set_content("\n".join(lines) + "\n")
+    return _send_email(message)

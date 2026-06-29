@@ -8,32 +8,22 @@ from typing import Literal, Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 OUTPUT_COLUMNS = [
-  "Sample Name",
-  "time(h)",
-  "relative humidity(%)",
-  "solvent type",
-  "solvent molarity (M)",
-  "degradation test temp (C)",
-  "prop test temp (C)",
-  "property",
-  "value",
-  "DOI",
-  "source_kind",
-  "source_name",
+    "Sample Name",
+    "independent variable",
+    "independent value",
+    "independent unit",
+    "dependant variable",
+    "dependent value",
+    "dependent unit",
+    "DOI",
+    "source_kind",
+    "source_name",
 ]
 
 # These module-level defaults can be overridden at runtime via custom instructions
-MISSING_VALUE_DEFAULTS = {
-    "prop test temp (C)": "25 Not Found",
-    "degradation test temp (C)": "None Not Found",
-    "time(h)": "0 Not Found",
-    "relative humidity(%)": "100 Not Found",
-    "solvent type": "None Not Found",
-    "solvent molarity (M)": "None Not Found",
-}
+MISSING_VALUE_DEFAULTS = {}
 
-DATA_PROCESSING_RULES = """\
-- Measurements taken before or at the beginning of stability tests MUST have time(h) = 0"""
+DATA_PROCESSING_RULES = ""
 
 # ----------------------------
 # Small cache (same approach as your plan cache)
@@ -264,6 +254,9 @@ def infer_rows_for_table(
         "doi": doi,
         "source_kind": "table",
         "source_name": table_name,
+        "output_columns": cols,
+        "missing_value_defaults": defaults,
+        "data_processing_rules": custom_rules,
         "table_name": table_name,
         "caption": caption,
         "table_columns": list(df_table.columns),
@@ -278,7 +271,11 @@ def infer_rows_for_table(
     cached = load_cached_rows(cache_dir, cache_key)
     if cached is not None:
         df_out = _coerce_rows_schema(
-            cached, doi=doi, source_kind="table", source_name=table_name
+            cached,
+            doi=doi,
+            source_kind="table",
+            source_name=table_name,
+            columns=cols,
         )
         return df_out, None
 
@@ -377,7 +374,13 @@ def infer_rows_for_table(
 
     save_cached_rows(cache_dir, cache_key, rows)
 
-    df_out = _coerce_rows_schema(rows, doi=doi, source_kind="table", source_name=table_name)
+    df_out = _coerce_rows_schema(
+        rows,
+        doi=doi,
+        source_kind="table",
+        source_name=table_name,
+        columns=cols,
+    )
     return df_out, meta
 
 
@@ -416,6 +419,9 @@ def infer_rows_for_figure_dataset(
         "doi": doi,
         "source_kind": "figure",
         "source_name": dataset_name,
+        "output_columns": cols,
+        "missing_value_defaults": defaults,
+        "data_processing_rules": custom_rules,
         "dataset_name": dataset_name,
         "dataset_snippets": figure_snips,
         "dataset_columns": list(df_in.columns),
@@ -427,7 +433,13 @@ def infer_rows_for_figure_dataset(
 
     cached = load_cached_rows(cache_dir, cache_key)
     if cached is not None:
-        df_out = _coerce_rows_schema(cached, doi=doi, source_kind="figure", source_name=dataset_name)
+        df_out = _coerce_rows_schema(
+            cached,
+            doi=doi,
+            source_kind="figure",
+            source_name=dataset_name,
+            columns=cols,
+        )
         return df_out, None
 
     missing_block = _build_missing_value_block(defaults)
@@ -551,6 +563,12 @@ def infer_rows_for_figure_dataset(
 
     save_cached_rows(cache_dir, cache_key, rows)
 
-    df_out = _coerce_rows_schema(rows, doi=doi, source_kind="figure", source_name=dataset_name)
+    df_out = _coerce_rows_schema(
+        rows,
+        doi=doi,
+        source_kind="figure",
+        source_name=dataset_name,
+        columns=cols,
+    )
 
     return df_out, meta

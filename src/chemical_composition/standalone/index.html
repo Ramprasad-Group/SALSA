@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Ketcher is a web-based chemical structure editor"
+    />
+    <link rel="shortcut icon" type="image/x-icon" href="./favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <title>Ketcher v3.12.0</title>
+    <style>
+      #salsa-ketcher-tools {
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid #cad3dd;
+        border-radius: 4px;
+        bottom: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 6px;
+        position: fixed;
+        right: 8px;
+        width: min(380px, calc(100vw - 16px));
+        z-index: 2000;
+      }
+
+      #salsa-ketcher-tools .salsa-ketcher-title {
+        color: #20242a;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 14px;
+      }
+
+      #salsa-ketcher-smiles-output {
+        border: 1px solid #b8c3ce;
+        border-radius: 4px;
+        color: #20242a;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        height: 54px;
+        line-height: 16px;
+        padding: 5px 6px;
+        resize: vertical;
+        width: 100%;
+      }
+
+      #salsa-ketcher-tools .salsa-ketcher-buttons {
+        display: flex;
+        gap: 6px;
+      }
+
+      #salsa-ketcher-tools button {
+        background: #fff;
+        border: 1px solid #9aa8b5;
+        border-radius: 4px;
+        color: #20242a;
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 14px;
+        padding: 5px 8px;
+      }
+
+      #salsa-ketcher-tools button:hover {
+        background: #f3f5f7;
+      }
+
+      #salsa-ketcher-smiles-status {
+        color: #4b5863;
+        font-size: 11px;
+        line-height: 14px;
+        min-height: 14px;
+      }
+    </style>
+    <script>
+      (function () {
+        var frameHeight = 720;
+
+        function sendToStreamlit(type, data) {
+          window.parent.postMessage(
+            Object.assign(
+              {
+                isStreamlitMessage: true,
+                type: type,
+              },
+              data || {}
+            ),
+            "*"
+          );
+        }
+
+        function syncHeight() {
+          document.documentElement.style.height = frameHeight + "px";
+          document.body.style.height = frameHeight + "px";
+
+          var root = document.getElementById("root");
+          if (root) {
+            root.style.height = frameHeight + "px";
+            root.style.minHeight = frameHeight + "px";
+          }
+
+          sendToStreamlit("streamlit:setFrameHeight", { height: frameHeight });
+        }
+
+        function errorText(error) {
+          if (!error) return "";
+          if (typeof error === "string") return error;
+          return error.message || JSON.stringify(error);
+        }
+
+        function setSmilesStatus(message) {
+          var status = document.getElementById("salsa-ketcher-smiles-status");
+          if (status) status.textContent = message || "";
+        }
+
+        function setSmilesOutput(smiles) {
+          var output = document.getElementById("salsa-ketcher-smiles-output");
+          if (output) output.value = smiles || "";
+        }
+
+        function normalizePolymerSmilesForDisplay(smiles) {
+          var marker = "\uE000";
+          return (smiles || "")
+            .trim()
+            .replace(/\s+\|.*\|\s*$/g, "")
+            .replace(/\[([^\]]*?):\d+\]/g, "[$1]")
+            .replace(/\[\*(?::\d+)?\]/g, marker)
+            .replace(/\*/g, "[*]")
+            .replace(new RegExp(marker, "g"), "[*]")
+            .replace(/:/g, "");
+        }
+
+        function shouldUseWildcardKetFallback(error) {
+          return /rg-label|molecule json loader|given string could not be loaded|convert error/i.test(
+            errorText(error)
+          );
+        }
+
+        function cloneKetWithWildcardAtoms(value) {
+          if (Array.isArray(value)) {
+            return value.map(cloneKetWithWildcardAtoms);
+          }
+          if (!value || typeof value !== "object") {
+            return value;
+          }
+          if (value.type === "rg-label") {
+            var wildcardAtom = {
+              label: "*",
+              location: cloneKetWithWildcardAtoms(value.location || [0, 0, 0]),
+            };
+            if (value.selected !== undefined) wildcardAtom.selected = value.selected;
+            if (value.attachmentPoints !== undefined) {
+              wildcardAtom.attachmentPoints = value.attachmentPoints;
+            }
+            return wildcardAtom;
+          }
+
+          var clone = {};
+          Object.keys(value).forEach(function (key) {
+            clone[key] = cloneKetWithWildcardAtoms(value[key]);
+          });
+          return clone;
+        }
+
+        function sanitizeKetForSmiles(ket) {
+          var parsed = typeof ket === "string" ? JSON.parse(ket) : ket;
+          var sanitized = cloneKetWithWildcardAtoms(parsed);
+          return typeof ket === "string" ? JSON.stringify(sanitized) : sanitized;
+        }
+
+        async function getSmilesWithWildcardFallback(ketcher, originalError) {
+          if (
+            typeof ketcher.getKet !== "function" ||
+            typeof ketcher.setMolecule !== "function"
+          ) {
+            throw originalError;
+          }
+
+          var originalKet = await ketcher.getKet();
+          var sanitizedKet = sanitizeKetForSmiles(originalKet);
+          var smiles = "";
+          try {
+            await ketcher.setMolecule(sanitizedKet);
+            smiles = await ketcher.getSmiles();
+          } finally {
+            if (originalKet) {
+              try {
+                await ketcher.setMolecule(originalKet);
+              } catch (restoreError) {
+                setSmilesStatus(
+                  "SMILES extracted, but Ketcher restore failed: " +
+                    errorText(restoreError)
+                );
+              }
+            }
+          }
+          return smiles;
+        }
+
+        async function getKetcherSmilesValue() {
+          var ketcher = window.ketcher;
+          if (!ketcher) throw new Error("Ketcher is still loading.");
+          if (typeof ketcher.getSmiles !== "function") {
+            throw new Error("This Ketcher build does not expose getSmiles().");
+          }
+
+          var smiles = "";
+          try {
+            smiles = await ketcher.getSmiles();
+          } catch (error) {
+            if (!shouldUseWildcardKetFallback(error)) throw error;
+            setSmilesStatus("Retrying with wildcard atoms for SMILES export...");
+            smiles = await getSmilesWithWildcardFallback(ketcher, error);
+          }
+          smiles = normalizePolymerSmilesForDisplay(smiles);
+          if (!smiles) throw new Error("No structure to convert to SMILES.");
+          return smiles;
+        }
+
+        async function copyTextToClipboard(text) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+              await navigator.clipboard.writeText(text);
+              return true;
+            } catch (error) {}
+          }
+
+          var output = document.getElementById("salsa-ketcher-smiles-output");
+          if (!output) return false;
+          output.focus();
+          output.select();
+          output.setSelectionRange(0, output.value.length);
+          try {
+            return document.execCommand && document.execCommand("copy");
+          } catch (error) {
+            return false;
+          }
+        }
+
+        window.salsaGetKetcherSmiles = async function () {
+          try {
+            var smiles = await getKetcherSmilesValue();
+            setSmilesOutput(smiles);
+            setSmilesStatus("SMILES extracted.");
+          } catch (error) {
+            setSmilesStatus("Could not get SMILES: " + errorText(error));
+          }
+        };
+
+        window.salsaCopyKetcherSmiles = async function () {
+          try {
+            var smiles = await getKetcherSmilesValue();
+            setSmilesOutput(smiles);
+            var copied = await copyTextToClipboard(smiles);
+            setSmilesStatus(
+              copied
+                ? "SMILES copied."
+                : "SMILES selected. Press Ctrl+C or Cmd+C to copy."
+            );
+          } catch (error) {
+            setSmilesStatus("Could not copy SMILES: " + errorText(error));
+          }
+        };
+
+        window.addEventListener("message", function (event) {
+          if (!event.data || event.data.type !== "streamlit:render") return;
+          var args = event.data.args || {};
+          frameHeight = Math.max(Number(args.frame_height) || 720, 500);
+          syncHeight();
+        });
+
+        document.addEventListener("DOMContentLoaded", function () {
+          syncHeight();
+        });
+        sendToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+      })();
+    </script>
+    <script defer="defer" src="./static/js/main.8f1d38b5.js"></script>
+    <link href="./static/css/main.bdf7ea17.css" rel="stylesheet" />
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <div id="salsa-ketcher-tools">
+      <div class="salsa-ketcher-title">SMILES</div>
+      <textarea
+        id="salsa-ketcher-smiles-output"
+        readonly
+        placeholder="Click Get SMILES after drawing."
+      ></textarea>
+      <div class="salsa-ketcher-buttons">
+        <button onclick="window.salsaGetKetcherSmiles()">Get SMILES</button>
+        <button onclick="window.salsaCopyKetcherSmiles()">Copy SMILES</button>
+      </div>
+      <div id="salsa-ketcher-smiles-status"></div>
+    </div>
+  </body>
+</html>

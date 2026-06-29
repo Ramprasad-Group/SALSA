@@ -1,5 +1,6 @@
 #from numpy import isnan
 import requests
+from dataclasses import replace
 from os import path, mkdir, rename, remove, stat
 import os
 import sys
@@ -9,10 +10,11 @@ from time import sleep
 import time
 import bs4 as bs
 from paper_downloader import utils, config
+from paper_downloader.publisher_access import publisher_access_for
 from datetime import datetime
 import json
 from pathlib import Path
-import requests, pickle
+import xml.etree.ElementTree as ET
 # from email.mime.text import MIMEText
 
 _SRC_ROOT = path.abspath(path.join(path.dirname(__file__), "..", ".."))
@@ -29,11 +31,337 @@ MAX_SLEEP_TIME = 7
 # FILE_SIZE_0 = 6
 # FILE_THREW_EXCEPTION = 7
 
+
+class PublisherAccessError(Exception):
+    """A publisher API rejected or could not fulfill an access request."""
+
+
 def _append_jsonl(path_str: str, obj: dict):
     p = Path(path_str)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def _xml_local_name(tag):
+    return str(tag).rsplit("}", 1)[-1]
+
+
+def _validate_response_content(content, validator):
+    if not validator:
+        return True, {}
+
+    if validator == "iop_full_text_html":
+        content_lower = content.lower()
+        blocked_markers = (
+            b"radware bot manager captcha",
+            b"validate.perfdrive.com",
+            b"confirm you are a human",
+        )
+        if any(marker in content_lower for marker in blocked_markers):
+            return False, {
+                "reason": "iop_bot_challenge",
+                "message": (
+                    "IOP returned an automated-access challenge instead of article "
+                    "full text. Arrange TDM delivery with contentsupport@ioppublishing.org."
+                ),
+            }
+        has_article_metadata = (
+            b'name="citation_doi"' in content_lower
+            and b'name="citation_fulltext_html_url"' in content_lower
+        )
+        has_article_body = (
+            b"<main" in content_lower
+            and len(content) >= 20_000
+        )
+        if not (has_article_metadata and has_article_body):
+            return False, {
+                "reason": "iop_incomplete_full_text",
+                "message": "IOP did not return a complete full-text HTML article.",
+            }
+        return True, {}
+
+    if validator == "aps_open_access_pdf":
+        if content.startswith(b"%PDF-"):
+            return True, {}
+        return False, {
+            "reason": "aps_invalid_open_access_response",
+            "message": "APS Harvest did not return a PDF article.",
+        }
+
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        return False, {
+            "reason": "invalid_xml",
+            "message": str(exc),
+        }
+
+    if validator == "springer_open_access_jats":
+        records = next(
+            (element for element in root.iter() if _xml_local_name(element.tag) == "records"),
+            None,
+        )
+        has_article = records is not None and any(
+            _xml_local_name(element.tag) == "article"
+            for element in records.iter()
+        )
+        if not has_article:
+            return False, {
+                "reason": "springer_no_open_access_record",
+                "message": "Springer Nature returned no open-access JATS article for this DOI.",
+            }
+
+    if validator == "aps_open_access_jats" and _xml_local_name(root.tag) != "article":
+        return False, {
+            "reason": "aps_invalid_open_access_response",
+            "message": "APS Harvest did not return a JATS article.",
+        }
+
+    return True, {}
+
+
+def _xml_has_local_name(content, local_name):
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return False
+    return any(_xml_local_name(element.tag) == local_name for element in root.iter())
+
+
+def _elsevier_pdf_attachment(content):
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return {}
+
+    for element in root.iter():
+        if _xml_local_name(element.tag) != "web-pdf":
+            continue
+        values = {}
+        for child in list(element):
+            name = _xml_local_name(child.tag)
+            text = (child.text or "").strip()
+            if name in {
+                "attachment-eid",
+                "filesize",
+                "web-pdf-page-count",
+            } and text:
+                values[name] = text
+        if values.get("attachment-eid"):
+            try:
+                filesize = int(values.get("filesize") or 0)
+            except ValueError:
+                filesize = 0
+            try:
+                page_count = int(values.get("web-pdf-page-count") or 0)
+            except ValueError:
+                page_count = 0
+            return {
+                "eid": values["attachment-eid"],
+                "filesize": filesize,
+                "page_count": page_count,
+            }
+    return {}
+
+
+def _elsevier_needs_pdf(content):
+    return not _xml_has_local_name(content, "body")
+
+
+def _elsevier_pdf_is_complete(pdf_path, attachment):
+    if not pdf_path.exists() or pdf_path.stat().st_size == 0:
+        return False
+    expected_size = int(attachment.get("filesize") or 0)
+    if expected_size and pdf_path.stat().st_size < int(expected_size * 0.9):
+        return False
+    try:
+        with pdf_path.open("rb") as pdf_file:
+            return pdf_file.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
+def _download_elsevier_pdf(
+    *,
+    doi,
+    xml_content,
+    xml_url,
+    xml_headers,
+    request_params,
+    download_directory,
+    timeout_sec,
+    logger,
+):
+    papers_dir = Path(download_directory).parent.parent
+    pdf_dir = papers_dir / "unstructured_files" / "elsevier"
+    pdf_path = pdf_dir / f"{doi.replace(path.sep, '@')}.pdf"
+    attachment = _elsevier_pdf_attachment(xml_content)
+    if _elsevier_pdf_is_complete(pdf_path, attachment):
+        return pdf_path, {}
+    if pdf_path.exists():
+        logger.warning(
+            "Removing incomplete cached Elsevier PDF for DOI %s (%s bytes; expected about %s bytes across %s pages)",
+            doi,
+            pdf_path.stat().st_size,
+            attachment.get("filesize") or "unknown",
+            attachment.get("page_count") or "unknown",
+        )
+        pdf_path.unlink()
+
+    pdf_headers = dict(xml_headers)
+    pdf_headers["Accept"] = "application/pdf"
+    attachment_eid = attachment.get("eid")
+    if attachment_eid:
+        pdf_url = f"https://api.elsevier.com/content/object/eid/{attachment_eid}"
+        pdf_params = {"view": "STANDARD"}
+    else:
+        pdf_url = xml_url
+        pdf_params = request_params
+    response = requests.get(
+        pdf_url,
+        stream=True,
+        headers=pdf_headers,
+        params=pdf_params,
+        timeout=timeout_sec,
+    )
+    content_type = response.headers.get("Content-Type", "").lower()
+    if response.status_code != 200 or "pdf" not in content_type:
+        status_code = response.status_code
+        response.close()
+        logger.warning(
+            "Elsevier PDF retrieval failed for DOI %s with HTTP %s (%s)",
+            doi,
+            status_code,
+            content_type or "no Content-Type",
+        )
+        return None, {
+            "reason": "elsevier_pdf_download_failed",
+            "status_code": status_code,
+            "content_type": content_type,
+            "message": "Elsevier returned no structured body and the full PDF attachment could not be retrieved.",
+        }
+
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    partial_path = pdf_path.with_suffix(pdf_path.suffix + ".part")
+    with partial_path.open("wb") as current_file:
+        for chunk in response.iter_content(chunk_size=1024 * 64):
+            if chunk:
+                current_file.write(chunk)
+    response.close()
+
+    if not _elsevier_pdf_is_complete(partial_path, attachment):
+        actual_size = partial_path.stat().st_size if partial_path.exists() else 0
+        if partial_path.exists():
+            partial_path.unlink()
+        return None, {
+            "reason": "elsevier_pdf_incomplete",
+            "expected_size": attachment.get("filesize") or None,
+            "expected_pages": attachment.get("page_count") or None,
+            "actual_size": actual_size,
+            "message": "Elsevier returned an incomplete PDF attachment.",
+        }
+    partial_path.replace(pdf_path)
+    logger.info("Downloaded Elsevier PDF fallback for DOI %s to %s", doi, pdf_path)
+    return pdf_path, {}
+
+
+def _resolve_access_plan(plan, doi, timeout_sec, logger):
+    """Resolve APIs that require an identifier lookup before full-text access."""
+    if plan.strategy == "direct":
+        return plan
+
+    response = requests.get(
+        plan.url,
+        headers=plan.headers,
+        params=plan.params,
+        timeout=timeout_sec,
+    )
+    if response.status_code >= 400:
+        status_code = response.status_code
+        response.close()
+        if plan.strategy == "ieee_by_doi":
+            raise PublisherAccessError(
+                f"IEEE Xplore metadata lookup returned HTTP {status_code}. "
+                "Verify that IEEE_API_KEY is current and authorized for the IEEE Xplore API."
+            )
+        response.raise_for_status()
+    payload = response.json()
+    response.close()
+
+    if plan.strategy == "pmc_by_doi":
+        records = payload.get("records") or []
+        pmcid = records[0].get("pmcid") if records else ""
+        if not pmcid:
+            raise ValueError(f"DOI {doi} is not available in PubMed Central.")
+        numeric_pmcid = str(pmcid).upper()
+        if numeric_pmcid.startswith("PMC"):
+            numeric_pmcid = numeric_pmcid[3:]
+        return replace(
+            plan,
+            url="https://pmc.ncbi.nlm.nih.gov/api/oai/v1/mh/",
+            params={
+                "verb": "GetRecord",
+                "identifier": f"oai:pubmedcentral.nih.gov:{numeric_pmcid}",
+                "metadataPrefix": "pmc",
+            },
+            headers={"Accept": "application/xml"},
+            strategy="direct",
+        )
+
+    if plan.strategy == "ieee_by_doi":
+        articles = payload.get("articles") or []
+        article_number = articles[0].get("article_number") if articles else ""
+        if not article_number:
+            raise ValueError(f"IEEE did not return an article number for DOI {doi}.")
+        api_key = plan.params["apikey"]
+        return replace(
+            plan,
+            url=f"https://ieeexploreapi.ieee.org/api/v1/search/document/{article_number}/fulltext",
+            params={"apikey": api_key, "format": "xml"},
+            headers={"Accept": "application/xml"},
+            strategy="direct",
+        )
+
+    if plan.strategy == "iop_crossref_tdm":
+        message = payload.get("message") or {}
+        links = message.get("link") or []
+        text_mining_html = [
+            link
+            for link in links
+            if link.get("intended-application") == "text-mining"
+            and link.get("content-type") == "text/html"
+        ]
+        version_of_record = [
+            link
+            for link in text_mining_html
+            if link.get("content-version") == "vor"
+        ]
+        candidates = version_of_record or text_mining_html
+        article_url = str(candidates[0].get("URL") or "") if candidates else ""
+        if not article_url:
+            raise ValueError(
+                f"Crossref did not publish an IOP text-mining HTML link for DOI {doi}."
+            )
+        if article_url.startswith("http://"):
+            article_url = "https://" + article_url[len("http://"):]
+        contact_email = os.environ.get(
+            "SALSA_CONTACT_EMAIL",
+            "wschertzer3@gatech.edu",
+        )
+        return replace(
+            plan,
+            url=article_url,
+            params={},
+            headers={
+                "Accept": "text/html",
+                "User-Agent": f"SALSA/1.0 (mailto:{contact_email})",
+            },
+            strategy="direct",
+        )
+
+    logger.warning("Unknown publisher access strategy %s for DOI %s", plan.strategy, doi)
+    raise ValueError(f"Unknown publisher access strategy: {plan.strategy}")
 
 def update_metadata(db, doc_id, logger, download_status, note_entry, download_time_stamp, extension, local_status_log=None, doi=None, publisher=None, title=None, year=None):
     """
@@ -56,15 +384,17 @@ def update_metadata(db, doc_id, logger, download_status, note_entry, download_ti
         if logger:
             logger.info(f"[NO-DB] status logged: {row}")
         return
-    # DB mode
-    update_metadata(
-    db, doc_id, logger,
-    download_status=config.FILE_SIZE_0, extension=extension,
-    note_entry={}, download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
-    local_status_log=local_status_log, doi=doi, publisher=publisher, title=title, year=year
-)
+    utils._update_paper_metadata(
+        db,
+        doc_id,
+        logger=logger,
+        download_status=download_status,
+        extension=extension,
+        note_entry=note_entry or {},
+        download_time_stamp=download_time_stamp,
+    )
 
-def download_article(doi, publisher, title, year, download_directory, db, doc_id, extension, logger=None, timeout_sec = 90, html_url=None, download_pdf=True, debug=False, local_status_log=None, extra_headers=None):
+def download_article(doi, publisher, title, year, download_directory, db, doc_id, extension, logger=None, timeout_sec = 90, html_url=None, download_pdf=True, debug=False, local_status_log=None, extra_headers=None, request_params=None, expected_content_type="", response_validator=""):
     '''
     Downloads an article into a folder given its url and updates a database db on its status
 
@@ -111,11 +441,61 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
         mkdir(download_directory)
     file_name = doi.replace(path.sep, repl_char) + '.' + extension
     file_location = path.join(download_directory, file_name)
+
+    if path.exists(file_location) and response_validator:
+        with open(file_location, "rb") as existing_file:
+            existing_content = existing_file.read()
+        is_valid, validation_note = _validate_response_content(
+            existing_content,
+            response_validator,
+        )
+        if not is_valid:
+            logger.warning(
+                "Removing invalid cached %s response for DOI %s: %s",
+                publisher,
+                doi,
+                validation_note["message"],
+            )
+            remove(file_location)
+        elif (
+            response_validator == "elsevier_full_text_or_pdf"
+            and _elsevier_needs_pdf(existing_content)
+        ):
+            cached_headers = {
+                "Accept": header_prefix_accept[extension] + "/" + extension,
+                "User-agent": "Mozilla/5.6 (Windows NT 11.0; rv:68.0 Gecko/20100101 Firefox/70.0",
+            }
+            if extra_headers:
+                cached_headers.update(extra_headers)
+            pdf_path, pdf_failure = _download_elsevier_pdf(
+                doi=doi,
+                xml_content=existing_content,
+                xml_url=html_url,
+                xml_headers=cached_headers,
+                request_params=request_params,
+                download_directory=download_directory,
+                timeout_sec=timeout_sec,
+                logger=logger,
+            )
+            if pdf_path is None:
+                update_metadata(
+                    db, doc_id, logger,
+                    download_status=config.DOWNLOAD_FAILED,
+                    extension="pdf",
+                    note_entry=pdf_failure,
+                    download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                    local_status_log=local_status_log,
+                    doi=doi,
+                    publisher=publisher,
+                    title=title,
+                    year=year,
+                )
+                return False
     
     # Check if html_url is valid
     if not html_url or not html_url.startswith("http"):
-        logger.warning(f"Invalid html_url for DOI {doi}: {html_url}. Skipping.")
-        return
+        logger.warning(f"Invalid API URL for DOI {doi}: {html_url}. Skipping.")
+        return False
 
     #Download the file if it doesn't exist
     if not path.exists(file_location):
@@ -126,23 +506,98 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
         if extra_headers:
             headers.update(extra_headers)
 
-        # Make the request to download the file
-        # html_data = requests.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
-        # --- ACS-aware logic ---
-        # if 'acs' in publisher.lower():
-        #     # use pre-authenticated session with cookies
-        #     acs_session = get_acs_session()
-        #     html_data = acs_session.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
-        #     if html_data.status_code == 403:
-        #         logger.warning("[ACS] Session expired — please refresh cookies via browser login.")
-        # else:
-            
-        html_data = requests.get(html_url, stream=True, headers=headers, timeout=timeout_sec)
+        html_data = requests.get(
+            html_url,
+            stream=True,
+            headers=headers,
+            params=request_params,
+            timeout=timeout_sec,
+        )
 
         #Process the response
         if html_data.status_code == 200:
-            current_file = open(file_location, 'wb')
-            current_file.write(html_data.content)
+            content_type = html_data.headers.get("Content-Type", "").lower()
+            if expected_content_type and expected_content_type not in content_type:
+                logger.warning(
+                    "Rejected %s response for DOI %s: expected %s content, received %s",
+                    publisher,
+                    doi,
+                    expected_content_type,
+                    content_type or "no Content-Type",
+                )
+                update_metadata(
+                    db, doc_id, logger,
+                    download_status=config.DOWNLOAD_FAILED, extension=extension,
+                    note_entry={"reason": "unexpected_content_type", "content_type": content_type},
+                    download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                    local_status_log=local_status_log, doi=doi, publisher=publisher, title=title, year=year
+                )
+                html_data.close()
+                return False
+            if response_validator:
+                content = html_data.content
+                is_valid, validation_note = _validate_response_content(
+                    content,
+                    response_validator,
+                )
+                if not is_valid:
+                    logger.warning(
+                        "Rejected %s response for DOI %s: %s",
+                        publisher,
+                        doi,
+                        validation_note["message"],
+                    )
+                    update_metadata(
+                        db, doc_id, logger,
+                        download_status=config.DOWNLOAD_FAILED,
+                        extension=extension,
+                        note_entry=validation_note,
+                        download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                        local_status_log=local_status_log,
+                        doi=doi,
+                        publisher=publisher,
+                        title=title,
+                        year=year,
+                    )
+                    html_data.close()
+                    return False
+                with open(file_location, "wb") as current_file:
+                    current_file.write(content)
+            else:
+                with open(file_location, 'wb') as current_file:
+                    for chunk in html_data.iter_content(chunk_size=1024 * 64):
+                        if chunk:
+                            current_file.write(chunk)
+            html_data.close()
+
+            if (
+                response_validator == "elsevier_full_text_or_pdf"
+                and _elsevier_needs_pdf(content)
+            ):
+                pdf_path, pdf_failure = _download_elsevier_pdf(
+                    doi=doi,
+                    xml_content=content,
+                    xml_url=html_url,
+                    xml_headers=headers,
+                    request_params=request_params,
+                    download_directory=download_directory,
+                    timeout_sec=timeout_sec,
+                    logger=logger,
+                )
+                if pdf_path is None:
+                    update_metadata(
+                        db, doc_id, logger,
+                        download_status=config.DOWNLOAD_FAILED,
+                        extension="pdf",
+                        note_entry=pdf_failure,
+                        download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                        local_status_log=local_status_log,
+                        doi=doi,
+                        publisher=publisher,
+                        title=title,
+                        year=year,
+                    )
+                    return False
             if stat(file_location).st_size == 0: #file size is 0
                 print(f'---file size is 0:  {file_location}----')
                 remove(file_location)
@@ -154,7 +609,7 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
                     local_status_log=local_status_log, doi=doi, publisher=publisher, title=title, year=year
                 )
                 logger.warning(extension + ' file of publisher ' + publisher + ' and DOI ' + doi + ' was of size 0 and hence it was deleted\n')
-                return
+                return False
             
             # # add a note when a PDF is downloaded
             # if extension == 'pdf':
@@ -166,11 +621,29 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
             #     logger.info(f"PDF downloaded for DOI {doi}")
         else: #request failed
             print('---invalid html (request failed) html_data.status_code == ---:', html_data.status_code, 'html_url:', html_url)
-            if extension != 'pdf' and not debug:
+            if not debug:
+                if (
+                    response_validator in {
+                        "aps_open_access_jats",
+                        "aps_open_access_pdf",
+                    }
+                    and html_data.status_code in (401, 403)
+                ):
+                    note_entry = {
+                        "reason": "aps_not_open_access",
+                        "status_code": html_data.status_code,
+                        "message": "APS Harvest did not authorize open-access retrieval for this DOI.",
+                    }
+                else:
+                    note_entry = {
+                        "reason": "http_error",
+                        "status_code": html_data.status_code,
+                    }
                 update_metadata(
                     db, doc_id, logger,
-                    download_status=config.FILE_SIZE_0, extension=extension,
-                    note_entry={}, download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                    download_status=config.DOWNLOAD_FAILED, extension=extension,
+                    note_entry=note_entry,
+                    download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
                     local_status_log=local_status_log, doi=doi, publisher=publisher, title=title, year=year
                 )
             if year is not None:
@@ -179,10 +652,13 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
             else:
                 logger.warning(f'Could not download {extension} file with DOI {doi} by publisher {publisher} with title '
                                f'\'{title}\'. Failed with HTML status code {html_data.status_code}', 'html_url', html_url)
-            return
+            html_data.close()
+            return False
         random_wait_time = randint(1, MAX_SLEEP_TIME) # Choose any value between 1 & 2 seconds randomly
         sleep(random_wait_time)
+        return True
         # if extension != 'pdf' and not debug:_validate_html_status(doi, publisher, title, year, download_directory, db, doc_id, html_data, file_name, download_pdf, extension, logger=logger)
+    return True
 
 
 # Assume that query has been run on database outside of article_downloader
@@ -192,7 +668,7 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
 def article_downloader(db, query, download_directory, year_lower, logger_file=None, logger = None, logger_name='downloader',
                         sample_size=None, download_pdf=True, scanned_records=0, last_processed_id=None, records_df=None, local_status_log=None, **kwargs):
     '''
-    Downloads the HTML file from the respective publisher's website given a list of DOI's. Requires authorization to access the HTML. It is adequate to access from a network that has a licensing arrangement with the publisher
+    Downloads full text only through configured publisher API/TDM endpoints.
 
     Parameters
     ----------
@@ -218,15 +694,16 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
     -------
 
     '''
-    if not path.isdir(path.join(download_directory, 'structured_files')):
-        mkdir(path.join(download_directory, 'structured_files'))
+    papers_root = download_directory
+    if not path.isdir(path.join(papers_root, 'structured_files')):
+        mkdir(path.join(papers_root, 'structured_files'))
 
     # pdf files are saved in the below directory
-    if not path.isdir(path.join(download_directory, 'unstructured_files')):
-        mkdir(path.join(download_directory, 'unstructured_files'))
-    download_directory = path.join(download_directory, 'structured_files')
+    if not path.isdir(path.join(papers_root, 'unstructured_files')):
+        mkdir(path.join(papers_root, 'unstructured_files'))
+    structured_download_directory = path.join(papers_root, 'structured_files')
+    unstructured_download_directory = path.join(papers_root, 'unstructured_files')
     download_directory_input = ''
-    url_dict = config.URL_DICT
     i = 0
     repl_char = '@'
     last_download = {publisher: time.time()-config.publisher_gap_time[publisher]
@@ -237,16 +714,6 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
         if not path.exists(logger_file):
             open(logger_file, 'a').close()
         logger = utils.setup_logger(logger_file, logger_name)
-
-    # headers = {
-    #     'Accept': 'text/html',
-    #     'User-agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0'
-    # }
-
-    headers = {
-        'Accept': 'text/html',
-        'User-agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0'
-    }
 
     if records_df is not None:
         # No-DB path: use DataFrame directly
@@ -298,88 +765,86 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
                     # utils.send_e_mail(message=MIMEText(f'Download has been terminated, please check. \
                                 # Last download_status_check_time={download_status_check_time}\n {msg}').as_string())
                     return False
-            if 'elsevier' in publisher.lower():
-                url = url_dict['elsevier'] + doi + '?APIKey=' + config.ELS_API_KEY
-                download_directory_input = path.join(download_directory, 'elsevier')
-                download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'xml', logger=logger, download_pdf=download_pdf, html_url=url)
-                sleep(2)
-            elif 'wiley' in publisher.lower():
+            access = publisher_access_for(doi, publisher)
+            if access.plan is None:
+                logger.warning("Skipping DOI %s: %s", doi, access.reason)
+                update_metadata(
+                    db, doc_id, logger,
+                    download_status=config.DOWNLOAD_FAILED,
+                    extension="",
+                    note_entry={"reason": access.reason},
+                    download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                    local_status_log=local_status_log,
+                    doi=doi,
+                    publisher=publisher,
+                    title=title,
+                    year=year,
+                )
+                continue
+
+            plan = access.plan
+            plan = _resolve_access_plan(plan, doi, config.TIME_OUT_SEC, logger)
+            if plan.directory in last_download:
                 continue_status, last_download['wiley'] = utils.download_gap_time(last_download['wiley'], 'wiley')
                 if continue_status:
-                    # logger.info(f"Waiting before downloading Wiley paper with DOI: {doi}")
-                    # sleep(config.publisher_gap_time['wiley'])
                     continue
-                url = url_dict['wiley'] + doi
-                download_directory_input = path.join(download_directory, 'wiley')
-                download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'pdf', logger=logger, download_pdf=download_pdf, html_url=url,
-                                 extra_headers={'Wiley-TDM-Client-Token': config.WILEY_TDM_TOKEN}, local_status_log=local_status_log)
-                sleep(2)
-            elif 'springer' in publisher.lower() and ('10.1038/' in doi or '10.1295/' in doi):
-                #url = url_dict['nature'] + doi.replace('10.1038/', '').replace('10.1295/', '').replace('.', '')
-                url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'nature')
-                sleep(2)
-            elif 'springer' in publisher.lower():
-                url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'springer')
-                sleep(2)
-            elif 'acs' in publisher.lower():
-                continue_status, last_download['acs'] = utils.download_gap_time(last_download['acs'], 'acs')
-                if continue_status:
-                    continue
-                url = url_dict['acs'] + doi
-                download_directory_input = path.join(download_directory, 'acs')
-                sleep(2)
-            elif 'informa uk' in publisher.lower():
-                url = url_dict['informa uk'] + doi
-                download_directory_input = path.join(download_directory, 'informa_uk')
-            elif 'sage' in publisher.lower():
-                url = url_dict['sage'] + doi
-                download_directory_input = path.join(download_directory, 'sage')
-            elif 'iop publishing' in publisher.lower():
-                url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'iop_publishing')
-            elif 'electrochemical society' in publisher.lower():
-                continue_status, last_download['ecs'] = utils.download_gap_time(last_download['ecs'], 'ecs')
-                if continue_status:
-                    continue
-                url = url_dict['iop publishing'] + doi
-                download_directory_input = path.join(download_directory, 'ecs')
-            elif 'aip publishing' in publisher.lower():
-                continue_status, last_download['aip'] = utils.download_gap_time(last_download['aip'], 'aip')
-                if continue_status:
-                    continue
-                url = url_dict['aip'] + doi
-                download_directory_input = path.join(download_directory, 'aip')
-            elif 'emerald' in publisher.lower():
-                url = url_dict['emerald'] + doi
-                download_directory_input = path.join(download_directory, 'emerald')
-            elif 'ieee' in publisher.lower():
-                url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'ieee')
-            elif 'hindawi' in publisher.lower():
-                url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'hindawi')
-            elif 'aaas' in publisher.lower():
-                url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'aaas')
-            elif 'royal society of chemistry' in publisher.lower() or 'rsc' in publisher.lower():
-                download_url = url_dict['doi'] + doi
-                download_directory_input = path.join(download_directory, 'rsc')
-                r = requests.get(download_url, headers=headers, timeout=config.TIME_OUT_SEC)
-                url = r.url
-                url = url.replace('articlelanding', 'articlehtml').replace('ArticleLanding', 'articlehtml')
-                sleep(1)
 
+            download_root = (
+                unstructured_download_directory
+                if plan.extension == "pdf"
+                else structured_download_directory
+            )
+            download_directory_input = path.join(download_root, plan.directory)
+            logger.info("Using %s for DOI %s", plan.provider, doi)
+            download_article(
+                doi,
+                publisher,
+                title,
+                year,
+                download_directory_input,
+                db,
+                doc_id,
+                plan.extension,
+                logger=logger,
+                download_pdf=download_pdf,
+                html_url=plan.url,
+                extra_headers=plan.headers,
+                request_params=plan.params,
+                expected_content_type=plan.expected_content_type,
+                response_validator=plan.response_validator,
+                local_status_log=local_status_log,
+            )
 
-            if 'elsevier' not in publisher.lower() and 'wiley' not in publisher.lower():
-                logger.info(f"Publisher: {publisher.lower()}")
-                download_article(doi, publisher, title, year, download_directory_input, db, doc_id, 'html',logger=logger, html_url=url, download_pdf=download_pdf)
-
+        except PublisherAccessError as e:
+            logger.warning("%s: %s", doi, e)
+            update_metadata(
+                db, doc_id, logger,
+                download_status=config.DOWNLOAD_FAILED,
+                extension="",
+                note_entry={"reason": "publisher_access_error", "message": str(e)},
+                download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                local_status_log=local_status_log,
+                doi=doi,
+                publisher=publisher,
+                title=title,
+                year=year,
+            )
         except Exception as e:
             logger.warning(doi + ' with title ' + title + ' of publisher ' + publisher + ' threw a ' + str(e) + ' exception. It will be deleted if already dowloaded.\n')
             logger.exception(e)
             logger.warning('\n')
+            update_metadata(
+                db, doc_id, logger,
+                download_status=config.FILE_THREW_EXCEPTION,
+                extension="",
+                note_entry={"reason": "exception", "message": str(e)},
+                download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                local_status_log=local_status_log,
+                doi=doi,
+                publisher=publisher,
+                title=title,
+                year=year,
+            )
             if path.exists(path.join(download_directory_input, doi.replace(path.sep, repl_char) + '.html')):
                 remove(path.join(download_directory_input, doi.replace(path.sep, repl_char) + '.html'))
             elif path.exists(path.join(download_directory_input, doi.replace(path.sep, repl_char) + '.xml')):
@@ -594,7 +1059,7 @@ def _validate_html_status(doi, publisher, title, year, download_directory, db, d
                                         note_entry={},
                                         download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
                                         extension=extension)
-            # Lack of fulltext means GT does not have access
+            # The response did not include full text.
         elif description != [] and len(description) == 1:
             publisher_dir = path.join(unstructured_download_directory, 'informa_uk')
             url = html_response.url.replace('abs', 'pdf')
@@ -722,28 +1187,3 @@ def _validate_html_status(doi, publisher, title, year, download_directory, db, d
                                     note_entry={},
                                     download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
                                     extension=extension)
-
-
-# def get_acs_session(cookie_path="/home/wschertzer3/SALSA/src/paper-downloader/paper_downloader/acs_cookies.pkl"):
-    """Load institutional ACS cookies into a requests.Session."""
-    s = requests.Session()
-    try:
-        with open(cookie_path, "rb") as f:
-            cookies = pickle.load(f)
-        for c in cookies:
-            domain = c.get("domain", ".pubs.acs.org")
-            s.cookies.set(c["name"], c["value"], domain=domain)
-        # s.headers.update({
-        #     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        #                   "AppleWebKit/537.36 (KHTML, like Gecko) "
-        #                   "Chrome/120.0.0.0 Safari/537.36",
-        #     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        #     "Accept-Language": "en-US,en;q=0.5",
-        #     "Referer": "https://pubs.acs.org/",
-        #     "Connection": "keep-alive"
-        # })
-        print("[ACS] Loaded cookies and created authenticated session.")
-    except Exception as e:
-        print(f"[ACS] Warning: Could not load cookies: {e}")
-        return requests.Session()
-    return s

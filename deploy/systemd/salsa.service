@@ -9,7 +9,7 @@ Group=nogroup
 WorkingDirectory=/home/wschertzer3/SALSA
 EnvironmentFile=/home/wschertzer3/SALSA/.env.production
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/bin/bash -lc 'source /home/wschertzer3/miniconda3/etc/profile.d/conda.sh && conda activate SALSA && exec python -m streamlit run src/ui/streamlit_app.py --server.address ${STREAMLIT_SERVER_ADDRESS:-127.0.0.1} --server.port ${STREAMLIT_SERVER_PORT:-8601}'
+ExecStart=/bin/bash -lc 'source /home/wschertzer3/miniconda3/etc/profile.d/conda.sh && conda activate SALSA && exec python -m streamlit run src/ui/streamlit_app.py --server.address ${STREAMLIT_SERVER_ADDRESS:-127.0.0.1} --server.port ${STREAMLIT_SERVER_PORT:-8601} --server.fileWatcherType ${STREAMLIT_SERVER_FILE_WATCHER_TYPE:-none} --server.runOnSave ${STREAMLIT_SERVER_RUN_ON_SAVE:-false}'
 Restart=always
 RestartSec=5
 

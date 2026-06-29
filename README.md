@@ -121,32 +121,30 @@ SALSA's main workflow is orchestrated by the Streamlit UI:
 
 ```text
 SALSA/
-├── assets/                          # README and UI images
-├── deploy/                          # Remote deployment documentation and templates
-│   ├── env/salsa.env.example
-│   ├── nginx/salsa.conf
-│   └── systemd/salsa.service
-├── extern/                          # Git submodules used for chart digitization
-│   ├── ChartDete/
-│   └── LineFormer/
-├── huggingface/                     # ChartDete and LineFormer configs/checkpoints
-├── src/
-│   ├── chemical_composition/        # Composition extraction and JSME drawing tool
-│   ├── complete_dataset/            # Dataset assembly and row transformation
-│   ├── cost/                        # Usage and cost summaries
-│   ├── extract_figure_data/         # OCR, chart detection, masks, and XY extraction
-│   ├── paper-downloader/            # Paper acquisition and parsing
-│   ├── setup-scripts/               # Environment setup and submodule patching
-│   ├── ui/                          # Streamlit UI, pipeline, auth, and interventions
-│   ├── ui_runs/                     # Generated workspaces and run artifacts (ignored)
-│   ├── llm_client.py                # Shared LLM provider client
-│   └── run.py                       # Legacy command-line pipeline entry point
-├── tests/                           # Pipeline, UI, schema, prompt, and cost tests
-├── .env.production                  # Production environment configuration
-├── .gitmodules                      # ChartDete and LineFormer submodule definitions
-├── environment.yml                  # Conda environment
-├── Makefile                         # Setup, launch, and cleanup commands
-├── pyproject.toml                   # Python package metadata
+├── assets                          # UI images
+├── deploy                          # Remote deployment documentation and templates
+│   ├── env
+│   ├── nginx
+│   └── systemd
+├── extern                          # Git submodules used for chart digitization
+│   ├── ChartDete
+│   └── LineForme/
+├── huggingface                     # ChartDete and LineFormer configs/checkpoints
+├── src
+│   ├── chemical_composition        # Composition extraction and JSME drawing tool
+│   ├── complete_dataset            # Dataset assembly and row transformation
+│   ├── cost                        # Usage and cost summaries
+│   ├── extract_figure_data         # OCR, chart detection, masks, and XY extraction
+│   ├── paper-downloader            # Paper acquisition and parsing
+│   ├── setup-scripts               # Environment setup and submodule patching
+│   ├── ui                          # Streamlit UI, pipeline, auth, and interventions
+│   ├── ui_runs                     # Generated workspaces and run artifacts (ignored)
+│   └── llm_client.py               # Shared LLM provider client
+├── tests                           # Pipeline, UI, schema, prompt, and cost tests
+├── .gitmodules                     # ChartDete and LineFormer submodule definitions
+├── environment.yml                 # Conda environment
+├── Makefile                        # Setup, launch, and cleanup commands
+├── pyproject.toml                  # Python package metadata
 └── README.md
 ```
 
@@ -159,8 +157,15 @@ Remote hosting templates are available in [`deploy/`](./deploy/):
 
 - [`deploy/DEPLOY_REMOTE.md`](./deploy/DEPLOY_REMOTE.md)
 - [`deploy/systemd/salsa.service`](./deploy/systemd/salsa.service)
+- [`deploy/systemd/salsa-dev.service`](./deploy/systemd/salsa-dev.service)
 - [`deploy/nginx/salsa.conf`](./deploy/nginx/salsa.conf)
 - [`deploy/env/salsa.env.example`](./deploy/env/salsa.env.example)
+- [`deploy/env/salsa-dev.env.example`](./deploy/env/salsa-dev.env.example)
+
+Production disables Streamlit source-file watching so code edits do not reload
+the production app while runs are active. Use `salsa-dev.service` on a separate
+port and development data root to test changes, then restart production
+deliberately after validation.
 
 ## Acknowledgements
 

@@ -59,8 +59,9 @@ DEFAULT_OUTPUT_COLUMNS = [
     "solvent molarity (M)",
     "degradation test temp (C)",
     "prop test temp (C)",
-    "property",
-    "value",
+    "dependant variable",
+    "dependent value",
+    "dependent unit",
     "DOI",
     "source_kind",
     "source_name",
@@ -74,7 +75,7 @@ DEFAULT_MISSING_VALUE_DEFAULTS = {
     "solvent molarity (M)": "None Not Found",
     "degradation test temp (C)": "None Not Found",
     "prop test temp (C)": "25 Not Found",
-    "property": "None Not Found"
+    "dependant variable": "None Not Found"
 }
 
 

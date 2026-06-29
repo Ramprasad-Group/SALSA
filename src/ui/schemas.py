@@ -35,8 +35,19 @@ class DoiResult:
     tables: list[TableItem] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
+
+@dataclass
+class DoiFailure:
+    doi: str
+    stage: str
+    message: str
+    publisher: str = ""
+    status: str = ""
+
+
 @dataclass
 class RunResult:
     run_id: str
     run_dir: Path
     dois: list[DoiResult]
+    failures: list[DoiFailure] = field(default_factory=list)

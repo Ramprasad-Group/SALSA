@@ -1,10 +1,11 @@
 # SALSA/src/ui/discover.py
 from __future__ import annotations
+import csv
 import json
 from pathlib import Path
 from typing import Dict, List
 
-from schemas import RunResult, DoiResult, FigureItem, TableItem
+from schemas import DoiFailure, RunResult, DoiResult, FigureItem, TableItem
 
 def _read_json(p: Path) -> dict:
     try:
@@ -129,6 +130,99 @@ def _find_chemical_composition(chem_comp_dir: Path) -> Dict[str, Path]:
     return out
 
 
+def _failure_message(note: dict) -> str:
+    message = str(note.get("message") or "").strip()
+    if message:
+        return message
+
+    reason = str(note.get("reason") or "Download failed").strip()
+    status_code = note.get("status_code")
+    if status_code:
+        return f"{reason.replace('_', ' ')} (HTTP {status_code})"
+    return reason.replace("_", " ")
+
+
+def _discover_failures(run_dir: Path) -> list[DoiFailure]:
+    # Keep the most actionable failure for each DOI.
+    failures: dict[str, tuple[int, DoiFailure]] = {}
+
+    def add(priority: int, failure: DoiFailure):
+        doi = failure.doi.strip()
+        if not doi:
+            return
+        current = failures.get(doi)
+        if current is None or priority >= current[0]:
+            failures[doi] = (priority, failure)
+
+    records_dir = run_dir / "records"
+    result_files = sorted(
+        records_dir.glob("download_results_*.csv"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if result_files:
+        try:
+            with result_files[-1].open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    if str(row.get("success", "")).strip().lower() in {"true", "1", "yes"}:
+                        continue
+                    add(20, DoiFailure(
+                        doi=str(row.get("doi") or ""),
+                        publisher=str(row.get("publisher") or ""),
+                        stage="Record lookup",
+                        status="failed",
+                        message=str(row.get("message") or "Record lookup failed"),
+                    ))
+        except Exception:
+            pass
+
+    status_path = run_dir / "papers" / "logs" / "download_status.jsonl"
+    if status_path.exists():
+        try:
+            for line in status_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if int(row.get("download_status", 0) or 0) not in {5, 6, 7}:
+                    continue
+                note = row.get("note") if isinstance(row.get("note"), dict) else {}
+                add(30, DoiFailure(
+                    doi=str(row.get("doi") or ""),
+                    publisher=str(row.get("publisher") or ""),
+                    stage="Paper download",
+                    status=str(note.get("reason") or "failed"),
+                    message=_failure_message(note),
+                ))
+        except Exception:
+            pass
+
+    reparse_index = run_dir / "reparsed" / "index.csv"
+    if reparse_index.exists():
+        try:
+            with reparse_index.open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    status = str(row.get("status") or "").strip()
+                    if status == "ok":
+                        continue
+                    messages = {
+                        "missing_file": "No downloaded structured article file was available.",
+                        "no_parser": "No parser is configured for the downloaded publisher format.",
+                        "error": "The downloaded article could not be parsed.",
+                    }
+                    add(10, DoiFailure(
+                        doi=str(row.get("doi") or ""),
+                        stage="Reparse",
+                        status=status or "failed",
+                        message=messages.get(status, status.replace("_", " ") or "Reparse failed"),
+                    ))
+        except Exception:
+            pass
+
+    return [
+        item[1]
+        for _, item in sorted(failures.items(), key=lambda pair: pair[0].lower())
+    ]
+
+
 def discover_run(run_dir: Path) -> RunResult:
     reparsed = run_dir / "reparsed"
     figures_tables = run_dir / "figures_tables"
@@ -235,4 +329,9 @@ def discover_run(run_dir: Path) -> RunResult:
 
             dois.append(dr)
 
-    return RunResult(run_id=run_dir.name, run_dir=run_dir, dois=dois)
+    return RunResult(
+        run_id=run_dir.name,
+        run_dir=run_dir,
+        dois=dois,
+        failures=_discover_failures(run_dir),
+    )

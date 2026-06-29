@@ -122,13 +122,14 @@ def append_usage(
     doi: Optional[str] = None,
     artifact_id: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
+    run_dir: Optional[str | Path] = None,
 ) -> Path:
     """
     Appends one JSON line to <run_dir>/cost/usage.jsonl
     """
 
-    run_dir = Path(os.getenv("SALSA_RUN_DIR", str(DEFAULT_COST_ROOT)))
-    out_dir = run_dir / "cost"
+    resolved_run_dir = Path(run_dir) if run_dir else Path(os.getenv("SALSA_RUN_DIR", str(DEFAULT_COST_ROOT)))
+    out_dir = resolved_run_dir / "cost"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "usage.jsonl"
 

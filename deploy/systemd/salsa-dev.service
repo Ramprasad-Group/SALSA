@@ -1,0 +1,24 @@
+[Unit]
+Description=SALSA development Streamlit application
+After=network.target
+
+[Service]
+Type=simple
+User=wschertzer3
+Group=nogroup
+WorkingDirectory=/home/wschertzer3/SALSA
+EnvironmentFile=-/home/wschertzer3/SALSA/.env.development
+Environment=PYTHONUNBUFFERED=1
+Environment=SALSA_APP_ENV=development
+Environment=STREAMLIT_SERVER_PORT=8602
+Environment=STREAMLIT_SERVER_ADDRESS=127.0.0.1
+Environment=STREAMLIT_SERVER_FILE_WATCHER_TYPE=auto
+Environment=STREAMLIT_SERVER_RUN_ON_SAVE=true
+Environment=SALSA_DATA_ROOT=/home/wschertzer3/SALSA/src/ui_runs_dev
+Environment=SALSA_AUTH_DB=/home/wschertzer3/SALSA/src/ui_runs_dev/auth.sqlite3
+ExecStart=/bin/bash -lc 'source /home/wschertzer3/miniconda3/etc/profile.d/conda.sh && conda activate SALSA && exec python -m streamlit run src/ui/streamlit_app.py --server.address ${STREAMLIT_SERVER_ADDRESS:-127.0.0.1} --server.port ${STREAMLIT_SERVER_PORT:-8602} --server.fileWatcherType ${STREAMLIT_SERVER_FILE_WATCHER_TYPE:-auto} --server.runOnSave ${STREAMLIT_SERVER_RUN_ON_SAVE:-true}'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

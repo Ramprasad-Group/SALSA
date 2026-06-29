@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import contextvars
 import datetime
 import json
 import logging
@@ -15,6 +16,15 @@ import pandas as pd
 from llm_client import get_llm_client
 from ui.openai_cost import append_usage, run_id_from_env
 from ui.run_progress import write_current_doi, write_run_status
+
+_RUN_DIR_CONTEXT: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "llm_direct_figure_data_run_dir",
+    default="",
+)
+_RUN_ID_CONTEXT: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "llm_direct_figure_data_run_id",
+    default="",
+)
 
 
 FIGURE_DATA_COLUMNS = [
@@ -139,11 +149,12 @@ def _coerce_rows(rows: Any) -> pd.DataFrame:
 def _log_cost(meta: Any, *, doi: str, figure_name: str) -> None:
     try:
         append_usage(
-            run_id=run_id_from_env("unknown"),
+            run_id=_RUN_ID_CONTEXT.get() or run_id_from_env("unknown"),
             resp=meta,
             doi=doi,
             artifact_id=figure_name,
             extra={"kind": "direct_llm_figure_data"},
+            run_dir=_RUN_DIR_CONTEXT.get() or None,
         )
     except Exception as exc:
         print(f"[direct_llm_figure_data] WARNING: failed to log cost for {figure_name}: {exc}")
@@ -235,9 +246,8 @@ def run_llm_figure_data_extraction(
     This mirrors the plextract output shape consumed by complete_dataset.py.
     """
     if run_dir is not None:
-        import os
-
-        os.environ["SALSA_RUN_DIR"] = str(run_dir)
+        _RUN_DIR_CONTEXT.set(str(run_dir))
+        _RUN_ID_CONTEXT.set(run_dir.name)
 
     workdir.mkdir(parents=True, exist_ok=True)
     results_root = workdir / "results"

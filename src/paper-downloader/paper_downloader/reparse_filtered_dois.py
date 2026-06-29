@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict
 
 import pandas as pd
+from bs4 import BeautifulSoup
 
 # Local project imports (no DB modules!)
 _PAPER_DL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -35,6 +36,7 @@ sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, _PAPER_DL)
 import paper_downloader.LimeSoup as LimeSoup
 from paper_downloader import utils, config
+from paper_downloader.jats import parse_jats
 from ui.run_progress import write_current_doi
 
 
@@ -74,16 +76,87 @@ def find_structured_file(structured_root: str, doi: str) -> Optional[Tuple[str, 
     doctype = Path(file_path).suffix.lstrip(".").lower()
     return file_path, directory, doctype
 
+
+class IOPHTMLSoup:
+    """Convert IOP full-text HTML into the normalized LimeSoup result shape."""
+
+    @staticmethod
+    def parse(html_str: str) -> Dict:
+        soup = BeautifulSoup(html_str, "lxml")
+
+        def meta(name: str) -> str:
+            element = soup.find("meta", attrs={"name": name})
+            return str(element.get("content") or "").strip() if element else ""
+
+        title = meta("citation_title")
+        if not title:
+            heading = soup.find("h1")
+            title = heading.get_text(" ", strip=True) if heading else ""
+
+        abstract_element = (
+            soup.select_one('[class*="abstract"]')
+            or soup.find("section", attrs={"id": "abstract"})
+        )
+        abstract = (
+            abstract_element.get_text(" ", strip=True)
+            if abstract_element
+            else ""
+        )
+
+        article_body = (
+            soup.select_one("main")
+            or soup.select_one("article")
+            or soup.select_one("div.article-content")
+        )
+        sections = []
+        current = {"name": "Full text", "content": []}
+        if article_body:
+            for element in article_body.find_all(["h2", "h3", "p"]):
+                text = element.get_text(" ", strip=True)
+                if not text:
+                    continue
+                if element.name in {"h2", "h3"}:
+                    if current["content"]:
+                        sections.append(current)
+                    current = {"name": text, "content": []}
+                else:
+                    current["content"].append(text)
+        if current["content"]:
+            sections.append(current)
+
+        return {
+            "DOI": meta("citation_doi"),
+            "Keywords": [],
+            "Title": title,
+            "Journal": meta("citation_journal_title"),
+            "Abstract": abstract,
+            "Sections": sections,
+        }
+
+
+class JATSSoup:
+    @staticmethod
+    def parse(xml_str: str) -> Dict:
+        return parse_jats(xml_str)
+
+
 def pick_parser(directory: str):
     """Map publisher directory name → LimeSoup parser class."""
     parser_map = {
         'rsc': LimeSoup.RSCSoup,
-        'springer': LimeSoup.SpringerSoup,
+        'springer': JATSSoup,
         'elsevier': LimeSoup.ElsevierSoup,
-        'nature': LimeSoup.NatureSoup,
+        'nature': JATSSoup,
         'acs': LimeSoup.ACSSoup,
         'wiley': LimeSoup.WileySoup,
         'aip': LimeSoup.AIPSoup,
+        'aps': JATSSoup,
+        'plos': JATSSoup,
+        'pubmed': JATSSoup,
+        'pmc': JATSSoup,
+        'ieee': JATSSoup,
+        'iop': IOPHTMLSoup,
+        'iop_publishing': IOPHTMLSoup,
         # historical mapping in your script:
         'hindawi': LimeSoup.SpringerSoup,
         'informa_uk': LimeSoup.InformaUKSoup,

@@ -42,6 +42,7 @@ from parsers.wiley_extractor import (extract_wiley_figures, extract_wiley_tables
 from parsers.springer_extractor import extract_springer_figures, extract_springer_tables
 from parsers.rsc_extractor import extract_rsc_figures, extract_rsc_tables
 from parsers.nature_extractor import extract_nature_figures, extract_nature_tables
+from parsers.jats_extractor import extract_jats_figures, extract_jats_tables
 
 # --- Load custom instructions (set via SALSA_CUSTOM_INSTRUCTIONS env var) ---
 _custom_instructions = load_instructions_from_env_or_path()
@@ -277,7 +278,12 @@ def extract_figures_tables(file_path, publisher, output_dir, doi, llm_extractor,
     fig_dir = Path(output_dir) / 'figures' / safe_doi
     table_dir = Path(output_dir) / 'tables' / safe_doi
 
-    if fig_dir.exists() and table_dir.exists() :
+    if (
+        fig_dir.exists()
+        and any(fig_dir.iterdir())
+        and table_dir.exists()
+        and any(table_dir.iterdir())
+    ):
         logger.info(f"Skipping {doi}: {fig_dir} and {table_dir} already exists")
         return figures_count, tables_count   # or return None, or a status dict
 
@@ -325,20 +331,29 @@ def extract_figures_tables(file_path, publisher, output_dir, doi, llm_extractor,
         else:
             logger.warning("Skipping table extraction")
     
-    elif publisher.lower() == 'springer':
+    elif (
+        file_path.lower().endswith(".xml")
+        and publisher.lower()
+        in {"springer", "nature", "plos", "aps", "pubmed", "pmc", "ieee"}
+    ):
         # Extract figures if requested
         if extract_figures:
-            figures_count = extract_springer_figures(file_path, output_dir, doi)
+            figures_count = extract_jats_figures(
+                file_path,
+                output_dir,
+                doi,
+                publisher.lower(),
+            )
         else:
             logger.warning("Skipping figure extraction")
         
         # Extract tables if requested
         if extract_tables:
-            if llm_extractor:
-                tables_count, saved_files = extract_springer_tables(file_path, output_dir, doi, llm_extractor)
-            else:
-                logger.warning("LLM extractor not available - cannot extract tables")
-                tables_count = 0
+            tables_count, saved_files = extract_jats_tables(
+                file_path,
+                output_dir,
+                doi,
+            )
         else:
             logger.warning("Skipping table extraction")
     
@@ -359,7 +374,7 @@ def extract_figures_tables(file_path, publisher, output_dir, doi, llm_extractor,
         else:
             logger.warning("Skipping table extraction")
     
-    elif publisher == 'nature':
+    elif publisher.lower() == 'nature':
         # Extract figures if requested
         if extract_figures:
             figures_count = extract_nature_figures(file_path, output_dir, doi)
