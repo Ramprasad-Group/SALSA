@@ -4,7 +4,6 @@ import json
 import inspect
 import pickle
 import threading
-import time
 import traceback
 import tempfile
 from http.cookies import SimpleCookie
@@ -4984,8 +4983,9 @@ def _render_active_pipeline_run() -> None:
 
         snapshot = _pipeline_status_snapshot(worker)
         st.info(_run_progress_status_text(snapshot))
-        time.sleep(1)
-        _rerun_app()
+        st.caption("This run is still active. Use Refresh status to update progress.")
+        if st.button("Refresh status", key="refresh_active_pipeline_status"):
+            _rerun_app()
         st.stop()
 
     snapshot = _pipeline_status_snapshot(worker)
@@ -5070,8 +5070,12 @@ if _loaded_progress_rr is not None:
                 stage="Cancelling",
             )
             st.warning("Cancellation requested. Stopping the active pipeline step...")
-        time.sleep(1)
-        _rerun_app()
+        st.caption("This run is still active. Use Refresh status to update progress.")
+        if st.button(
+            "Refresh status",
+            key=f"refresh_loaded_progress_{_loaded_progress_rr.run_id}",
+        ):
+            _rerun_app()
         st.stop()
 
 if use_docling_pdf_uploads:
@@ -5351,8 +5355,9 @@ if _run_status_is_active(_loaded_run_status):
             stage="Cancelling",
         )
         st.warning("Cancellation requested. Stopping the active pipeline step...")
-    time.sleep(1)
-    _rerun_app()
+    st.caption("This run is still active. Use Refresh status to update progress.")
+    if st.button("Refresh status", key=f"refresh_loaded_run_{rr.run_id}"):
+        _rerun_app()
     st.stop()
 _render_run_status_outcome(rr.run_id, _loaded_run_status)
 _render_cost_summary(rr.run_dir)

@@ -1,3 +1,4 @@
+.env.development
 .env.production
 src/paper-downloader/paper_downloader/logs/
 src/extract_figure_data/results/

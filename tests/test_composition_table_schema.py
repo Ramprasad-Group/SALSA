@@ -77,6 +77,43 @@ class TestCompositionTableSchema(unittest.TestCase):
             True,
         )
 
+    def test_standard_aliases_do_not_create_duplicate_columns(self):
+        samples = [
+            {
+                "sample_name": "AEM-1",
+                "Sample Name": "AEM-1",
+                "DOI": "10.9999/from-model",
+                "smiles1": "[*]CC[*]",
+                "c1": 1,
+                "additive_smiles1": "O",
+                "additivec1": 0.05,
+                "additive_name_1": "water",
+                "cont_add": 1,
+                "contains_add": 1,
+                "cont_cl": 0,
+                "contains_crosslink": 0,
+                "llm notes": "alias notes",
+                "confidence": 0.5,
+            }
+        ]
+
+        rows, columns = build_composition_table_rows(samples, doi="10.1000/example")
+
+        self.assertEqual(len(columns), len(set(columns)))
+        self.assertNotIn("Sample Name", columns)
+        self.assertNotIn("additivec1", columns)
+        self.assertNotIn("cont_add", columns)
+        self.assertNotIn("cont_cl", columns)
+        self.assertNotIn("llm notes", columns)
+        self.assertEqual(columns.count("DOI"), 1)
+        self.assertEqual(rows[0]["DOI"], "10.1000/example")
+        self.assertEqual(rows[0]["sample_name"], "AEM-1")
+        self.assertEqual(rows[0]["additive_c1"], "0.05")
+        self.assertEqual(rows[0]["contains_add"], "1")
+        self.assertEqual(rows[0]["contains_crosslink"], "0")
+        self.assertEqual(rows[0]["notes"], "alias notes")
+        self.assertEqual(rows[0]["confidence"], "0.5")
+
 
 if __name__ == "__main__":
     unittest.main()

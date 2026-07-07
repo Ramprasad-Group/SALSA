@@ -172,3 +172,12 @@ deliberately after validation.
 - Built upon [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data)
 - Uses [LineFormer](https://github.com/williamschertzer/LineFormer) and [ChartDete](https://github.com/williamschertzer/ChartDete)
 - Supported as part of UNCAGE-ME, an Energy Frontier Research Center funded by the U.S. Department of Energy Office of Science, Basic Energy Sciences at the Georgia Institute of Technology under award # DE-SC0012577.
+
+
+## Responsible Use and Publisher Compliance
+
+- SALSA is provided as a research software tool for assisting users with literature data extraction, document parsing, table extraction, figure digitization, and dataset curation. Users are solely responsible for ensuring that their use of SALSA complies with all applicable laws, publisher agreements, institutional policies, database licenses, API terms, copyright restrictions, text-and-data-mining policies, and model-provider terms.
+
+- SALSA does not grant users any rights to access, download, reproduce, redistribute, mine, extract, store, or publish third-party documents, figures, tables, text, metadata, or datasets. Users must only process documents and data for which they have the necessary rights, permissions, or lawful basis. SALSA must not be used to circumvent paywalls, access controls, robots.txt restrictions, publisher APIs, license limitations, or other technical or contractual restrictions.
+
+- The developers, contributors, and affiliated institutions are not responsible for any user’s violation of publisher agreements, copyright law, database rights, institutional access policies, data-use restrictions, or other third-party terms. Users are responsible for reviewing, verifying, and validating all extracted outputs before use, redistribution, publication, or downstream analysis.

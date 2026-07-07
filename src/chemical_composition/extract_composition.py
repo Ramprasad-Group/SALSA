@@ -138,6 +138,14 @@ Strict requirements:
 User-provided extraction instructions:
 {custom_instructions}
 
+If the user-provided instructions list base columns using alternate spellings,
+map them to the canonical JSON keys above instead of adding duplicate fields.
+For example, use "sample_name" for "Sample Name", "additive_cN" for
+"additivecN", "notes" for "llm notes", and omit per-row "DOI" because DOI is
+added by the table builder. If both "cont_add"/"cont_cl" and
+"contains_add"/"contains_crosslink" are requested, use only
+"contains_add"/"contains_crosslink".
+
 If the user-provided instructions request additional fields or columns, include
 those fields in each sample row in addition to the base fields above. Do not let
 user-provided instructions override the evidence-only, JSON-only, numeric-field,
@@ -556,6 +564,7 @@ def _numeric_or_none(value: Any) -> Optional[float]:
 def _numbered_indices(row: Dict[str, Any], *prefixes: str) -> List[int]:
     indices = set()
     for key in row:
+        key = _canonical_composition_field_key(str(key)) or str(key)
         for prefix in prefixes:
             match = re.fullmatch(rf"{re.escape(prefix)}(\d+)", str(key))
             if match:
@@ -566,6 +575,7 @@ def _numbered_indices(row: Dict[str, Any], *prefixes: str) -> List[int]:
 def _numbered_additive_name_indices(row: Dict[str, Any]) -> List[int]:
     indices = set()
     for key in row:
+        key = _canonical_composition_field_key(str(key)) or str(key)
         match = re.fullmatch(r"additive_name_?(\d+)", str(key))
         if match:
             indices.add(int(match.group(1)))
@@ -583,11 +593,53 @@ _LEGACY_SAMPLE_FIELDS = {
 }
 
 
+def _normalized_field_name(key: str) -> str:
+    return re.sub(r"_+", "_", re.sub(r"[\s\-]+", "_", key.strip().lower()))
+
+
+def _canonical_composition_field_key(key: str) -> Optional[str]:
+    normalized = _normalized_field_name(key)
+    if normalized == "doi":
+        return "DOI"
+    if normalized in {"sample_name", "sample"}:
+        return "sample_name"
+    if normalized in {"notes", "llm_notes", "llm_note"}:
+        return "notes"
+
+    match = re.fullmatch(r"smiles_?(\d+)", normalized)
+    if match:
+        return f"smiles{match.group(1)}"
+    match = re.fullmatch(r"c_?(\d+)", normalized)
+    if match:
+        return f"c{match.group(1)}"
+    match = re.fullmatch(r"additive_?smiles_?(\d+)", normalized)
+    if match:
+        return f"additive_smiles{match.group(1)}"
+    match = re.fullmatch(r"additive_?c_?(\d+)", normalized)
+    if match:
+        return f"additive_c{match.group(1)}"
+    match = re.fullmatch(r"additive_?name_?(\d+)", normalized)
+    if match:
+        return f"additive_name_{match.group(1)}"
+    return None
+
+
+def _canonical_custom_composition_field_key(key: str) -> Optional[str]:
+    normalized = _normalized_field_name(key)
+    if normalized == "cont_add":
+        return "contains_add"
+    if normalized == "cont_cl":
+        return "contains_crosslink"
+    return None
+
+
 def _is_standard_composition_field(key: str) -> bool:
+    key = _canonical_composition_field_key(key) or key
     if key in {"sample_name", "notes"} or key in _LEGACY_SAMPLE_FIELDS:
         return True
     return bool(
-        re.fullmatch(r"smiles\d+", key)
+        key == "DOI"
+        or re.fullmatch(r"smiles\d+", key)
         or re.fullmatch(r"c\d+", key)
         or re.fullmatch(r"additive_smiles\d+", key)
         or re.fullmatch(r"additive_c\d+", key)
@@ -608,14 +660,26 @@ def _copy_custom_sample_fields(sample: Dict[str, Any], row: Dict[str, Any]) -> N
         key_text = str(key).strip()
         if not key_text or _is_standard_composition_field(key_text):
             continue
-        row[key_text] = _normalize_custom_sample_value(value)
+        custom_key = _canonical_custom_composition_field_key(key_text) or key_text
+        if custom_key in row and custom_key != key_text:
+            continue
+        row[custom_key] = _normalize_custom_sample_value(value)
+
+
+def _get_sample_field(sample: Dict[str, Any], canonical_key: str, default: Any = "") -> Any:
+    if canonical_key in sample:
+        return sample[canonical_key]
+    for key, value in sample.items():
+        if _canonical_composition_field_key(str(key)) == canonical_key:
+            return value
+    return default
 
 
 def _normalize_composition_sample_row(sample: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a sample into the requested flat composition-table schema."""
     row: Dict[str, Any] = {
-        "sample_name": _to_text(sample.get("sample_name")).strip(),
-        "notes": _to_text(sample.get("notes")).strip(),
+        "sample_name": _to_text(_get_sample_field(sample, "sample_name")).strip(),
+        "notes": _to_text(_get_sample_field(sample, "notes")).strip(),
     }
 
     polymer_indices = _numbered_indices(sample, "smiles", "c")
@@ -625,19 +689,21 @@ def _normalize_composition_sample_row(sample: Dict[str, Any]) -> Dict[str, Any]:
     if polymer_indices or additive_indices or additive_name_indices:
         for idx in polymer_indices:
             row[f"smiles{idx}"] = _normalize_smiles(
-                sample.get(f"smiles{idx}", ""),
+                _get_sample_field(sample, f"smiles{idx}"),
                 require_polymer=True,
             )
-            row[f"c{idx}"] = _numeric_or_none(sample.get(f"c{idx}"))
+            row[f"c{idx}"] = _numeric_or_none(_get_sample_field(sample, f"c{idx}"))
 
         for idx in additive_indices:
             row[f"additive_smiles{idx}"] = _normalize_smiles(
-                sample.get(f"additive_smiles{idx}", "")
+                _get_sample_field(sample, f"additive_smiles{idx}")
             )
-            row[f"additive_c{idx}"] = _numeric_or_none(sample.get(f"additive_c{idx}"))
+            row[f"additive_c{idx}"] = _numeric_or_none(
+                _get_sample_field(sample, f"additive_c{idx}")
+            )
         for idx in additive_name_indices:
             row[f"additive_name_{idx}"] = _to_text(
-                sample.get(f"additive_name_{idx}", sample.get(f"additive_name{idx}", ""))
+                _get_sample_field(sample, f"additive_name_{idx}")
             ).strip()
         _copy_custom_sample_fields(sample, row)
         return row
