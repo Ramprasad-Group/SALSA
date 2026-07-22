@@ -27,6 +27,7 @@ class DownloadedPdfManifestTests(unittest.TestCase):
             self.assertEqual(manifest[0]["doi"], "10.1016/example")
             self.assertEqual(manifest[0]["safe_doi"], "10.1016@example")
             self.assertEqual(manifest[0]["pdf_path"], str(pdf_path))
+            self.assertEqual(manifest[0]["publisher"], "Elsevier")
 
     def test_downloaded_pdf_sidecar_disables_ocr(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -134,6 +134,9 @@ SALSA/
 │   ├── chemical_composition        # Composition extraction and JSME drawing tool
 │   ├── complete_dataset            # Dataset assembly and row transformation
 │   ├── cost                        # Usage and cost summaries
+│   ├── literature_query            # OpenAlex and Elsevier Scopus DOI search clients
+│   ├── wos_query                   # Web of Science Expanded query to DOI CSV
+│   ├── run_aggregation             # Per-run table, figure, and composition CSVs
 │   ├── extract_figure_data         # OCR, chart detection, masks, and XY extraction
 │   ├── paper-downloader            # Paper acquisition and parsing
 │   ├── setup-scripts               # Environment setup and submodule patching

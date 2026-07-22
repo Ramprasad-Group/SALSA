@@ -130,13 +130,18 @@ def _find_chemical_composition(chem_comp_dir: Path) -> Dict[str, Path]:
     return out
 
 
-def _failure_message(note: dict) -> str:
+def _failure_message(note: dict, publisher: str = "Publisher") -> str:
     message = str(note.get("message") or "").strip()
     if message:
         return message
 
     reason = str(note.get("reason") or "Download failed").strip()
     status_code = note.get("status_code")
+    if reason == "http_error" and status_code in {401, 403, 404}:
+        return (
+            f"{publisher or 'Publisher'} full text is access restricted or unavailable "
+            f"through its configured automated-access API (HTTP {status_code})."
+        )
     if status_code:
         return f"{reason.replace('_', ' ')} (HTTP {status_code})"
     return reason.replace("_", " ")
@@ -190,7 +195,7 @@ def _discover_failures(run_dir: Path) -> list[DoiFailure]:
                     publisher=str(row.get("publisher") or ""),
                     stage="Paper download",
                     status=str(note.get("reason") or "failed"),
-                    message=_failure_message(note),
+                    message=_failure_message(note, str(row.get("publisher") or "Publisher")),
                 ))
         except Exception:
             pass

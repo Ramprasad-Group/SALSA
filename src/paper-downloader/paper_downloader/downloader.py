@@ -15,6 +15,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
+from urllib.parse import quote
 # from email.mime.text import MIMEText
 
 _SRC_ROOT = path.abspath(path.join(path.dirname(__file__), "..", ".."))
@@ -23,6 +24,8 @@ if _SRC_ROOT not in sys.path:
 from ui.run_progress import write_current_doi
 
 MAX_SLEEP_TIME = 7
+OPENALEX_WORKS_ENDPOINT = "https://api.openalex.org/works"
+OPENALEX_CONTENT_ENDPOINT = "https://content.openalex.org/works"
 # FULL_DOWNLOAD_SUCCESSFUL = 1
 # ABSTRACT_DOWNLOAD_SUCCESSFUL = 2
 # LETTER_DOWNLOAD_SUCCESSFUL = 3
@@ -41,6 +44,73 @@ def _append_jsonl(path_str: str, obj: dict):
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=90):
+    """Download OpenAlex's cached PDF before trying credentialed publishers."""
+    api_key = os.environ.get("OPENALEX_API_KEY", "").strip()
+    if not api_key:
+        return False
+
+    output_dir = Path(unstructured_download_directory) / "openalex"
+    output_path = output_dir / f"{doi.replace(path.sep, '@')}.pdf"
+    if _elsevier_pdf_is_complete(output_path, {}):
+        logger.info("Using cached OpenAlex PDF for DOI %s", doi)
+        return True
+    if output_path.exists():
+        output_path.unlink()
+
+    try:
+        metadata_response = requests.get(
+            f"{OPENALEX_WORKS_ENDPOINT}/doi:{quote(doi, safe='/')}",
+            params={"api_key": api_key, "select": "id,content_url,has_content"},
+            headers={"Accept": "application/json"},
+            timeout=timeout_sec,
+        )
+        if metadata_response.status_code != 200:
+            metadata_response.close()
+            logger.info("OpenAlex has no work metadata for DOI %s", doi)
+            return False
+        work = metadata_response.json()
+        metadata_response.close()
+        has_pdf = bool((work.get("has_content") or {}).get("pdf"))
+        if not has_pdf:
+            logger.info("OpenAlex has no cached PDF for DOI %s", doi)
+            return False
+        work_id = str(work.get("id") or "").rstrip("/").rsplit("/", 1)[-1]
+        content_url = str(work.get("content_url") or "").strip()
+        pdf_url = content_url if content_url.endswith(".pdf") else ""
+        if not pdf_url and work_id.startswith("W"):
+            pdf_url = f"{OPENALEX_CONTENT_ENDPOINT}/{work_id}.pdf"
+        if not pdf_url:
+            return False
+
+        pdf_response = requests.get(
+            pdf_url,
+            stream=True,
+            params={"api_key": api_key},
+            headers={"Accept": "application/pdf"},
+            timeout=timeout_sec,
+        )
+        content_type = pdf_response.headers.get("Content-Type", "").lower()
+        if pdf_response.status_code != 200 or "pdf" not in content_type:
+            pdf_response.close()
+            logger.info("OpenAlex cached PDF download failed for DOI %s", doi)
+            return False
+        content = pdf_response.content
+        pdf_response.close()
+        if not content.startswith(b"%PDF-"):
+            logger.info("OpenAlex returned non-PDF content for DOI %s", doi)
+            return False
+        output_dir.mkdir(parents=True, exist_ok=True)
+        partial_path = output_path.with_suffix(".pdf.part")
+        partial_path.write_bytes(content)
+        partial_path.replace(output_path)
+        logger.info("Downloaded DOI %s from OpenAlex cached full text", doi)
+        return True
+    except (requests.RequestException, ValueError, OSError) as exc:
+        logger.info("OpenAlex full-text attempt failed for DOI %s: %s", doi, exc)
+        return False
 
 
 def _xml_local_name(tag):
@@ -632,7 +702,20 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
                     note_entry = {
                         "reason": "aps_not_open_access",
                         "status_code": html_data.status_code,
-                        "message": "APS Harvest did not authorize open-access retrieval for this DOI.",
+                        "message": (
+                            "APS full text is access restricted for this DOI "
+                            f"(HTTP {html_data.status_code})."
+                        ),
+                    }
+                elif html_data.status_code in (401, 403, 404):
+                    note_entry = {
+                        "reason": "access_restricted",
+                        "status_code": html_data.status_code,
+                        "message": (
+                            f"{publisher} full text is access restricted or unavailable "
+                            f"through its configured automated-access API "
+                            f"(HTTP {html_data.status_code})."
+                        ),
                     }
                 else:
                     note_entry = {
@@ -765,6 +848,21 @@ def article_downloader(db, query, download_directory, year_lower, logger_file=No
                     # utils.send_e_mail(message=MIMEText(f'Download has been terminated, please check. \
                                 # Last download_status_check_time={download_status_check_time}\n {msg}').as_string())
                     return False
+            if _try_openalex_pdf(doi, unstructured_download_directory, logger):
+                update_metadata(
+                    db, doc_id, logger,
+                    download_status=config.FULL_DOWNLOAD_SUCCESSFUL,
+                    extension="pdf",
+                    note_entry={"provider": "openalex", "openalex_cached_full_text": True},
+                    download_time_stamp=datetime.now().strftime(config.DATE_TIME_FORMAT),
+                    local_status_log=local_status_log,
+                    doi=doi,
+                    publisher=publisher,
+                    title=title,
+                    year=year,
+                )
+                continue
+
             access = publisher_access_for(doi, publisher)
             if access.plan is None:
                 logger.warning("Skipping DOI %s: %s", doi, access.reason)

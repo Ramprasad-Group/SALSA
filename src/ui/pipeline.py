@@ -297,6 +297,7 @@ def run_full_pipeline(
     run_plextract: bool = True,
     run_llm_figure_extraction: bool = False,
     run_complete_dataset: bool = True,
+    run_aggregation: bool = False,
     skip_llm_figures: bool = True,
     run_chemical_composition: bool = False,
     exclude_full_text: bool = True,
@@ -319,6 +320,7 @@ def run_full_pipeline(
       6) filter figures/tables
       7) plextract.py or direct LLM figure extraction (digitize)
       8) complete-dataset.py (agglomerate + GPT row completion)
+      9) aggregate run-level table/figure and chemical-composition CSVs
     All outputs go under run_root/<run_id>/...
     """
     if run_id is None:
@@ -451,8 +453,9 @@ def run_full_pipeline(
     plextract_workdir = run_dir / "plextract"
     llm_figure_workdir = run_dir / "llm_figure_extraction"
     complete_dataset_dir = run_dir / "complete_dataset"  # NEW
+    aggregated_dir = run_dir / "aggregated"
 
-    for d in [records_dir, papers_dir, reparsed_dir, figures_tables_dir, plextract_workdir, llm_figure_workdir, complete_dataset_dir]:
+    for d in [records_dir, papers_dir, reparsed_dir, figures_tables_dir, plextract_workdir, llm_figure_workdir, complete_dataset_dir, aggregated_dir]:
         d.mkdir(parents=True, exist_ok=True)
 
     # --- 0) write a minimal DOI CSV for records downloader / downstream stages ---
@@ -616,6 +619,8 @@ def run_full_pipeline(
                     tables_dir=tables_d if tables_d.exists() else None,
                     figures_dir=figures_d if figures_d.exists() else None,
                     composition_rules=(custom_instructions or {}).get("chemical_composition_rules", ""),
+                    required_columns=(custom_instructions or {}).get("chemical_composition_columns"),
+                    required_defaults=(custom_instructions or {}).get("chemical_composition_defaults"),
                 )
                 run_chemical_composition_extraction(**cc_kwargs)
                 print(f"[Pipeline] Chemical composition extracted for {doi}")
@@ -737,6 +742,22 @@ def run_full_pipeline(
             ),
             cancel_event=cancel_event,
         )
+
+    # --- 9) run-level CSV aggregation ---
+    if run_aggregation:
+        _status("Aggregating run datasets", doi_scope)
+        if str(scripts_root.resolve()) not in sys.path:
+            sys.path.insert(0, str(scripts_root.resolve()))
+        from run_aggregation import aggregate_run
+
+        result = aggregate_run(run_dir, aggregated_dir)
+        print(
+            f"[Pipeline] Aggregated {result.data_rows} table/figure rows and "
+            f"{result.composition_rows} chemical-composition rows."
+        )
+        for warning in result.warnings:
+            print(f"[Pipeline] WARNING: {warning}")
+        _raise_if_cancelled(cancel_event, status_file=status_file)
 
     # --- discover everything for UI ---
     _status("Loading run results", doi_scope)

@@ -219,6 +219,7 @@ def _save_table(
     doi: str,
     idx: int,
     artifacts_dir: Path | None = None,
+    publisher: str = "Uploaded PDF",
 ) -> bool:
     table_dir.mkdir(parents=True, exist_ok=True)
     label = f"Table {idx}"
@@ -279,13 +280,16 @@ def _save_table(
         "table_image_path": str(image_path) if image_path is not None and image_path.exists() else "",
         "extraction_timestamp": datetime.now().isoformat(),
         "file_type": "table",
-        "publisher": "docling_pdf",
+        "publisher": publisher,
     }
     _write_json(metadata_dir / f"{stem}_metadata.json", meta)
     return True
 
 
-def _save_picture(picture: Any, doc: Any, figure_dir: Path, doi: str, idx: int) -> bool:
+def _save_picture(
+    picture: Any, doc: Any, figure_dir: Path, doi: str, idx: int,
+    publisher: str = "Uploaded PDF",
+) -> bool:
     figure_dir.mkdir(parents=True, exist_ok=True)
     stem = f"Figure_{idx}"
     image_path = figure_dir / f"{stem}.png"
@@ -312,7 +316,7 @@ def _save_picture(picture: Any, doc: Any, figure_dir: Path, doi: str, idx: int) 
         },
         "extraction_timestamp": datetime.now().isoformat(),
         "file_type": "figure",
-        "publisher": "docling_pdf",
+        "publisher": publisher,
     }
     _write_json(figure_dir / f"{stem}_metadata.json", meta)
     return True
@@ -422,6 +426,7 @@ def _extract_manifest_with_docling(
         safe_doi = entry["safe_doi"]
         pdf_path = Path(entry["pdf_path"])
         filename = entry.get("filename") or pdf_path.name
+        publisher = str(entry.get("publisher") or "Uploaded PDF")
         report(f"Processing PDF ({item_number}/{total})", doi)
 
         result = converter.convert(pdf_path)
@@ -436,6 +441,7 @@ def _extract_manifest_with_docling(
         metadata = {
             "doi": doi,
             "directory": "docling_pdf",
+            "publisher": publisher,
             "doctype": "pdf",
             "source_path": str(pdf_path),
             "parsed_at": datetime.now().isoformat(),
@@ -459,20 +465,27 @@ def _extract_manifest_with_docling(
         if run_extract_tables:
             table_dir = figures_tables_dir / "tables" / safe_doi
             for table in getattr(doc, "tables", []) or []:
-                if _save_table(table, doc, table_dir, doi, table_count + 1, artifacts_dir=doi_artifacts_dir):
+                if _save_table(
+                    table, doc, table_dir, doi, table_count + 1,
+                    artifacts_dir=doi_artifacts_dir, publisher=publisher,
+                ):
                     table_count += 1
 
         figure_count = 0
         if run_extract_figures:
             figure_dir = figures_tables_dir / "figures" / safe_doi
             for picture in getattr(doc, "pictures", []) or []:
-                if _save_picture(picture, doc, figure_dir, doi, figure_count + 1):
+                if _save_picture(
+                    picture, doc, figure_dir, doi, figure_count + 1,
+                    publisher=publisher,
+                ):
                     figure_count += 1
 
         index_rows.append({
             "doi": doi,
             "status": "ok",
             "directory": "docling_pdf",
+            "publisher": publisher,
             "doctype": "pdf",
             "title": title,
             "keywords": "",
@@ -510,11 +523,19 @@ def _downloaded_pdf_manifest(run_dir: Path) -> list[dict[str, str]]:
         return manifest
     for pdf_path in sorted(pdf_root.glob("*/*.pdf")):
         safe_doi = pdf_path.stem
+        publisher = {
+            "aps": "APS", "rsc": "RSC", "nature": "Nature",
+            "springer": "Springer", "elsevier": "Elsevier", "wiley": "Wiley",
+            "acs": "ACS", "iop": "IOP", "ieee": "IEEE",
+            "aip": "AIP Publishing", "ecs": "ECS", "plos": "PLOS",
+            "pubmed": "PubMed Central",
+        }.get(pdf_path.parent.name.lower(), pdf_path.parent.name)
         manifest.append({
             "doi": safe_doi.replace("@", "/"),
             "safe_doi": safe_doi,
             "filename": pdf_path.name,
             "pdf_path": str(pdf_path),
+            "publisher": publisher,
         })
     return manifest
 

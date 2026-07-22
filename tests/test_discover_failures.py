@@ -13,6 +13,26 @@ from discover import discover_run
 
 
 class DiscoverFailuresTests(unittest.TestCase):
+    def test_legacy_http_failure_is_described_as_access_restricted(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            logs_dir = run_dir / "papers" / "logs"
+            logs_dir.mkdir(parents=True)
+            status = {
+                "doi": "10.1038/example",
+                "publisher": "Nature",
+                "download_status": 5,
+                "note": {"reason": "http_error", "status_code": 404},
+            }
+            (logs_dir / "download_status.jsonl").write_text(
+                json.dumps(status) + "\n", encoding="utf-8"
+            )
+
+            failure = discover_run(run_dir).failures[0]
+
+            self.assertIn("access restricted", failure.message)
+            self.assertIn("Nature", failure.message)
+
     def test_unknown_prefix_record_failure_is_shown(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"

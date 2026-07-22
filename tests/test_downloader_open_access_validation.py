@@ -45,6 +45,39 @@ class FakeResponse:
 
 
 class OpenAccessValidationTests(unittest.TestCase):
+    def test_openalex_cached_pdf_is_tried_before_publisher_credentials(self):
+        records = pd.DataFrame([{
+            "pi_id": 1, "pid": 1, "doi": "10.1234/example",
+            "publisher": "Example", "title": "Example", "pub_year": 2025,
+        }])
+        metadata = Mock(
+            status_code=200,
+            headers={"Content-Type": "application/json"},
+        )
+        metadata.json.return_value = {
+            "id": "https://openalex.org/W123",
+            "has_content": {"pdf": True},
+            "content_url": "https://content.openalex.org/works/W123.pdf",
+        }
+        pdf = FakeResponse(200, b"%PDF-1.4\nfull text", "application/pdf")
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ", {"OPENALEX_API_KEY": "openalex-key"}
+        ), patch(
+            "paper_downloader.downloader.requests.get", side_effect=[metadata, pdf]
+        ), patch(
+            "paper_downloader.downloader.publisher_access_for"
+        ) as publisher_access:
+            article_downloader(
+                None, None, temp_dir, 2015, logger=Mock(), records_df=records
+            )
+
+            self.assertFalse(publisher_access.called)
+            self.assertTrue(
+                (Path(temp_dir) / "unstructured_files" / "openalex" /
+                 "10.1234@example.pdf").exists()
+            )
+
     def test_pdf_access_plans_are_saved_under_unstructured_files(self):
         plan = PublisherAccessPlan(
             provider="Test PDF API",

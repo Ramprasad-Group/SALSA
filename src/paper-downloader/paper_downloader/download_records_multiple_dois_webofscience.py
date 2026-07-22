@@ -47,7 +47,7 @@ def detect_publisher_from_doi(doi):
         return 'Elsevier'
     elif doi.startswith('10.1002'):
         return 'Wiley'
-    elif doi.startswith('10.1007'):
+    elif doi.startswith(('10.1007', '10.1023')):
         return 'Springer'
     elif doi.startswith('10.1038'):
         return 'Nature'

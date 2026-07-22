@@ -114,6 +114,31 @@ class TestCompositionTableSchema(unittest.TestCase):
         self.assertEqual(rows[0]["notes"], "alias notes")
         self.assertEqual(rows[0]["confidence"], "0.5")
 
+    def test_required_columns_are_exact_and_ordered(self):
+        rows, columns = build_composition_table_rows(
+            [{"sample_name": "A", "formula": "C2H4", "notes": "excluded"}],
+            doi="10.1000/example",
+            required_columns=["sample_name", "DOI", "formula"],
+        )
+
+        self.assertEqual(columns, ["sample_name", "DOI", "formula"])
+        self.assertEqual(rows, [{
+            "sample_name": "A", "DOI": "10.1000/example", "formula": "C2H4"
+        }])
+
+    def test_required_column_defaults_fill_missing_values(self):
+        rows, columns = build_composition_table_rows(
+            [{"sample_name": "A", "formula": ""}],
+            doi="10.1000/example",
+            required_columns=["sample_name", "formula", "phase"],
+            required_defaults={"formula": "Not Found", "phase": "solid"},
+        )
+
+        self.assertEqual(columns, ["sample_name", "formula", "phase"])
+        self.assertEqual(rows[0], {
+            "sample_name": "A", "formula": "Not Found", "phase": "solid"
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

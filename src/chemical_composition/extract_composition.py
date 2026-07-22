@@ -876,6 +876,8 @@ def build_composition_table_rows(
     samples: List[Dict[str, Any]],
     *,
     doi: str = "",
+    required_columns: Optional[List[str]] = None,
+    required_defaults: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, str]], List[str]]:
     """
     Build the sample-level chemical composition table requested by the UI.
@@ -886,6 +888,28 @@ def build_composition_table_rows(
       additive_name_1..additive_name_K, notes.
     """
     normalized_samples = _normalize_composition_samples(samples)
+    if required_columns:
+        columns = list(dict.fromkeys(
+            str(column).strip() for column in required_columns if str(column).strip()
+        ))
+        rows = []
+        for sample in normalized_samples:
+            row = {column: "" for column in columns}
+            for column in columns:
+                if column == "DOI":
+                    row[column] = doi
+                elif re.fullmatch(r"c\d+|additive_c\d+", column):
+                    row[column] = _table_numeric_value(sample.get(column))
+                elif re.fullmatch(r"smiles\d+", column):
+                    row[column] = _normalize_smiles(sample.get(column, ""), require_polymer=True)
+                elif re.fullmatch(r"additive_smiles\d+", column):
+                    row[column] = _normalize_smiles(sample.get(column, ""))
+                else:
+                    row[column] = _to_text(sample.get(column, ""))
+                if row[column] == "" and required_defaults and column in required_defaults:
+                    row[column] = _to_text(required_defaults[column])
+            rows.append(row)
+        return rows, columns
     max_polymer = 3
     max_additive = 3
     max_additive_names = 2
@@ -1181,10 +1205,28 @@ def _build_composition_prompt(
     relevant_content: List[Dict[str, Any]],
     *,
     composition_rules: str = "",
+    required_columns: Optional[List[str]] = None,
+    required_defaults: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build the sample-composition extraction prompt."""
     relevant_prompt_text = _relevant_content_to_prompt_text(relevant_content)
     custom_instructions = (composition_rules or "").strip() or "None."
+    if required_columns:
+        schema_columns = [
+            str(column).strip() for column in required_columns if str(column).strip()
+        ]
+        custom_instructions += (
+            "\n\nAUTHORITATIVE REQUIRED OUTPUT SCHEMA: use exactly these keys in every "
+            "sample row, in addition to the outer 'samples' key. Do not emit any "
+            "other sample-row keys. This list overrides the base-field inclusion "
+            "instructions above, but not their validation rules:\n- "
+            + "\n- ".join(schema_columns)
+        )
+        if required_defaults:
+            custom_instructions += (
+                "\nUse these defaults when evidence does not provide a value:\n"
+                + json.dumps(required_defaults, ensure_ascii=False, indent=2)
+            )
     return _COMPOSITION_EXTRACTION_PROMPT.format(
         relevant_content=relevant_prompt_text,
         custom_instructions=custom_instructions,
@@ -1241,6 +1283,8 @@ def extract_composition_from_relevant_content_llm(
     *,
     doi: str = "",
     composition_rules: str = "",
+    required_columns: Optional[List[str]] = None,
+    required_defaults: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Extract flat sample composition rows from previously selected evidence."""
     relevant_prompt_text = _relevant_content_to_prompt_text(relevant_content)
@@ -1250,6 +1294,8 @@ def extract_composition_from_relevant_content_llm(
     prompt = _build_composition_prompt(
         relevant_content,
         composition_rules=composition_rules,
+        required_columns=required_columns,
+        required_defaults=required_defaults,
     )
     _write_debug_text(doi, "samples_prompt.txt", prompt)
     client, used_step_llm_override = _get_chemical_composition_client(LLM_STEP_CHEM_COMPOSITION)
@@ -1283,6 +1329,8 @@ def extract_chemical_composition_combined(
     doi: str = "",
     figures_dir: Optional[Path] = None,
     composition_rules: str = "",
+    required_columns: Optional[List[str]] = None,
+    required_defaults: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Compatibility wrapper that identifies relevant content, then extracts
@@ -1314,6 +1362,8 @@ def extract_chemical_composition_combined(
         relevant,
         doi=doi,
         composition_rules=composition_rules,
+        required_columns=required_columns,
+        required_defaults=required_defaults,
     )
     return {"relevant_content": relevant, "samples": samples}
 
@@ -1364,6 +1414,8 @@ def run_chemical_composition_extraction(
     tables_dir: Optional[Path] = None,
     figures_dir: Optional[Path] = None,
     composition_rules: str = "",
+    required_columns: Optional[List[str]] = None,
+    required_defaults: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     End-to-end extraction for one DOI.
@@ -1447,6 +1499,8 @@ def run_chemical_composition_extraction(
         doi=doi_str,
         figures_dir=figures_dir,
         composition_rules=composition_rules,
+        required_columns=required_columns,
+        required_defaults=required_defaults,
     )
 
     result = {
@@ -1529,7 +1583,12 @@ def run_chemical_composition_extraction(
 
     # Produce the UI-facing sample-level composition table:
     # sample_name, smiles1..smilesN, c1..cN, additive_smiles1.., additive_c1..
-    composition_rows, composition_columns = build_composition_table_rows(samples, doi=doi_str)
+    composition_rows, composition_columns = build_composition_table_rows(
+        samples,
+        doi=doi_str,
+        required_columns=required_columns,
+        required_defaults=required_defaults,
+    )
     df = pd.DataFrame(composition_rows, columns=composition_columns)
     df.to_csv(out_dir / "samples.csv", index=False)
 

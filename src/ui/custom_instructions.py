@@ -67,6 +67,15 @@ DEFAULT_OUTPUT_COLUMNS = [
     "source_name",
 ]
 
+DEFAULT_CHEMICAL_COMPOSITION_COLUMNS = [
+    "DOI", "sample_name",
+    "smiles1", "smiles2", "smiles3",
+    "c1", "c2", "c3",
+    "additive_smiles1", "additive_smiles2", "additive_smiles3",
+    "additive_c1", "additive_c2", "additive_c3",
+    "additive_name_1", "additive_name_2", "notes",
+]
+
 DEFAULT_MISSING_VALUE_DEFAULTS = {
     "Sample Name": "None Not Found",
     "time(h)": "0 Not Found",
@@ -87,6 +96,8 @@ def _fallback_default_instructions() -> Dict[str, Any]:
         "table_filter_criteria": DEFAULT_TABLE_FILTER_CRITERIA,
         "data_processing_rules": DEFAULT_DATA_PROCESSING_RULES,
         "output_columns": list(DEFAULT_OUTPUT_COLUMNS),
+        "chemical_composition_columns": list(DEFAULT_CHEMICAL_COMPOSITION_COLUMNS),
+        "chemical_composition_defaults": {},
         "missing_value_defaults": dict(DEFAULT_MISSING_VALUE_DEFAULTS),
     }
 

@@ -20,6 +20,7 @@ from streamlit_drawable_canvas import CanvasResult, _component_func, _data_url_t
 from pipeline import (
     ADMIN_INPUT_ITEM_LIMIT,
     DEFAULT_INPUT_ITEM_LIMIT,
+    _subprocess_env_for_llm_step,
 )
 from discover import discover_run
 from schemas import RunResult
@@ -48,6 +49,7 @@ from custom_instructions import (
     DEFAULT_TABLE_EXTRACTION_RULES,
     default_instructions,
 )
+from canvas_geometry import fabric_circle_center
 import numpy as np
 import cv2
 from cropping import save_crops
@@ -103,11 +105,11 @@ from llm_step_config import (
     LLM_STEP_LABELS,
     LLM_STEP_ENV_PREFIXES,
     step_env_names,
-    step_env_to_general_env_map,
 )
 
 SALSA_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "salsa_icon.png"
 PUBLISHER_TDM_ENV_NAMES = {
+    "openalex_api_key": ("OPENALEX_API_KEY",),
     "elsevier_api_key": ("ELSEVIER_API_KEY", "ELS_API_KEY"),
     "wiley_tdm_token": ("WILEY_TDM_TOKEN", "WILEY_API_KEY"),
     "springer_nature_api_key": ("SPRINGER_NATURE_API_KEY", "SPRINGER_API_KEY"),
@@ -115,6 +117,13 @@ PUBLISHER_TDM_ENV_NAMES = {
     "ncbi_api_key": ("NCBI_API_KEY", "PUBMED_API_KEY"),
     "ieee_api_key": ("IEEE_API_KEY", "IEEE_XPLORE_API_KEY"),
 }
+LEGACY_PROCESSING_LLM_ENV_VARS = (
+    "SALSA_PROCESSING_LLM_PROVIDER",
+    "SALSA_PROCESSING_LLM_MODEL",
+    "SALSA_PROCESSING_OPENAI_BASE_URL",
+    "SALSA_PROCESSING_OPENAI_API_KEY",
+    "SALSA_PROCESSING_OLLAMA_NUM_CTX",
+)
 _INITIAL_PUBLISHER_TDM_ENV = {
     env_name: os.environ.get(env_name)
     for env_names in PUBLISHER_TDM_ENV_NAMES.values()
@@ -948,11 +957,7 @@ def render_axis_configuration_dropdown(
             circles = [o for o in objs if o.get("type") == "circle"]
             if not circles:
                 return None
-            o = circles[-1]
-            left = float(o.get("left", 0.0))
-            top = float(o.get("top", 0.0))
-            r = float(o.get("radius", 0.0)) * float(o.get("scaleX", 1.0))
-            return left + r, top + r
+            return fabric_circle_center(circles[-1])
 
         click = _last_circle_center(getattr(canvas, "json_data", None))
 
@@ -1554,9 +1559,7 @@ def render_series_management_dropdown(
                 if point_canvas is not None and point_canvas.json_data and "objects" in point_canvas.json_data:
                     for obj2 in point_canvas.json_data["objects"]:
                         if obj2.get("type") == "circle":
-                            r2 = float(obj2.get("radius", dot_size))
-                            cxd = float(obj2.get("left", 0)) + r2
-                            cyd = float(obj2.get("top", 0)) + r2
+                            cxd, cyd = fabric_circle_center(obj2)
                             new_pts.append({"x": cxd * scale_x_s, "y": cyd * scale_y_s})
                 new_pts.sort(key=lambda p: p["x"])
 
@@ -1915,18 +1918,39 @@ def collect_all_emit_rows(run_dir: Path, doi: str, doi_item) -> pd.DataFrame:
 
     return combined
 
+def _publisher_name_from_doi(doi: str) -> str:
+    doi = str(doi).lower()
+    prefix_publishers = (
+        (("10.1016/", "10.1006/"), "Elsevier"),
+        (("10.1002/",), "Wiley"),
+        (("10.1007/", "10.1023/"), "Springer"),
+        (("10.1038/",), "Nature"),
+        (("10.1021/",), "ACS"),
+        (("10.1039/",), "RSC"),
+        (("10.1103/",), "APS"),
+        (("10.1063/",), "AIP Publishing"),
+        (("10.1088/",), "IOP"),
+        (("10.1149/",), "ECS"),
+        (("10.1109/",), "IEEE"),
+    )
+    return next(
+        (publisher for prefixes, publisher in prefix_publishers if doi.startswith(prefixes)),
+        "Unknown",
+    )
+
+
 def build_doi_stats(rr: RunResult, *, doi_order: list[str] | None = None) -> pd.DataFrame:
     def _publisher_for_doi(doi_item) -> str:
         for key in ("publisher", "Publisher", "directory"):
             value = doi_item.extra.get(key)
-            if value not in (None, ""):
+            if value not in (None, "") and str(value).lower() != "docling_pdf":
                 return str(value)
         for collection in (doi_item.tables or [], doi_item.figures or []):
             for item in collection:
                 value = item.extra.get("publisher") or item.extra.get("Publisher")
-                if value not in (None, ""):
+                if value not in (None, "") and str(value).lower() != "docling_pdf":
                     return str(value)
-        return ""
+        return _publisher_name_from_doi(doi_item.doi)
 
     def _chemical_sample_count(doi_item) -> int:
         csv_path = doi_item.extra.get("chemical_composition_csv")
@@ -2143,6 +2167,20 @@ def ensure_canvas_post_mount_remount(*, mount_key: str, version_key: str):
         st.session_state[version_key] += 1
         st.rerun()
 
+def reset_intervention_canvas_mounts(*, key_scope: str) -> None:
+    """Forget canvas mount state before an intervention section is reopened."""
+    mount_markers = (
+        "_canvas_boot",
+        "_canvas_mounted_",
+        "_ax_calib_boot",
+        "_ax_calib_mounted_",
+        "_series_canvas_boot",
+        "_series_canvas_mounted_",
+    )
+    for key in list(st.session_state.keys()):
+        if key_scope in key and any(marker in key for marker in mount_markers):
+            st.session_state.pop(key, None)
+
 _STEP_LLM_RENDER_ORDER = [
     LLM_STEP_EXTRACT_TABLES,
     LLM_STEP_CHEM_RELEVANT,
@@ -2164,6 +2202,10 @@ def _ensure_shared_llm_settings_in_state() -> None:
         st.session_state["openai_api_key"] = ""
     if "elsevier_api_key" not in st.session_state:
         st.session_state["elsevier_api_key"] = ""
+    if "openalex_api_key" not in st.session_state:
+        st.session_state["openalex_api_key"] = ""
+    if "scopus_inst_token" not in st.session_state:
+        st.session_state["scopus_inst_token"] = ""
     if "wiley_tdm_token" not in st.session_state:
         st.session_state["wiley_tdm_token"] = ""
     if "springer_nature_api_key" not in st.session_state:
@@ -2271,15 +2313,20 @@ def _sync_all_step_llm_envs_from_session() -> None:
         _sync_step_llm_env_from_session(step_key)
 
 
-def _general_llm_env_for_step(step_key: str) -> dict[str, str]:
-    env = os.environ.copy()
-    _clear_general_llm_env(env)
-    for step_env, general_env in step_env_to_general_env_map(step_key).items():
-        value = os.environ.get(step_env, "").strip()
-        if value:
-            env[general_env] = value
-        else:
-            env.pop(general_env, None)
+def _complete_dataset_env_for_current_settings(rr: RunResult) -> dict[str, str]:
+    _sync_all_step_llm_envs_from_session()
+    env = _subprocess_env_for_llm_step(LLM_STEP_COMPLETE_DATASET)
+    for key in LEGACY_PROCESSING_LLM_ENV_VARS:
+        env.pop(key, None)
+    ci = st.session_state.get("custom_instructions")
+    if not isinstance(ci, dict):
+        ci = default_instructions()
+    ci_path = rr.run_dir / "interventions" / "current_complete_dataset_settings.json"
+    ci_path.parent.mkdir(parents=True, exist_ok=True)
+    ci_path.write_text(json.dumps(ci, indent=2) + "\n", encoding="utf-8")
+    env["SALSA_CUSTOM_INSTRUCTIONS"] = str(ci_path)
+    env["SALSA_RUN_ID"] = rr.run_id
+    env["SALSA_RUN_DIR"] = str(rr.run_dir)
     return env
 
 
@@ -2827,9 +2874,10 @@ def _render_guide_page() -> None:
         st.markdown(
             """
 1. Choose or create a workspace in the sidebar.
-2. In **Input Source**, choose **DOI(s)**, **PDF(s)**, or **Figure(s)**.
+2. In **Input Source**, choose **DOI(s)**, **Query**, **PDF(s)**, or **Figure(s)**.
 3. Provide the inputs:
    - **DOI(s):** paste one DOI per line, up to 10 for standard accounts or 100 for administrators.
+   - **Query:** select OpenAlex, Web of Science, or Elsevier Scopus, save the corresponding API credential in the settings preset, and enter a provider-compatible query. SALSA retrieves matching DOIs before starting the run.
    - **PDF(s):** upload up to 10 PDFs for standard accounts or 100 for administrators. Optionally add one document ID per PDF so outputs use a readable identifier instead of the filename.
    - **Figure(s):** upload up to 10 image files for standard accounts or 100 for administrators. Optionally add a figure set ID and one caption per uploaded figure.
 4. In **Run configuration**, enter a **Run Name** if you want a stable name. Leave it blank to use a timestamp.
@@ -2843,6 +2891,7 @@ Run names may contain letters, numbers, underscores, periods, and dashes. A name
         st.markdown(
             """
 - Use **DOI(s)** when SALSA should download and parse papers for you.
+- Use **Query** to create the run's DOI list from OpenAlex, Web of Science, or Elsevier Scopus.
 - Use **PDF(s)** when you already have the papers locally or want to process documents that are not easy to fetch by DOI.
 - Use **Figure(s)** when you only need figure data extraction from uploaded images. In this mode, table extraction and chemical composition extraction are disabled because there is no full paper context.
             """
@@ -2906,7 +2955,7 @@ After loading, SALSA shows the run ID, workspace, cost summary, and a **Processe
             """
 - **Tables:** inspect extracted table files and any LLM-generated dataset rows.
 - **Figures:** inspect the original figure image, OCR-extracted data, and completed-dataset rows.
-- **Dataset:** review the combined output that SALSA will export downstream.
+- **Dataset:** when **Agglomerate run datasets** was selected, review and download the run-wide LLM table/figure data and chemical-composition CSVs.
 - **Cost summary:** compare stage-level usage when changing presets or models.
             """
         )
@@ -2972,12 +3021,7 @@ def clear_processing_llm_env_if_disabled() -> None:
     """Prevent stale processing-model env vars from affecting in-process reruns."""
     if st.session_state.get("use_separate_processing_llm"):
         return
-    for key in (
-        "SALSA_PROCESSING_LLM_PROVIDER",
-        "SALSA_PROCESSING_LLM_MODEL",
-        "SALSA_PROCESSING_OPENAI_BASE_URL",
-        "SALSA_PROCESSING_OPENAI_API_KEY",
-    ):
+    for key in LEGACY_PROCESSING_LLM_ENV_VARS:
         os.environ.pop(key, None)
 
 
@@ -2985,6 +3029,8 @@ _CI_COLUMN_NAME = "column name"
 _CI_DEFAULT_VALUE = "default value"
 _CI_COLUMN_DEFAULTS_SOURCE_KEY = "ci_column_defaults_table_source"
 _CI_COLUMN_DEFAULTS_VERSION_KEY = "ci_column_defaults_table_version"
+_CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY = "ci_chemical_column_defaults_table_source"
+_CI_CHEM_COLUMN_DEFAULTS_VERSION_KEY = "ci_chemical_column_defaults_table_version"
 _CI_PENDING_APPLY_KEY = "ci_pending_apply"
 _CI_FLASH_MESSAGE_KEY = "ci_flash_message"
 _CI_EDITOR_KEYS = (
@@ -2996,15 +3042,22 @@ _CI_EDITOR_KEYS = (
     "ci_data_processing",
     _CI_COLUMN_DEFAULTS_SOURCE_KEY,
     _CI_COLUMN_DEFAULTS_VERSION_KEY,
+    _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
+    _CI_CHEM_COLUMN_DEFAULTS_VERSION_KEY,
 )
 
 
-def _column_defaults_table_from_instructions(ci: dict[str, Any]) -> pd.DataFrame:
-    output_columns = ci.get("output_columns", [])
+def _column_defaults_table_from_instructions(
+    ci: dict[str, Any],
+    *,
+    columns_key: str = "output_columns",
+    defaults_key: str = "missing_value_defaults",
+) -> pd.DataFrame:
+    output_columns = ci.get(columns_key, [])
     if isinstance(output_columns, str):
         output_columns = [c.strip() for c in output_columns.splitlines() if c.strip()]
 
-    missing_defaults = ci.get("missing_value_defaults", {})
+    missing_defaults = ci.get(defaults_key, {})
     if isinstance(missing_defaults, str):
         try:
             missing_defaults = json.loads(missing_defaults)
@@ -3080,13 +3133,21 @@ def _normalize_column_defaults_table(
     return output_columns, missing_defaults
 
 
-def _custom_instructions_from_editor_state(column_defaults_table: Any) -> dict[str, Any]:
+def _custom_instructions_from_editor_state(
+    column_defaults_table: Any,
+    chemical_column_defaults_table: Any,
+) -> dict[str, Any]:
     output_columns, missing_defaults = _normalize_column_defaults_table(column_defaults_table)
+    chemical_columns, chemical_defaults = _normalize_column_defaults_table(
+        chemical_column_defaults_table
+    )
     return {
         "table_extraction_rules": st.session_state.get("ci_table_extraction", ""),
         "figure_filter_criteria": st.session_state.get("ci_figure_filter", ""),
         "table_filter_criteria": st.session_state.get("ci_table_filter", ""),
         "chemical_composition_rules": st.session_state.get("ci_chemical_composition", ""),
+        "chemical_composition_columns": chemical_columns,
+        "chemical_composition_defaults": chemical_defaults,
         "figure_data_extraction_rules": st.session_state.get("ci_figure_data", ""),
         "data_processing_rules": st.session_state.get("ci_data_processing", ""),
         "output_columns": output_columns,
@@ -3097,6 +3158,11 @@ def _custom_instructions_from_editor_state(column_defaults_table: Any) -> dict[s
 def _ci_column_defaults_widget_key() -> str:
     version = int(st.session_state.get(_CI_COLUMN_DEFAULTS_VERSION_KEY, 0))
     return f"ci_column_defaults_table_widget_{version}"
+
+
+def _ci_chemical_column_defaults_widget_key() -> str:
+    version = int(st.session_state.get(_CI_CHEM_COLUMN_DEFAULTS_VERSION_KEY, 0))
+    return f"ci_chemical_column_defaults_table_widget_{version}"
 
 
 def _apply_custom_instruction_state(
@@ -3110,13 +3176,31 @@ def _apply_custom_instruction_state(
     st.session_state["ci_figure_filter"] = ci.get("figure_filter_criteria", "")
     st.session_state["ci_table_filter"] = ci.get("table_filter_criteria", "")
     st.session_state["ci_chemical_composition"] = ci.get("chemical_composition_rules", "")
+    composition_columns = ci.get("chemical_composition_columns")
+    if composition_columns is None:
+        composition_columns = default_instructions().get(
+            "chemical_composition_columns", []
+        )
     st.session_state["ci_figure_data"] = ci.get("figure_data_extraction_rules", "")
     st.session_state["ci_data_processing"] = ci.get("data_processing_rules", "")
     if _CI_COLUMN_DEFAULTS_VERSION_KEY not in st.session_state:
         st.session_state[_CI_COLUMN_DEFAULTS_VERSION_KEY] = 0
     else:
         st.session_state[_CI_COLUMN_DEFAULTS_VERSION_KEY] += 1
+    if _CI_CHEM_COLUMN_DEFAULTS_VERSION_KEY not in st.session_state:
+        st.session_state[_CI_CHEM_COLUMN_DEFAULTS_VERSION_KEY] = 0
+    else:
+        st.session_state[_CI_CHEM_COLUMN_DEFAULTS_VERSION_KEY] += 1
     st.session_state[_CI_COLUMN_DEFAULTS_SOURCE_KEY] = _column_defaults_table_from_instructions(ci)
+    chemical_ci = dict(ci)
+    chemical_ci["chemical_composition_columns"] = composition_columns
+    st.session_state[_CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY] = (
+        _column_defaults_table_from_instructions(
+            chemical_ci,
+            columns_key="chemical_composition_columns",
+            defaults_key="chemical_composition_defaults",
+        )
+    )
     st.session_state["ci_new_preset_name"] = preset_name or ""
 
 
@@ -3163,6 +3247,7 @@ _STAGE_STATE_KEYS = {
     "bypass_ocr_with_llm": "settings_bypass_ocr_with_llm",
     "run_chemical_composition": "settings_run_chemical_composition",
     "run_complete_dataset": "settings_run_complete_dataset",
+    "run_aggregation": "settings_run_aggregation",
 }
 
 _DEFAULT_STAGE_SETTINGS = {
@@ -3176,6 +3261,7 @@ _DEFAULT_STAGE_SETTINGS = {
     "bypass_ocr_with_llm": False,
     "run_chemical_composition": False,
     "run_complete_dataset": True,
+    "run_aggregation": False,
 }
 
 _DEFAULT_OUTPUT_COLUMNS = [
@@ -3297,6 +3383,9 @@ def _make_settings_preset(
     rsc_tdm_token: str = "",
     ncbi_api_key: str = "",
     ieee_api_key: str = "",
+    wos_api_key: str = "",
+    openalex_api_key: str = "",
+    scopus_inst_token: str = "",
 ) -> dict[str, Any]:
     llm_steps = dict(llm_steps or _settings_default_llm_steps())
     if include_session_llms:
@@ -3315,6 +3404,9 @@ def _make_settings_preset(
         "rsc_tdm_token": rsc_tdm_token,
         "ncbi_api_key": ncbi_api_key,
         "ieee_api_key": ieee_api_key,
+        "wos_api_key": wos_api_key,
+        "openalex_api_key": openalex_api_key,
+        "scopus_inst_token": scopus_inst_token,
         "openai_base_url": st.session_state.get("openai_base_url", "https://api.openai.com/v1")
         if include_session_llms
         else "https://api.openai.com/v1",
@@ -3375,6 +3467,9 @@ def _normalize_settings_preset(data: dict[str, Any]) -> dict[str, Any]:
         "rsc_tdm_token",
         "ncbi_api_key",
         "ieee_api_key",
+        "wos_api_key",
+        "openalex_api_key",
+        "scopus_inst_token",
         "openai_base_url",
         "ollama_host",
         "ollama_models_dir",
@@ -3412,6 +3507,9 @@ def _current_settings_preset_from_state(current_ci: dict[str, Any]) -> dict[str,
         rsc_tdm_token=str(st.session_state.get("rsc_tdm_token", "")).strip(),
         ncbi_api_key=str(st.session_state.get("ncbi_api_key", "")).strip(),
         ieee_api_key=str(st.session_state.get("ieee_api_key", "")).strip(),
+        wos_api_key=str(st.session_state.get("wos_api_key", "")).strip(),
+        openalex_api_key=str(st.session_state.get("openalex_api_key", "")).strip(),
+        scopus_inst_token=str(st.session_state.get("scopus_inst_token", "")).strip(),
     )
 
 
@@ -3432,6 +3530,9 @@ def _apply_settings_preset_state(settings: dict[str, Any], *, preset_name: Optio
     st.session_state["rsc_tdm_token"] = str(settings.get("rsc_tdm_token") or "")
     st.session_state["ncbi_api_key"] = str(settings.get("ncbi_api_key") or "")
     st.session_state["ieee_api_key"] = str(settings.get("ieee_api_key") or "")
+    st.session_state["wos_api_key"] = str(settings.get("wos_api_key") or "")
+    st.session_state["openalex_api_key"] = str(settings.get("openalex_api_key") or "")
+    st.session_state["scopus_inst_token"] = str(settings.get("scopus_inst_token") or "")
     st.session_state["openai_base_url"] = str(
         settings.get("openai_base_url") or "https://api.openai.com/v1"
     )
@@ -4125,13 +4226,14 @@ with st.sidebar:
     st.header("Input Source")
     input_source = st.radio(
         "Input source",
-        options=["DOI(s)", "PDF(s)", "Figure(s)"],
+        options=["DOI(s)", "Query", "PDF(s)", "Figure(s)"],
         horizontal=True,
         key="input_source",
         label_visibility="collapsed",
     )
     use_docling_pdf_uploads = input_source == "PDF(s)"
     use_figure_uploads = input_source == "Figure(s)"
+    use_query = input_source == "Query"
     use_file_uploads = use_docling_pdf_uploads or use_figure_uploads
 
     st.divider()
@@ -4166,9 +4268,37 @@ with st.sidebar:
             help="Required for every selected stage that uses Chat GPT.",
             on_change=_keep_create_settings_preset_open,
         )
+        st.text_input(
+            "WOS API Expanded key",
+            key="wos_api_key",
+            type="password",
+            placeholder="Clarivate API key",
+            help="Web of Science API.",
+            on_change=_keep_create_settings_preset_open,
+        )
+        # query_key_cols = st.columns(2)
+        # with query_key_cols[0]:
+        st.text_input(
+            "OpenAlex API key",
+            key="openalex_api_key",
+            type="password",
+            help=(
+                "Used for OpenAlex keyword/semantic queries and cached full-text "
+                "downloads. OpenAlex applies its own API usage limits."
+            ),
+            on_change=_keep_create_settings_preset_open,
+        )
+        # with query_key_cols[1]:
+        st.text_input(
+            "Scopus API key",
+            key="scopus_inst_token",
+            type="password",
+            on_change=_keep_create_settings_preset_open,
+        )
         st.caption(
-            "DOI redirects do not grant full-text access. SALSA uses documented "
-            "publisher APIs only; upload an authorized PDF for other publishers."
+            "SALSA tries OpenAlex cached full text first, then documented publisher "
+            "APIs. DOI redirects do not grant full-text access; upload an authorized "
+            "PDF when neither source can provide one."
         )
         st.caption(
             "Sources with no API Key required",
@@ -4184,7 +4314,6 @@ with st.sidebar:
                 key="elsevier_api_key",
                 type="password",
                 placeholder="Elsevier API key",
-                help="Used for Elsevier TDM article and figure downloads.",
                 on_change=_keep_create_settings_preset_open,
             )
         with publisher_key_cols[1]:
@@ -4193,17 +4322,15 @@ with st.sidebar:
                 key="wiley_tdm_token",
                 type="password",
                 placeholder="Wiley API Key",
-                help="Used for Wiley TDM article and figure downloads.",
                 on_change=_keep_create_settings_preset_open,
             )
         publisher_key_cols = st.columns(2)
         with publisher_key_cols[0]:
             st.text_input(
-                "Springer Nature API key",
+                "Springer API key",
                 key="springer_nature_api_key",
                 type="password",
-                placeholder="Springer Nature API key",
-                help="Used for open-access JATS full text from Springer Nature.",
+                placeholder="Springer API key",
                 on_change=_keep_create_settings_preset_open,
             )
         with publisher_key_cols[1]:
@@ -4212,7 +4339,6 @@ with st.sidebar:
                 key="ieee_api_key",
                 type="password",
                 placeholder="IEEE Xplore API key",
-                help="Used for IEEE Open Access or licensed full-text API retrieval.",
                 on_change=_keep_create_settings_preset_open,
             )
         publisher_key_cols = st.columns(2)
@@ -4222,16 +4348,14 @@ with st.sidebar:
                 key="rsc_tdm_token",
                 type="password",
                 placeholder="RSC API Key",
-                help="Used for RSC API requests.",
                 on_change=_keep_create_settings_preset_open,
             )
         with publisher_key_cols[1]:
             st.text_input(
-                "NCBI API key (optional)",
+                "NCBI API key",
                 key="ncbi_api_key",
                 type="password",
                 placeholder="Optional PubMed/PMC key",
-                help="PubMed Central works without a key; a key permits higher NCBI request rates.",
                 on_change=_keep_create_settings_preset_open,
             )
 
@@ -4318,6 +4442,12 @@ with st.sidebar:
             _STAGE_STATE_KEYS["run_complete_dataset"],
             _DEFAULT_STAGE_SETTINGS["run_complete_dataset"],
         )
+        run_aggregation = _settings_checkbox(
+            "Agglomerate run datasets",
+            _STAGE_STATE_KEYS["run_aggregation"],
+            _DEFAULT_STAGE_SETTINGS["run_aggregation"],
+            help="After dataset completion, create one table/figure CSV and one chemical-composition CSV for the run.",
+        )
 
         ci = st.session_state["custom_instructions"]
         ollama_host = _normalize_ollama_host(
@@ -4368,6 +4498,14 @@ with st.sidebar:
                 )
             st.divider()
 
+        chemical_column_defaults_table = st.session_state.get(
+            _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
+            _column_defaults_table_from_instructions(
+                ci,
+                columns_key="chemical_composition_columns",
+                defaults_key="chemical_composition_defaults",
+            ),
+        )
         if run_chemical_composition:
             with st.container():
                 _render_step_llm_selector(
@@ -4389,6 +4527,15 @@ with st.sidebar:
                     "Chemical composition instructions",
                     "ci_chemical_composition",
                     height=120,
+                )
+                st.caption("Required chemical composition columns and missing-value defaults")
+                chemical_column_defaults_table = st.data_editor(
+                    chemical_column_defaults_table,
+                    hide_index=True,
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    key=_ci_chemical_column_defaults_widget_key(),
+                    on_change=_keep_create_settings_preset_open,
                 )
             st.divider()
 
@@ -4469,7 +4616,10 @@ with st.sidebar:
                     on_change=_keep_create_settings_preset_open,
                 )
 
-        current_ci = _custom_instructions_from_editor_state(ci_column_defaults_table)
+        current_ci = _custom_instructions_from_editor_state(
+            ci_column_defaults_table,
+            chemical_column_defaults_table,
+        )
         st.session_state["custom_instructions"] = current_ci
 
         st.subheader("Save Preset")
@@ -4499,6 +4649,7 @@ with st.sidebar:
                         "bypass_ocr_with_llm": bypass_ocr_with_llm,
                         "run_chemical_composition": run_chemical_composition,
                         "run_complete_dataset": run_complete_dataset,
+                        "run_aggregation": run_aggregation,
                     },
                     custom_instructions=current_ci,
                     include_session_llms=True,
@@ -4511,6 +4662,9 @@ with st.sidebar:
                     rsc_tdm_token=str(st.session_state.get("rsc_tdm_token", "")).strip(),
                     ncbi_api_key=str(st.session_state.get("ncbi_api_key", "")).strip(),
                     ieee_api_key=str(st.session_state.get("ieee_api_key", "")).strip(),
+                    wos_api_key=str(st.session_state.get("wos_api_key", "")).strip(),
+                    openalex_api_key=str(st.session_state.get("openalex_api_key", "")).strip(),
+                    scopus_inst_token=str(st.session_state.get("scopus_inst_token", "")).strip(),
                 )
                 _save_settings_preset(workspaces_root, clean_preset_name, current_settings)
                 _queue_settings_preset_state(
@@ -5078,7 +5232,80 @@ if _loaded_progress_rr is not None:
             _rerun_app()
         st.stop()
 
-if use_docling_pdf_uploads:
+if use_query:
+    st.subheader("Literature query")
+    query_provider = st.selectbox(
+        "Query provider",
+        options=["OpenAlex", "Web of Science", "Elsevier Scopus"],
+        key="query_provider",
+    )
+    query_examples = {
+        "OpenAlex": ("e.g. anion exchange membranes, dielectric constant, ROMP ", "Plain-text search across OpenAlex works."),
+        "Web of Science": ('TS=("anion exchange membrane")', "Web of Science advanced-search syntax."),
+        "Elsevier Scopus": ('TITLE-ABS-KEY("anion exchange membrane")', "Scopus Search API query syntax."),
+    }
+    query_placeholder, query_help = query_examples[query_provider]
+    literature_query_text = st.text_area(
+        f"{query_provider} query",
+        height=140,
+        placeholder=query_placeholder,
+        help=query_help,
+    )
+    openalex_publisher = ""
+    openalex_open_access = "Any"
+    openalex_sort_label = "Relevance (highest first)"
+    openalex_top_dois = MAX_INPUT_ITEMS
+    if query_provider == "OpenAlex":
+        openalex_filter_cols = st.columns(2)
+        with openalex_filter_cols[0]:
+            openalex_search_mode = st.selectbox(
+                "Search mode",
+                options=["Semantic", "Keyword"],
+                help=(
+                    "Semantic search matches meaning and works best with a detailed "
+                    "research description. Keyword search matches terms in indexed text."
+                ),
+            )
+            openalex_sort_label = st.selectbox(
+                "Result ranking",
+                options=["Relevance (highest first)", "Most cited", "Newest"],
+            )
+            openalex_publisher = st.text_input(
+                "Publisher (optional)",
+                placeholder="e.g. Elsevier",
+            )
+        with openalex_filter_cols[1]:
+            openalex_open_access = st.selectbox(
+                "Open-access filter",
+                options=["Any", "Open access only", "Closed access only"],
+            )
+            openalex_top_dois = int(st.number_input(
+                "Top DOIs to use",
+                min_value=1,
+                max_value=min(
+                    MAX_INPUT_ITEMS,
+                    50 if openalex_search_mode == "Semantic" else MAX_INPUT_ITEMS,
+                ),
+                value=min(
+                    MAX_INPUT_ITEMS,
+                    50 if openalex_search_mode == "Semantic" else MAX_INPUT_ITEMS,
+                ),
+                step=1,
+                help=(
+                    "SALSA follows the selected ranking and keeps this many unique "
+                    "DOI-bearing works. OpenAlex semantic search is limited to 50 results."
+                ),
+            ))
+        st.caption(f"The top {openalex_top_dois} matching DOIs will be passed into this SALSA run.")
+    else:
+        st.caption(f"At most {MAX_INPUT_ITEMS} matching records will be passed into this SALSA run.")
+    uploaded_pdf_files = []
+    uploaded_pdf_ids_text = ""
+    uploaded_figure_files = []
+    uploaded_figure_document_id = ""
+    uploaded_figure_captions_text = ""
+    doi_text = ""
+elif use_docling_pdf_uploads:
     st.subheader("Input PDF(s)")
     uploaded_pdf_files = st.file_uploader(
         f"Upload PDF file(s), max {MAX_INPUT_ITEMS}",
@@ -5094,6 +5321,7 @@ if use_docling_pdf_uploads:
         help="Leave blank to use uploaded/<filename>. These IDs are used anywhere SALSA normally shows a DOI.",
     )
     doi_text = ""
+    literature_query_text = ""
 elif use_figure_uploads:
     st.subheader("Input Figure(s)")
     uploaded_figure_files = st.file_uploader(
@@ -5116,6 +5344,7 @@ elif use_figure_uploads:
     uploaded_pdf_files = []
     uploaded_pdf_ids_text = ""
     doi_text = ""
+    literature_query_text = ""
 else:
     uploaded_pdf_files = []
     uploaded_pdf_ids_text = ""
@@ -5129,6 +5358,7 @@ else:
         "wschertzer3@gatech.edu)",
         height=140,
     )
+    literature_query_text = ""
 
 st.subheader("Run configuration")
 default_run_id = st.session_state.get("pending_run_id", "")
@@ -5165,7 +5395,66 @@ if st.button(
     uploaded_pdfs = []
     uploaded_figures = []
     figure_document_id = ""
-    if use_docling_pdf_uploads:
+    if use_query:
+        if not literature_query_text.strip():
+            st.error(f"Enter a {query_provider} query.")
+            st.stop()
+        try:
+            _src_root = Path(__file__).resolve().parent.parent
+            if str(_src_root) not in sys.path:
+                sys.path.insert(0, str(_src_root))
+            if query_provider == "Web of Science":
+                from wos_query import WebOfScienceClient
+
+                client = WebOfScienceClient(
+                    api_key=str(st.session_state.get("wos_api_key", "")).strip()
+                )
+            elif query_provider == "OpenAlex":
+                from literature_query import OpenAlexClient
+
+                client = OpenAlexClient(
+                    api_key=str(st.session_state.get("openalex_api_key", "")).strip()
+                )
+            else:
+                from literature_query import ScopusClient
+
+                client = ScopusClient(
+                    api_key=str(st.session_state.get("elsevier_api_key", "")).strip(),
+                    inst_token=str(st.session_state.get("scopus_inst_token", "")).strip(),
+                )
+            with st.spinner(f"Querying {query_provider} for DOIs..."):
+                if query_provider == "OpenAlex":
+                    openalex_sort = {
+                        "Relevance (highest first)": "relevance_score:desc",
+                        "Most cited": "cited_by_count:desc",
+                        "Newest": "publication_date:desc",
+                    }[openalex_sort_label]
+                    openalex_oa_value = {
+                        "Any": None,
+                        "Open access only": True,
+                        "Closed access only": False,
+                    }[openalex_open_access]
+                    dois = client.search_dois(
+                        literature_query_text,
+                        max_dois=openalex_top_dois,
+                        publisher=openalex_publisher,
+                        open_access=openalex_oa_value,
+                        sort=openalex_sort,
+                        search_mode=openalex_search_mode.lower(),
+                    )
+                else:
+                    dois = client.search_dois(
+                        literature_query_text,
+                        max_records=MAX_INPUT_ITEMS,
+                    )
+        except (ValueError, RuntimeError) as exc:
+            st.error(f"{query_provider} query failed: {exc}")
+            st.stop()
+        if not dois:
+            st.error(f"The {query_provider} query returned no records with DOIs.")
+            st.stop()
+        st.success(f"Found {len(dois)} unique DOIs in {query_provider}.")
+    elif use_docling_pdf_uploads:
         id_lines = [line.strip() for line in uploaded_pdf_ids_text.splitlines() if line.strip()]
         for idx, uploaded_file in enumerate(uploaded_pdf_files or []):
             document_id = id_lines[idx] if idx < len(id_lines) else None
@@ -5299,6 +5588,7 @@ if st.button(
                 run_plextract=run_plextract and not bypass_ocr_with_llm,
                 run_llm_figure_extraction=run_plextract and bypass_ocr_with_llm,
                 run_complete_dataset=run_complete_dataset,
+                run_aggregation=run_aggregation,
                 skip_llm_figures=not bypass_ocr_with_llm,
                 run_chemical_composition=run_chemical_composition,
                 exclude_full_text=exclude_full_text,
@@ -5370,7 +5660,11 @@ if rr.failures:
     failed_rows = [
         {
             "DOI": failure.doi,
-            "Publisher": failure.publisher,
+            "Publisher": (
+                _publisher_name_from_doi(failure.doi)
+                if str(failure.publisher).strip().lower() in {"", "unknown", "docling_pdf"}
+                else failure.publisher
+            ),
             "Stage": failure.stage,
             "Reason": failure.message,
         }
@@ -5445,6 +5739,8 @@ if doi_item is None:
     st.stop()
 
 # ---------------- DOI detail view (under DOI dropdown) ----------------
+_aggregated_data_path = rr.run_dir / "aggregated" / "tables_figures.csv"
+_aggregated_composition_path = rr.run_dir / "aggregated" / "chemical_compositions.csv"
 _doi_view_options = ["Parsed text", "Tables", "Figures", "Chemical Composition", "Dataset"]
 _doi_view_key = "selected_doi_detail_view"
 if st.session_state.get(_doi_view_key) not in _doi_view_options:
@@ -5698,21 +5994,10 @@ if selected_doi_view == "Figures":
         if st.button(intervene_button, type="primary", key=f"er_intervene_toggle_{_safe_doi_er}_{_fig_id_er}"):
             st.session_state[_show_interventions_key] = not st.session_state[_show_interventions_key]
             if st.session_state[_show_interventions_key]:
-                _intervention_prefixes = (
-                    f"er_canvas_boot_{_safe_doi_er}_{_fig_id_er}",
-                    f"er_{_safe_doi_er}_{_fig_id_er}_series_canvas_boot",
+                reset_intervention_canvas_mounts(
+                    key_scope=f"{_safe_doi_er}_{_fig_id_er}"
                 )
-                for _k in list(st.session_state.keys()):
-                    if _k in _intervention_prefixes or (
-                        _k.startswith(f"er_{_safe_doi_er}_") and _k.endswith("_ax_calib_boot")
-                    ) or _k.startswith(f"er_canvas_mounted_{_safe_doi_er}_{_fig_id_er}_") or (
-                        _k.startswith(f"er_{_safe_doi_er}_")
-                        and (
-                            "_ax_calib_mounted_" in _k
-                            or "_series_canvas_mounted_" in _k
-                        )
-                    ):
-                        st.session_state.pop(_k, None)
+                reset_intervention_canvas_mounts(key_scope=f"er_{_safe_doi_er}_")
             st.rerun()
 
         if st.session_state[_show_interventions_key]:
@@ -6216,9 +6501,6 @@ if selected_doi_view == "Figures":
                                     "--target_figure", _llm_sel_er,
                                 ]
 
-                                _sync_all_step_llm_envs_from_session()
-                                _env_er = _general_llm_env_for_step(LLM_STEP_COMPLETE_DATASET)
-
                                 if not _step_has_configured_model(LLM_STEP_COMPLETE_DATASET):
                                     st.error(
                                         "Configure an LLM for Complete dataset in the sidebar before rerunning LLM dataset generation."
@@ -6230,11 +6512,7 @@ if selected_doi_view == "Figures":
                                     )
                                     Path(_tmp_path_er).unlink(missing_ok=True)
                                 else:
-                                    _ci_path_er = _run_custom_instructions_path(rr.run_dir)
-                                    if _ci_path_er is not None and _ci_path_er.exists():
-                                        _env_er["SALSA_CUSTOM_INSTRUCTIONS"] = str(_ci_path_er)
-                                    _env_er["SALSA_RUN_ID"] = rr.run_id
-                                    _env_er["SALSA_RUN_DIR"] = str(rr.run_dir)
+                                    _env_er = _complete_dataset_env_for_current_settings(rr)
 
                                     with st.spinner(f"Running LLM dataset generation for {_llm_sel_er}..."):
                                         _result_er = subprocess.run(_cmd_er, stdout=None, stderr=None, text=True, timeout=300, env=_env_er)
@@ -6368,6 +6646,11 @@ if selected_doi_view == "Figures":
                         st.session_state[_subfig_show_int_key] = False
                     if st.button("Load Interventions", type="primary", key=f"subfig_intervene_toggle_{safe_doi}_{subfig_dir.name}"):
                         st.session_state[_subfig_show_int_key] = not st.session_state[_subfig_show_int_key]
+                        if st.session_state[_subfig_show_int_key]:
+                            reset_intervention_canvas_mounts(
+                                key_scope=f"subfig_{safe_doi}_{subfig_dir.name}"
+                            )
+                        st.rerun()
 
                     if st.session_state[_subfig_show_int_key]:
                         render_axis_configuration_dropdown(
@@ -6455,12 +6738,6 @@ if selected_doi_view == "Figures":
                                         "--target_figure", subfig_dir.name,
                                     ]
 
-                                    _sync_all_step_llm_envs_from_session()
-                                    _env_sf = _general_llm_env_for_step(LLM_STEP_COMPLETE_DATASET)
-
-                                    _env_sf["SALSA_RUN_ID"] = rr.run_id
-                                    _env_sf["SALSA_RUN_DIR"] = str(rr.run_dir)
-
                                     if not _step_has_configured_model(LLM_STEP_COMPLETE_DATASET):
                                         st.error(
                                             "Configure an LLM for Complete dataset in the sidebar before rerunning LLM dataset generation."
@@ -6472,6 +6749,7 @@ if selected_doi_view == "Figures":
                                         )
                                         Path(_tmp_path_sf).unlink(missing_ok=True)
                                     else:
+                                        _env_sf = _complete_dataset_env_for_current_settings(rr)
                                         with st.spinner(f"Running LLM dataset generation for {subfig_dir.name}..."):
                                             _result_sf = subprocess.run(_cmd_sf, stdout=None, stderr=None, text=True, timeout=300, env=_env_sf)
                                         Path(_tmp_path_sf).unlink(missing_ok=True)
@@ -6519,42 +6797,57 @@ if selected_doi_view == "Figures":
                         st.markdown("---")
 
 if selected_doi_view == "Dataset":
-    st.subheader("Completed dataset")
+    st.subheader("Run datasets")
+    st.caption("These files contain data from the entire run, not only the selected DOI.")
 
-    # Collect all emit_rows from row_cache (reactive to changes)
-    df_combined = collect_all_emit_rows(rr.run_dir, selected_doi, doi_item)
+    if st.button(
+        "Agglomerate current run data",
+        type="primary",
+        key=f"agglomerate_loaded_run_{rr.run_id}",
+        help=(
+            "Rebuild both run-wide CSVs from the current LLM datasets and chemical "
+            "compositions. New LLM-generated figure datasets replace their original versions."
+        ),
+    ):
+        try:
+            _src_root_for_aggregation = Path(__file__).resolve().parent.parent
+            if str(_src_root_for_aggregation) not in sys.path:
+                sys.path.insert(0, str(_src_root_for_aggregation))
+            from run_aggregation import aggregate_run as _aggregate_loaded_run
 
-    if not df_combined.empty:
-        st.info(f"Dataset contains {len(df_combined)} rows from {len(df_combined.columns)} columns (concatenated from all tables, figures, and subfigures)")
-        st.data_editor(df_combined, use_container_width=True, hide_index=True, key=f"dataset_{selected_doi}")
+            with st.spinner("Agglomerating current run data..."):
+                _aggregation_result = _aggregate_loaded_run(rr.run_dir)
+            _load_csv.clear()
+            st.success(
+                f"Agglomerated {_aggregation_result.data_rows:,} table/figure rows and "
+                f"{_aggregation_result.composition_rows:,} chemical-composition rows."
+            )
+            for _aggregation_warning in _aggregation_result.warnings:
+                st.warning(_aggregation_warning)
+        except Exception as _aggregation_exc:
+            st.error(f"Agglomeration failed: {_aggregation_exc}")
 
-        # Download button
-        csv_data = df_combined.to_csv(index=False)
-        st.download_button(
-            label="Download completed dataset CSV",
-            data=csv_data,
-            file_name=f"{doi_to_safe(selected_doi)}_dataset.csv",
-            mime="text/csv",
-        )
-    else:
-        st.info(
-            "No dataset rows found in row_cache for this DOI.\n\n"
-            "To generate dataset rows: enable **Complete dataset (LLM)** and run the pipeline, "
-            "or use the per-figure/per-subfigure 'Run LLM dataset generation' controls."
-        )
-
-    # Show legacy dataset CSV if it exists (for reference)
-    ds_csv = completed_dataset_csv_path(rr.run_dir, selected_doi)
-    ds_json = completed_dataset_json_path(rr.run_dir, selected_doi)
-
-    if ds_csv.exists():
-        with st.expander("Legacy completed dataset CSV (from complete_dataset.py)", expanded=False):
-            try:
-                df_legacy = _load_csv(str(ds_csv))
-                st.dataframe(df_legacy, use_container_width=True, hide_index=True)
-                st.caption(f"CSV path: {ds_csv}")
-            except Exception as e:
-                st.warning(f"Failed to load legacy dataset CSV: {e}")
+    for title, csv_path, download_name in (
+        ("Tables and figures", _aggregated_data_path, "tables_figures.csv"),
+        ("Chemical compositions", _aggregated_composition_path, "chemical_compositions.csv"),
+    ):
+        st.markdown(f"#### {title}")
+        if not csv_path.exists():
+            st.info(f"No {title.lower()} aggregate was created for this run.")
+            continue
+        try:
+            aggregate_df = _load_csv(str(csv_path))
+            st.caption(f"{len(aggregate_df):,} rows · {len(aggregate_df.columns):,} columns")
+            st.dataframe(aggregate_df, use_container_width=True, hide_index=True)
+            st.download_button(
+                f"Download {download_name}",
+                data=csv_path.read_bytes(),
+                file_name=download_name,
+                mime="text/csv",
+                key=f"download_aggregate_{download_name}",
+            )
+        except Exception as exc:
+            st.warning(f"Could not load {csv_path.name}: {exc}")
 
 if selected_doi_view == "Chemical Composition":
     st.subheader("Chemical Composition")
@@ -6950,6 +7243,12 @@ if selected_doi_view == "Chemical Composition":
                         composition_rules=st.session_state.get("custom_instructions", {}).get(
                             "chemical_composition_rules",
                             "",
+                        ),
+                        required_columns=st.session_state.get("custom_instructions", {}).get(
+                            "chemical_composition_columns"
+                        ),
+                        required_defaults=st.session_state.get("custom_instructions", {}).get(
+                            "chemical_composition_defaults"
                         ),
                     )
 

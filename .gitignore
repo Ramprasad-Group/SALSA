@@ -6,6 +6,7 @@ src/complete-dataset/logs/
 src/complete_dataset/logs/
 src/cost/usage.jsonl
 src/ui_runs/
+src/ui_runs_dev/
 
 # Python bytecode caches
 __pycache__/
