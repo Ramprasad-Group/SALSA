@@ -78,6 +78,23 @@ def write_run_status(status_file: str | Path | None = None, **updates: Any) -> N
         return
 
 
+def append_run_warning(message: str, status_file: str | Path | None = None) -> None:
+    """Add a user-visible warning to the current run without duplicating it."""
+    path = _status_path(status_file)
+    if path is None:
+        return
+    warning = str(message or "").strip()
+    if not warning:
+        return
+    data = read_run_status(path)
+    warnings = data.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+    if warning not in warnings:
+        warnings.append(warning)
+    write_run_status(path, warnings=warnings)
+
+
 def write_current_doi(doi: str, *, stage: str | None = None) -> None:
     stage = stage or os.environ.get("SALSA_CURRENT_STAGE", "").strip() or None
     write_run_status(state="running", stage=stage, doi=doi)

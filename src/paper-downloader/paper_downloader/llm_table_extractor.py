@@ -42,6 +42,16 @@ class LLMTableExtractor:
         self.logger = logging.getLogger('extraction')
         self.client = get_llm_client()
         self.custom_table_extraction_rules = custom_table_extraction_rules or ""
+        self.failed_tables: List[Dict[str, Any]] = []
+
+    def _record_table_failure(self, source_type: str, table_number: int) -> None:
+        failure = {"source_type": source_type, "table_number": table_number}
+        self.failed_tables.append(failure)
+        self.logger.warning(
+            "Failed to process table %s from %s; continuing with remaining tables",
+            table_number,
+            source_type,
+        )
     
     def _xml_text(self, elem: Optional[ET.Element]) -> str:
         """Flatten an XML element to clean text."""
@@ -225,8 +235,7 @@ class LLMTableExtractor:
                     all_tables.append(table_result)
                     self.logger.debug(f"Successfully processed table {i+1}")
                 else:
-                    self.logger.warning(f"Failed to process table {i+1} from xml")
-                    quit()
+                    self._record_table_failure("xml", i + 1)
             
             return all_tables
             
@@ -323,8 +332,7 @@ class LLMTableExtractor:
                 if table_result:
                     all_tables.append(table_result)
                 else:
-                    self.logger.warning(f"Failed to process table {i+1} from html")
-                    quit()
+                    self._record_table_failure("html", i + 1)
 
             return all_tables
 

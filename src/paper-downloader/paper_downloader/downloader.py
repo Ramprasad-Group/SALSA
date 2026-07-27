@@ -51,6 +51,10 @@ def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=
     api_key = os.environ.get("OPENALEX_API_KEY", "").strip()
     if not api_key:
         return False
+    # OpenAlex requires the key in the query string. Prevent HTTP debug logging
+    # from writing credential-bearing request URLs to pipeline logs.
+    import logging
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     output_dir = Path(unstructured_download_directory) / "openalex"
     output_path = output_dir / f"{doi.replace(path.sep, '@')}.pdf"
@@ -63,7 +67,10 @@ def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=
     try:
         metadata_response = requests.get(
             f"{OPENALEX_WORKS_ENDPOINT}/doi:{quote(doi, safe='/')}",
-            params={"api_key": api_key, "select": "id,content_url,has_content"},
+            params={
+                "api_key": api_key,
+                "select": "id,content_urls,has_content,best_oa_location",
+            },
             headers={"Accept": "application/json"},
             timeout=timeout_sec,
         )
@@ -78,8 +85,20 @@ def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=
             logger.info("OpenAlex has no cached PDF for DOI %s", doi)
             return False
         work_id = str(work.get("id") or "").rstrip("/").rsplit("/", 1)[-1]
-        content_url = str(work.get("content_url") or "").strip()
-        pdf_url = content_url if content_url.endswith(".pdf") else ""
+        content_urls = work.get("content_urls") or {}
+        pdf_url = (
+            str(content_urls.get("pdf") or "").strip()
+            if isinstance(content_urls, dict)
+            else ""
+        )
+        # Backward compatibility with the earlier OpenAlex response shape.
+        if not pdf_url:
+            content_url = str(work.get("content_url") or "").strip()
+            pdf_url = content_url if content_url.endswith(".pdf") else ""
+        if not pdf_url:
+            best_oa_location = work.get("best_oa_location") or {}
+            if isinstance(best_oa_location, dict):
+                pdf_url = str(best_oa_location.get("pdf_url") or "").strip()
         if not pdf_url and work_id.startswith("W"):
             pdf_url = f"{OPENALEX_CONTENT_ENDPOINT}/{work_id}.pdf"
         if not pdf_url:
@@ -93,14 +112,22 @@ def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=
             timeout=timeout_sec,
         )
         content_type = pdf_response.headers.get("Content-Type", "").lower()
-        if pdf_response.status_code != 200 or "pdf" not in content_type:
+        if pdf_response.status_code != 200:
             pdf_response.close()
-            logger.info("OpenAlex cached PDF download failed for DOI %s", doi)
+            logger.info(
+                "OpenAlex cached PDF download failed for DOI %s: HTTP %s",
+                doi,
+                pdf_response.status_code,
+            )
             return False
         content = pdf_response.content
         pdf_response.close()
         if not content.startswith(b"%PDF-"):
-            logger.info("OpenAlex returned non-PDF content for DOI %s", doi)
+            logger.info(
+                "OpenAlex returned non-PDF content for DOI %s (%s)",
+                doi,
+                content_type,
+            )
             return False
         output_dir.mkdir(parents=True, exist_ok=True)
         partial_path = output_path.with_suffix(".pdf.part")
@@ -730,11 +757,17 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
                     local_status_log=local_status_log, doi=doi, publisher=publisher, title=title, year=year
                 )
             if year is not None:
-                logger.warning(f'Could not download {extension} file with DOI {doi} by publisher {publisher} with title '
-                               f'\'{title}\' published in {year}. Failed with HTML status code {html_data.status_code}', 'html_url', html_url)
+                logger.warning(
+                    "Could not download %s file with DOI %s by publisher %s with title "
+                    "'%s' published in %s. Failed with HTTP status code %s; URL: %s",
+                    extension, doi, publisher, title, year, html_data.status_code, html_url,
+                )
             else:
-                logger.warning(f'Could not download {extension} file with DOI {doi} by publisher {publisher} with title '
-                               f'\'{title}\'. Failed with HTML status code {html_data.status_code}', 'html_url', html_url)
+                logger.warning(
+                    "Could not download %s file with DOI %s by publisher %s with title "
+                    "'%s'. Failed with HTTP status code %s; URL: %s",
+                    extension, doi, publisher, title, html_data.status_code, html_url,
+                )
             html_data.close()
             return False
         random_wait_time = randint(1, MAX_SLEEP_TIME) # Choose any value between 1 & 2 seconds randomly

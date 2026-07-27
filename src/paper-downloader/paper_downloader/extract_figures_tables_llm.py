@@ -29,7 +29,7 @@ sys.path.insert(0, _PAPER_DL)
 
 from ui.openai_cost import append_usage, run_id_from_env
 from ui.custom_instructions import load_instructions_from_env_or_path
-from ui.run_progress import write_current_doi
+from ui.run_progress import append_run_warning, write_current_doi
 
 from paper_downloader import config
 from backend import sett, postgres
@@ -863,10 +863,24 @@ def main():
         logger.debug(f"Local directory: {directory}")
         
         # Extract figures and tables
+        failures_before = len(llm_extractor.failed_tables) if llm_extractor is not None else 0
         figures_count, tables_count = extract_figures_tables(
             file_path, directory, args.output_dir, doi, 
             llm_extractor, extract_figures, extract_tables
         )
+        if llm_extractor is not None:
+            failed_tables = llm_extractor.failed_tables[failures_before:]
+            if failed_tables:
+                table_numbers = ", ".join(
+                    str(failure["table_number"]) for failure in failed_tables
+                )
+                warning = (
+                    f"Table extraction failed for DOI {doi} "
+                    f"(table{'' if len(failed_tables) == 1 else 's'} {table_numbers}). "
+                    "The pipeline continued with subsequent tables and DOIs."
+                )
+                logger.warning(warning)
+                append_run_warning(warning)
         
         # Update publisher statistics
         if directory not in publisher_stats:

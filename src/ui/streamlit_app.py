@@ -198,12 +198,21 @@ def _run_status_outcome_message(status: dict[str, Any], run_id: str) -> tuple[st
     stage = _display_stage_label(status.get("stage"))
     error = str(status.get("error") or "").strip()
     updated = _format_eastern_timestamp(status.get("updated_at"))
+    warnings = status.get("warnings")
+    warnings = warnings if isinstance(warnings, list) else []
+    warnings = [str(item).strip() for item in warnings if str(item).strip()]
 
     if state == "done":
-        message = f"Run **{run_id}** completed successfully."
+        if warnings:
+            message = f"Run **{run_id}** completed with warnings."
+            message += "\n\n" + "\n".join(f"- {warning}" for warning in warnings)
+            kind = "warning"
+        else:
+            message = f"Run **{run_id}** completed successfully."
+            kind = "success"
         if updated:
             message += f"\n\nCompleted (ET): `{updated}`"
-        return "success", message
+        return kind, message
     if state == "error":
         message = f"Run **{run_id}** failed."
         if stage:
@@ -2554,6 +2563,23 @@ def _workspace_display_name_for_run(run_dir: Path, workspaces_root: Path) -> str
     if any(ch.isupper() for ch in workspace_name):
         return workspace_name
     return workspace_name.replace("_", " ").replace("-", " ").title()
+
+
+def _render_run_query(run_dir: Path) -> None:
+    query = _read_json_file(run_dir / "run_manifest.json").get("query")
+    if not isinstance(query, dict):
+        return
+    text = str(query.get("text") or "")
+    if not text.strip():
+        return
+    provider = str(query.get("provider") or "Literature").strip()
+    st.subheader("Literature query")
+    st.caption(f"Provider: {provider}")
+    st.code(text, language=None)
+    settings = query.get("settings")
+    if isinstance(settings, dict) and settings:
+        st.caption("Query settings")
+        st.json(settings)
 
 
 def _admin_run_records(data_root: Path, users: Sequence[Any]) -> list[dict[str, Any]]:
@@ -5071,6 +5097,17 @@ def _start_pipeline_worker(pipeline_kwargs: dict[str, Any], dois: list[str]) -> 
         env["PYTHONPATH"] = os.pathsep.join([scripts_root_text] + pythonpath_parts)
 
     run_dir.mkdir(parents=True, exist_ok=True)
+    if auth_context:
+        write_run_manifest(
+            run_dir,
+            user_id=auth_context.get("user_id"),
+            username=str(auth_context.get("username") or ""),
+            workspace=str(auth_context.get("workspace") or run_dir.parent.name),
+            run_id=str(auth_context.get("run_id") or run_dir.name),
+            query_provider=str(auth_context.get("query_provider") or ""),
+            query=str(auth_context.get("query") or ""),
+            query_settings=dict(auth_context.get("query_settings") or {}),
+        )
     log_path = run_dir / "pipeline_worker.log"
     try:
         log_file = log_path.open("ab")
@@ -5208,6 +5245,7 @@ if _loaded_progress_rr is not None:
             "Workspace: "
             f"**{_workspace_display_name_for_run(_loaded_progress_rr.run_dir, workspaces_root)}**"
         )
+        _render_run_query(_loaded_progress_rr.run_dir)
         _render_run_custom_instructions(_loaded_progress_rr.run_dir)
         st.info(_run_progress_status_text(_loaded_progress_status))
         if _loaded_progress_status.get("state") == "cancelling":
@@ -5607,6 +5645,23 @@ if st.button(
                     "run_id": custom_run_id,
                     "run_dir": str(target),
                     "notify_on_completion": bool(notify_run_complete),
+                    "query_provider": query_provider if use_query else "",
+                    "query": literature_query_text if use_query else "",
+                    "query_settings": (
+                        {
+                            "search_mode": openalex_search_mode,
+                            "result_ranking": openalex_sort_label,
+                            "publisher": openalex_publisher,
+                            "open_access_filter": openalex_open_access,
+                            "max_results": openalex_top_dois,
+                        }
+                        if use_query and query_provider == "OpenAlex"
+                        else (
+                            {"max_results": MAX_INPUT_ITEMS}
+                            if use_query
+                            else {}
+                        )
+                    ),
                 },
             )
             st.session_state.pop("rr", None)
@@ -5623,6 +5678,7 @@ if not rr:
 
 st.info(f"Run ID: **{rr.run_id}**")
 st.info(f"Workspace: **{_workspace_display_name_for_run(rr.run_dir, workspaces_root)}**")
+_render_run_query(rr.run_dir)
 _render_run_custom_instructions(rr.run_dir)
 _loaded_run_status_path = rr.run_dir / RUN_STATUS_FILE_NAME
 _loaded_run_status = _mark_inactive_run_status(

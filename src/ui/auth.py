@@ -719,6 +719,9 @@ def write_run_manifest(
     username: str,
     workspace: str,
     run_id: str,
+    query_provider: str = "",
+    query: str = "",
+    query_settings: Optional[dict[str, Any]] = None,
 ) -> Path:
     import json
 
@@ -729,6 +732,12 @@ def write_run_manifest(
         "run_id": run_id,
         "created_at": utc_now_iso(),
     }
+    if query.strip():
+        manifest["query"] = {
+            "provider": query_provider.strip(),
+            "text": query,
+            "settings": dict(query_settings or {}),
+        }
     path = Path(run_dir) / RUN_MANIFEST_NAME
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return path

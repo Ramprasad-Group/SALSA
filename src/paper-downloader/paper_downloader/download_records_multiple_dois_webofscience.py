@@ -19,6 +19,7 @@ _SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _SRC_ROOT)
 sys.path.insert(0, parent_dir)
 from paper_downloader import records_downloader, config, utils
+from paper_downloader.publisher_metadata import publisher_from_metadata
 from backend import sett, postgres
 from backend.postgres.orm import PaperInfo, Papers
 from ui.run_progress import write_current_doi
@@ -255,26 +256,37 @@ for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
     csv_abstract = row.get(args.abstract_column, None) if args.abstract_column in df.columns else None
     
     csv_year = row.get(args.year_column, None) if args.year_column in df.columns else None
+    # Resolve metadata before rejecting an unfamiliar DOI prefix. Crossref can
+    # identify publishers that are absent from SALSA's static prefix mapping.
+    doi_record = downloader.get_record_by_doi(doi=doi, mailto=mailid)
     if publisher == 'Unknown':
-        prefix = doi_prefix(doi)
-        message = (
-            f"Unknown DOI prefix '{prefix}'. "
-            "No publisher mapping is configured for this prefix."
-        )
-        log.warning(f"{message} DOI: {doi}")
-        failed += 1
-        results.append(make_result(
-            doi,
-            publisher,
-            csv_title or None,
-            csv_year if pd.notna(csv_year) else None,
-            False,
-            message,
-        ))
-        continue
+        metadata_publisher = publisher_from_metadata(doi_record, str(doi))
+        if metadata_publisher != 'Unknown':
+            publisher = metadata_publisher
+            log.info(
+                "Resolved unknown DOI prefix '%s' to publisher '%s' via Crossref",
+                doi_prefix(doi),
+                publisher,
+            )
+        else:
+            prefix = doi_prefix(doi)
+            message = (
+                f"Unknown DOI prefix '{prefix}', and Crossref returned no publisher. "
+                "Upload an authorized PDF if full text is available."
+            )
+            log.warning(f"{message} DOI: {doi}")
+            failed += 1
+            results.append(make_result(
+                doi,
+                publisher,
+                csv_title or None,
+                csv_year if pd.notna(csv_year) else None,
+                False,
+                message,
+            ))
+            continue
 
     # get year from downloaded record
-    doi_record = downloader.get_record_by_doi(doi=doi, mailto=mailid)
     year_value = extract_year_from_record(doi_record, csv_year=csv_year)
 
     # find publisher match
@@ -315,7 +327,8 @@ for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing DOIs"):
                 log.info(f"Trying journal: {journal} for DOI: {doi}")
             else:
                 log.info(f"Trying direct DOI metadata lookup for DOI: {doi}")
-            doi_record = downloader.get_record_by_doi(doi=doi, mailto=mailid)
+            if doi_record is None:
+                doi_record = downloader.get_record_by_doi(doi=doi, mailto=mailid)
             if not doi_record:
                 log.info(f"No record found for DOI: {doi} in journal: {journal}")
                 continue

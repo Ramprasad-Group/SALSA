@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -32,6 +33,14 @@ PLOS_JOURNAL_SLUGS = {
     "pctr": "plosclinicaltrials",
     "pclm": "plosclimate",
 }
+FIGURE_DOWNLOAD_CONNECT_TIMEOUT_SECONDS = 10
+FIGURE_DOWNLOAD_READ_TIMEOUT_SECONDS = int(
+    os.environ.get("SALSA_FIGURE_DOWNLOAD_READ_TIMEOUT", "60")
+)
+FIGURE_DOWNLOAD_ATTEMPTS = max(
+    1, int(os.environ.get("SALSA_FIGURE_DOWNLOAD_ATTEMPTS", "3"))
+)
+_RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 
 def _safe_label(value, fallback):
@@ -94,6 +103,55 @@ def _figure_url(publisher, doi, href, figure):
     return ""
 
 
+def _download_figure(url, label, doi, logger):
+    timeout = (
+        FIGURE_DOWNLOAD_CONNECT_TIMEOUT_SECONDS,
+        FIGURE_DOWNLOAD_READ_TIMEOUT_SECONDS,
+    )
+    for attempt in range(1, FIGURE_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            response = requests.get(
+                url,
+                headers={"Accept": "image/*", "User-Agent": "SALSA/1.0"},
+                timeout=timeout,
+            )
+        except requests.RequestException as exc:
+            if attempt == FIGURE_DOWNLOAD_ATTEMPTS:
+                logger.warning(
+                    "Could not download %s for %s after %s attempts: %s",
+                    label,
+                    doi,
+                    attempt,
+                    exc,
+                )
+                return None
+            logger.warning(
+                "Figure download attempt %s/%s failed for %s (%s): %s; retrying",
+                attempt,
+                FIGURE_DOWNLOAD_ATTEMPTS,
+                label,
+                doi,
+                exc,
+            )
+        else:
+            if (
+                response.status_code not in _RETRYABLE_HTTP_STATUSES
+                or attempt == FIGURE_DOWNLOAD_ATTEMPTS
+            ):
+                return response
+            logger.warning(
+                "Figure download attempt %s/%s returned HTTP %s for %s (%s); retrying",
+                attempt,
+                FIGURE_DOWNLOAD_ATTEMPTS,
+                response.status_code,
+                label,
+                doi,
+            )
+            response.close()
+        time.sleep(2 ** (attempt - 1))
+    return None
+
+
 def extract_jats_figures(file_path, output_dir, doi, publisher):
     logger = logging.getLogger("extraction")
     article = _load_article(file_path)
@@ -122,11 +180,9 @@ def extract_jats_figures(file_path, output_dir, doi, publisher):
             logger.warning("No resolvable JATS figure URL for %s (%s)", label, href)
             continue
 
-        response = requests.get(
-            url,
-            headers={"Accept": "image/*", "User-Agent": "SALSA/1.0"},
-            timeout=30,
-        )
+        response = _download_figure(url, label, doi, logger)
+        if response is None:
+            continue
         content_type = response.headers.get("Content-Type", "").lower()
         if response.status_code != 200 or "image" not in content_type:
             logger.warning(

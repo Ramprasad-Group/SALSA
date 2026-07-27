@@ -57,15 +57,17 @@ class OpenAccessValidationTests(unittest.TestCase):
         metadata.json.return_value = {
             "id": "https://openalex.org/W123",
             "has_content": {"pdf": True},
-            "content_url": "https://content.openalex.org/works/W123.pdf",
+            "content_urls": {
+                "pdf": "https://content.openalex.org/works/W123.pdf",
+            },
         }
-        pdf = FakeResponse(200, b"%PDF-1.4\nfull text", "application/pdf")
+        pdf = FakeResponse(200, b"%PDF-1.4\nfull text", "application/octet-stream")
 
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
             "os.environ", {"OPENALEX_API_KEY": "openalex-key"}
         ), patch(
             "paper_downloader.downloader.requests.get", side_effect=[metadata, pdf]
-        ), patch(
+        ) as request_get, patch(
             "paper_downloader.downloader.publisher_access_for"
         ) as publisher_access:
             article_downloader(
@@ -73,6 +75,10 @@ class OpenAccessValidationTests(unittest.TestCase):
             )
 
             self.assertFalse(publisher_access.called)
+            self.assertEqual(
+                request_get.call_args_list[0].kwargs["params"]["select"],
+                "id,content_urls,has_content,best_oa_location",
+            )
             self.assertTrue(
                 (Path(temp_dir) / "unstructured_files" / "openalex" /
                  "10.1234@example.pdf").exists()

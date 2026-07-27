@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
                 username=str(auth_context.get("username") or ""),
                 workspace=str(auth_context.get("workspace") or rr.run_dir.parent.name),
                 run_id=rr.run_id,
+                query_provider=str(auth_context.get("query_provider") or ""),
+                query=str(auth_context.get("query") or ""),
+                query_settings=dict(auth_context.get("query_settings") or {}),
             )
         write_run_status(
             status_path,

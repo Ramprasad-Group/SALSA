@@ -138,6 +138,20 @@ def _safe_run_dir(run_root: Path, run_id: str) -> Path:
     return run_dir
 
 
+def _unexpected_preexisting_run_outputs(run_dir: Path) -> list[Path]:
+    allowed_preexisting = {
+        RUN_STATUS_FILE_NAME,
+        CANCEL_REQUEST_FILE_NAME,
+        "pipeline_worker.log",
+        "run_manifest.json",
+    }
+    return [
+        child
+        for child in run_dir.iterdir()
+        if child.name not in allowed_preexisting
+    ]
+
+
 def _report_status(
     status_callback: Optional[StatusCallback],
     stage: str,
@@ -360,16 +374,7 @@ def run_full_pipeline(
         doi_scope = f"{len(figure_uploads)} uploaded figure" + ("" if len(figure_uploads) == 1 else "s")
 
     if run_dir.exists():
-        allowed_preexisting = {
-            RUN_STATUS_FILE_NAME,
-            CANCEL_REQUEST_FILE_NAME,
-            "pipeline_worker.log",
-        }
-        existing_outputs = [
-            child
-            for child in run_dir.iterdir()
-            if child.name not in allowed_preexisting
-        ]
+        existing_outputs = _unexpected_preexisting_run_outputs(run_dir)
         if existing_outputs:
             raise FileExistsError(
                 f"Run directory already exists: {run_dir}\n"

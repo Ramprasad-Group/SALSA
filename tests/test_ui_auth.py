@@ -1,3 +1,4 @@
+import json
 import sys
 import smtplib
 import sqlite3
@@ -113,12 +114,36 @@ class TestUiAuth(unittest.TestCase):
                 username=user["username"],
                 workspace="default",
                 run_id="run_1",
+                query_provider="OpenAlex",
+                query="polymer electrolyte",
+                query_settings={
+                    "search_mode": "Semantic",
+                    "result_ranking": "Most cited",
+                    "publisher": "Elsevier",
+                    "open_access_filter": "Open access only",
+                    "max_results": 25,
+                },
             )
 
             self.assertEqual(safe_child_path(workspaces_root, "default"), workspaces_root / "default")
             with self.assertRaises(PermissionError):
                 safe_child_path(workspaces_root, "..", "other-user")
             self.assertTrue(run_belongs_to_user(run_dir, workspaces_root, user))
+            manifest = json.loads((run_dir / "run_manifest.json").read_text())
+            self.assertEqual(
+                manifest["query"],
+                {
+                    "provider": "OpenAlex",
+                    "text": "polymer electrolyte",
+                    "settings": {
+                        "search_mode": "Semantic",
+                        "result_ranking": "Most cited",
+                        "publisher": "Elsevier",
+                        "open_access_filter": "Open access only",
+                        "max_results": 25,
+                    },
+                },
+            )
 
     def test_bootstrap_william_admin_and_role_assignment(self):
         with tempfile.TemporaryDirectory() as tmp:

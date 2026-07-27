@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ except ModuleNotFoundError:
 from pipeline import (  # noqa: E402
     ADMIN_INPUT_ITEM_LIMIT,
     DEFAULT_INPUT_ITEM_LIMIT,
+    _unexpected_preexisting_run_outputs,
     _validate_input_item_limit,
 )
 
@@ -29,6 +31,18 @@ class TestPipelineInputLimit(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "at most 100"):
             _validate_input_item_limit(101, ADMIN_INPUT_ITEM_LIMIT)
+
+    def test_run_manifest_is_allowed_before_pipeline_starts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "run_manifest.json").write_text("{}")
+            (run_dir / "run_status.json").write_text("{}")
+            (run_dir / "pipeline_worker.log").write_text("")
+            self.assertEqual(_unexpected_preexisting_run_outputs(run_dir), [])
+
+            output = run_dir / "records"
+            output.mkdir()
+            self.assertEqual(_unexpected_preexisting_run_outputs(run_dir), [output])
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import requests
+
 
 PAPER_DOWNLOADER_SRC = (
     Path(__file__).resolve().parents[1] / "src" / "paper-downloader"
@@ -113,6 +115,39 @@ class JATSParsingTests(unittest.TestCase):
                 json.loads(metadata_path.read_text())["caption"],
                 "Figure caption.",
             )
+
+    def test_figure_timeout_is_retried_then_skipped_without_aborting_batch(self):
+        two_figures = JATS_RESPONSE.replace(
+            "</fig>",
+            "</fig><fig><label>Fig 2</label><caption><p>Second.</p></caption>"
+            '<graphic xlink:href="info:doi/10.1371/journal.pone.test.g002"/></fig>',
+            1,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xml_path = Path(temp_dir) / "article.xml"
+            xml_path.write_text(two_figures, encoding="utf-8")
+
+            with patch(
+                "paper_downloader.parsers.jats_extractor.requests.get",
+                side_effect=[
+                    requests.exceptions.ReadTimeout("slow"),
+                    requests.exceptions.ReadTimeout("slow"),
+                    requests.exceptions.ReadTimeout("slow"),
+                    FakeImageResponse(),
+                ],
+            ) as get, patch(
+                "paper_downloader.parsers.jats_extractor.time.sleep"
+            ):
+                count = extract_jats_figures(
+                    str(xml_path),
+                    temp_dir,
+                    "10.1371/journal.pone.test",
+                    "plos",
+                )
+
+            self.assertEqual(count, 1)
+            self.assertEqual(get.call_count, 4)
+            self.assertEqual(get.call_args.kwargs["timeout"], (10, 60))
 
     def test_non_jats_xml_has_a_full_text_fallback(self):
         parsed = parse_jats(
