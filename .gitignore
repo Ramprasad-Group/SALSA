@@ -13,8 +13,10 @@ __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
-build/
-dist/
+# Anchored to the repo root: the vendored drawable-canvas component ships a
+# frontend/build/ directory that must stay tracked.
+/build/
+/dist/
 
 # OS metadata
 .DS_Store

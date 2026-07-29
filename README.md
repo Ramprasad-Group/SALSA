@@ -141,6 +141,7 @@ SALSA/
 │   ├── paper-downloader            # Paper acquisition and parsing
 │   ├── setup-scripts               # Environment setup and submodule patching
 │   ├── ui                          # Streamlit UI, pipeline, auth, and interventions
+│   │   └── vendor                  # Patched streamlit-drawable-canvas build
 │   ├── ui_runs                     # Generated workspaces and run artifacts (ignored)
 │   └── llm_client.py               # Shared LLM provider client
 ├── tests                           # Pipeline, UI, schema, prompt, and cost tests

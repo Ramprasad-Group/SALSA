@@ -26,5 +26,6 @@ dependencies:
   - pip:
       - bresenham==0.2.1
       - openmim>=0.3.9
-      - streamlit-drawable-canvas
+      # streamlit-drawable-canvas is NOT installed from PyPI: SALSA ships a
+      # patched build of the component at src/ui/vendor/. See its README.
       - -e .

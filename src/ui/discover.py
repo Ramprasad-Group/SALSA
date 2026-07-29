@@ -2,10 +2,35 @@
 from __future__ import annotations
 import csv
 import json
+import re
 from pathlib import Path
 from typing import Dict, List
 
 from schemas import DoiFailure, RunResult, DoiResult, FigureItem, TableItem
+
+def _natural_sort_key(path: Path) -> tuple:
+    """Sort key that orders embedded numbers numerically, not lexicographically.
+
+    A plain string sort places "Figure_12" right after "Figure_1" (before
+    "Figure_2"), since '1' < '2' as characters. Splitting the name into
+    alternating text/number chunks and comparing numbers as ints instead of
+    strings gives the Figure_1, Figure_2, ..., Figure_9, Figure_12 order users
+    expect.
+    """
+    return tuple(
+        int(chunk) if chunk.isdigit() else chunk
+        for chunk in re.split(r"(\d+)", path.name)
+    )
+
+
+def _normalized_doi(value: object) -> str:
+    doi = str(value or "").strip().lower()
+    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+        if doi.startswith(prefix):
+            doi = doi[len(prefix):]
+            break
+    return doi
+
 
 def _read_json(p: Path) -> dict:
     try:
@@ -222,10 +247,43 @@ def _discover_failures(run_dir: Path) -> list[DoiFailure]:
         except Exception:
             pass
 
+    # A later PDF/Docling fallback can succeed after the structured reparse wrote
+    # a missing_file row. Parsed output is the final outcome, so do not surface
+    # an earlier-stage failure for the same DOI.
+    successful_dois = {
+        _normalized_doi(_read_json(path / "metadata.json").get(
+            "doi", path.name.replace("@", "/")
+        ))
+        for path in (run_dir / "reparsed").glob("*")
+        if path.is_dir() and (path / "parsed.json").exists()
+    }
     return [
         item[1]
         for _, item in sorted(failures.items(), key=lambda pair: pair[0].lower())
+        if _normalized_doi(item[1].doi) not in successful_dois
     ]
+
+
+def _download_publishers(run_dir: Path) -> dict[str, str]:
+    """Return bibliographic publishers recorded before provider-specific download."""
+    publishers: dict[str, str] = {}
+    status_path = run_dir / "papers" / "logs" / "download_status.jsonl"
+    if not status_path.exists():
+        return publishers
+    try:
+        for line in status_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            doi = _normalized_doi(row.get("doi"))
+            publisher = str(row.get("publisher") or "").strip()
+            if doi and publisher and publisher.lower() not in {
+                "unknown", "openalex", "docling_pdf",
+            }:
+                publishers[doi] = publisher
+    except Exception:
+        pass
+    return publishers
 
 
 def discover_run(run_dir: Path) -> RunResult:
@@ -241,6 +299,7 @@ def discover_run(run_dir: Path) -> RunResult:
     plex_artifacts = _scan_plextract_artifacts(plextract_workdir)
     completed_map = _find_completed_dataset_csv(complete_dataset_dir)
     chem_comp_map = _find_chemical_composition(chem_comp_dir)
+    download_publishers = _download_publishers(run_dir)
 
 
     dois: list[DoiResult] = []
@@ -253,6 +312,12 @@ def discover_run(run_dir: Path) -> RunResult:
             # recover original doi from metadata if present
             meta = _read_json(doi_dir / "metadata.json")
             doi = meta.get("doi", safe_doi.replace("@", "/"))
+            if str(meta.get("publisher") or "").strip().lower() in {
+                "", "unknown", "openalex", "docling_pdf",
+            }:
+                publisher = download_publishers.get(_normalized_doi(doi))
+                if publisher:
+                    meta["publisher"] = publisher
 
             dr = DoiResult(
                 doi=doi,
@@ -279,7 +344,10 @@ def discover_run(run_dir: Path) -> RunResult:
             # figures
             fig_dir = figures_tables / "figures" / safe_doi
             if fig_dir.exists():
-                for img in sorted(list(fig_dir.glob("*.png")) + list(fig_dir.glob("*.jpg")) + list(fig_dir.glob("*.jpeg")) + list(fig_dir.glob("*.gif"))):
+                for img in sorted(
+                    list(fig_dir.glob("*.png")) + list(fig_dir.glob("*.jpg")) + list(fig_dir.glob("*.jpeg")) + list(fig_dir.glob("*.gif")),
+                    key=_natural_sort_key,
+                ):
                     meta_path = _find_metadata_sidecar(img)
                     meta_obj = _read_json(meta_path) if meta_path else {}
                     caption = meta_obj.get("caption", "")
@@ -315,7 +383,10 @@ def discover_run(run_dir: Path) -> RunResult:
             # tables
             tab_dir = figures_tables / "tables" / safe_doi
             if tab_dir.exists():
-                for tfile in sorted([p for p in tab_dir.iterdir() if p.is_file() and not p.name.endswith("_metadata.json")]):
+                for tfile in sorted(
+                    [p for p in tab_dir.iterdir() if p.is_file() and not p.name.endswith("_metadata.json")],
+                    key=_natural_sort_key,
+                ):
                     meta_path = tfile.with_name(tfile.stem + "_metadata.json")
                     if not meta_path.exists():
                         meta_path = run_dir / "docling" / safe_doi / "tables" / f"{tfile.stem}_metadata.json"
