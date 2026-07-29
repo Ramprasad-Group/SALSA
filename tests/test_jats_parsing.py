@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 
@@ -97,10 +97,11 @@ class JATSParsingTests(unittest.TestCase):
             xml_path = Path(temp_dir) / "article.xml"
             xml_path.write_text(JATS_RESPONSE, encoding="utf-8")
 
+            mock_session = Mock(get=Mock(return_value=FakeImageResponse()))
             with patch(
-                "paper_downloader.parsers.jats_extractor.requests.get",
-                return_value=FakeImageResponse(),
-            ) as get:
+                "paper_downloader.parsers.jats_extractor.get_session",
+                return_value=mock_session,
+            ):
                 count = extract_jats_figures(
                     str(xml_path),
                     temp_dir,
@@ -109,7 +110,10 @@ class JATSParsingTests(unittest.TestCase):
                 )
 
             self.assertEqual(count, 1)
-            self.assertIn("plosone/article/figure/image", get.call_args.args[0])
+            self.assertIn(
+                "plosone/article/figure/image",
+                mock_session.get.call_args.args[0],
+            )
             metadata_path = next(Path(temp_dir).rglob("*_metadata.json"))
             self.assertEqual(
                 json.loads(metadata_path.read_text())["caption"],
@@ -127,15 +131,16 @@ class JATSParsingTests(unittest.TestCase):
             xml_path = Path(temp_dir) / "article.xml"
             xml_path.write_text(two_figures, encoding="utf-8")
 
+            mock_session = Mock(get=Mock(side_effect=[
+                requests.exceptions.ReadTimeout("slow"),
+                requests.exceptions.ReadTimeout("slow"),
+                requests.exceptions.ReadTimeout("slow"),
+                FakeImageResponse(),
+            ]))
             with patch(
-                "paper_downloader.parsers.jats_extractor.requests.get",
-                side_effect=[
-                    requests.exceptions.ReadTimeout("slow"),
-                    requests.exceptions.ReadTimeout("slow"),
-                    requests.exceptions.ReadTimeout("slow"),
-                    FakeImageResponse(),
-                ],
-            ) as get, patch(
+                "paper_downloader.parsers.jats_extractor.get_session",
+                return_value=mock_session,
+            ), patch(
                 "paper_downloader.parsers.jats_extractor.time.sleep"
             ):
                 count = extract_jats_figures(
@@ -146,8 +151,8 @@ class JATSParsingTests(unittest.TestCase):
                 )
 
             self.assertEqual(count, 1)
-            self.assertEqual(get.call_count, 4)
-            self.assertEqual(get.call_args.kwargs["timeout"], (10, 60))
+            self.assertEqual(mock_session.get.call_count, 4)
+            self.assertEqual(mock_session.get.call_args.kwargs["timeout"], (10, 60))
 
     def test_non_jats_xml_has_a_full_text_fallback(self):
         parsed = parse_jats(

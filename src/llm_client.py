@@ -263,92 +263,25 @@ class LLMClient:
             return text, meta
 
 
-        # if self.cfg.provider == "openai":
-        #     # Newer OpenAI SDK supports responses API and chat.completions depending on version.
-        #     # This is the most broadly compatible call pattern for "OpenAI-compatible" endpoints.
-        #     kwargs: Dict[str, Any] = {"model": self.cfg.model, "messages": messages, "temperature": temperature}
-        #     if max_tokens is not None:
-        #         kwargs["max_tokens"] = max_tokens
-
-        #     # If you want JSON-only output, you can enforce response_format when supported
-        #     # (won't work for every compatible endpoint).
-        #     if response_format is not None:
-        #         kwargs["response_format"] = response_format
-
-        #     resp = self._client.chat.completions.create(**kwargs)
-        #     text = resp.choices[0].message.content or ""
-
-        #     if not return_meta:
-        #         return text
-
-        #     # OpenAI: resp.usage has prompt_tokens/completion_tokens/total_tokens
-        #     usage = getattr(resp, "usage", None)
-        #     meta = {
-        #         "provider": "openai",
-        #         "model": getattr(resp, "model", self.cfg.model),
-        #         "service_tier": getattr(resp, "service_tier", None),
-        #         "usage": usage,   # keep the real usage object for your existing extractor
-        #         "_raw": resp,
-        #     }
-        #     return text, meta
-
-        # # ollama
-        # kwargs2: Dict[str, Any] = {
-        #     "model": self.cfg.model,
-        #     "messages": messages,
-        #     "options": {"temperature": temperature},
-        # }
-        # if max_tokens is not None:
-        #     kwargs2["options"]["num_predict"] = max_tokens
-
-        # # Ollama returns dict-like response
-        # resp = self._client.chat(**kwargs2)
-        # text = (resp.get("message") or {}).get("content", "")
-
-        # if not return_meta:
-        #     return text
-
-        # # Ollama: token counts are in prompt_eval_count (input) and eval_count (output)
-        # # per Ollama API docs. :contentReference[oaicite:0]{index=0}
-        # meta = {
-        #     "provider": "ollama",
-        #     "model": resp.get("model", self.cfg.model),
-        #     "usage": {
-        #         "input_tokens": int(resp.get("prompt_eval_count") or 0),
-        #         "output_tokens": int(resp.get("eval_count") or 0),
-        #         "total_tokens": int((resp.get("prompt_eval_count") or 0)) + int((resp.get("eval_count") or 0)),
-        #     },
-        #     "_raw": resp,
-        # }
-        # return text, meta
-
-
 # ---- Convenience helpers ----
 
 _global_client: Optional[LLMClient] = None
-
-# def get_llm_client(force_new: bool = False) -> LLMClient:
-#     """
-#     Singleton-style: build once per process. Great for Streamlit + CLI.
-#     Set force_new=True if you need to re-read env in the same process.
-#     """
-#     global _global_client
-#     if _global_client is None or force_new:
-#         cfg = load_llm_config()
-#         _global_client = LLMClient(cfg)
-#     return _global_client
+_override_clients: Dict[LLMConfig, LLMClient] = {}
 
 def get_llm_client(
     *,
     force_new: bool = False,
     override: Optional[LLMConfig] = None) -> LLMClient:
     """
-    If override is provided, do NOT use the global singleton.
+    If override is provided, reuse a cached client per distinct config
+    instead of the global singleton (LLMConfig is a frozen/hashable dataclass).
     """
     global _global_client
 
     if override is not None:
-        return LLMClient(override)
+        if force_new or override not in _override_clients:
+            _override_clients[override] = LLMClient(override)
+        return _override_clients[override]
 
     if _global_client is None or force_new:
         cfg = load_llm_config()

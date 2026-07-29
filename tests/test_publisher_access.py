@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 import sys
+import types
 
 import pytest
 
@@ -154,7 +155,11 @@ def test_iop_crossref_lookup_prefers_version_of_record(monkeypatch):
         def close():
             return None
 
-    monkeypatch.setattr(downloader.requests, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(
+        downloader,
+        "get_session",
+        lambda: types.SimpleNamespace(get=lambda *args, **kwargs: Response()),
+    )
 
     resolved = downloader._resolve_access_plan(
         plan,

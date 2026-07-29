@@ -44,6 +44,16 @@ class FakeResponse:
         yield self.content
 
 
+def _fake_session(*, return_value=None, side_effect=None):
+    """Build a fake `requests.Session`-like object for patching get_session()."""
+    mock_get = Mock()
+    if side_effect is not None:
+        mock_get.side_effect = side_effect
+    else:
+        mock_get.return_value = return_value
+    return Mock(get=mock_get)
+
+
 class OpenAccessValidationTests(unittest.TestCase):
     def test_openalex_cached_pdf_is_tried_before_publisher_credentials(self):
         records = pd.DataFrame([{
@@ -63,11 +73,12 @@ class OpenAccessValidationTests(unittest.TestCase):
         }
         pdf = FakeResponse(200, b"%PDF-1.4\nfull text", "application/octet-stream")
 
+        mock_session = _fake_session(side_effect=[metadata, pdf])
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
             "os.environ", {"OPENALEX_API_KEY": "openalex-key"}
         ), patch(
-            "paper_downloader.downloader.requests.get", side_effect=[metadata, pdf]
-        ) as request_get, patch(
+            "paper_downloader.downloader.get_session", return_value=mock_session
+        ), patch(
             "paper_downloader.downloader.publisher_access_for"
         ) as publisher_access:
             article_downloader(
@@ -76,7 +87,7 @@ class OpenAccessValidationTests(unittest.TestCase):
 
             self.assertFalse(publisher_access.called)
             self.assertEqual(
-                request_get.call_args_list[0].kwargs["params"]["select"],
+                mock_session.get.call_args_list[0].kwargs["params"]["select"],
                 "id,content_urls,has_content,best_oa_location",
             )
             self.assertTrue(
@@ -138,8 +149,8 @@ class OpenAccessValidationTests(unittest.TestCase):
             status_path = Path(temp_dir) / "download_status.jsonl"
 
             with patch(
-                "paper_downloader.downloader.requests.get",
-                return_value=FakeResponse(200, challenge, "text/html"),
+                "paper_downloader.downloader.get_session",
+                return_value=_fake_session(return_value=FakeResponse(200, challenge, "text/html")),
             ):
                 result = download_article(
                     "10.1088/example",
@@ -174,11 +185,11 @@ class OpenAccessValidationTests(unittest.TestCase):
             output_dir.mkdir(parents=True)
 
             with patch(
-                "paper_downloader.downloader.requests.get",
-                side_effect=[
+                "paper_downloader.downloader.get_session",
+                return_value=_fake_session(side_effect=[
                     FakeResponse(200, xml),
                     FakeResponse(200, pdf, "application/pdf"),
-                ],
+                ]),
             ), patch("paper_downloader.downloader.sleep"):
                 result = download_article(
                     "10.1016/example",
@@ -233,13 +244,13 @@ class OpenAccessValidationTests(unittest.TestCase):
             output_dir = Path(temp_dir) / "papers" / "structured_files" / "elsevier"
             output_dir.mkdir(parents=True)
 
+            mock_session = _fake_session(side_effect=[
+                FakeResponse(200, xml),
+                FakeResponse(200, pdf, "application/pdf"),
+            ])
             with patch(
-                "paper_downloader.downloader.requests.get",
-                side_effect=[
-                    FakeResponse(200, xml),
-                    FakeResponse(200, pdf, "application/pdf"),
-                ],
-            ) as request_get, patch("paper_downloader.downloader.sleep"):
+                "paper_downloader.downloader.get_session", return_value=mock_session
+            ), patch("paper_downloader.downloader.sleep"):
                 result = download_article(
                     "10.1006/example",
                     "Elsevier",
@@ -257,7 +268,7 @@ class OpenAccessValidationTests(unittest.TestCase):
                 )
 
             self.assertTrue(result)
-            pdf_request = request_get.call_args_list[1]
+            pdf_request = mock_session.get.call_args_list[1]
             self.assertEqual(
                 pdf_request.args[0],
                 "https://api.elsevier.com/content/object/eid/1-s2.0-example-main.pdf",
@@ -300,8 +311,8 @@ class OpenAccessValidationTests(unittest.TestCase):
             pdf_path.write_bytes(b"%PDF-preview")
 
             with patch(
-                "paper_downloader.downloader.requests.get",
-                return_value=FakeResponse(200, full_pdf, "application/pdf"),
+                "paper_downloader.downloader.get_session",
+                return_value=_fake_session(return_value=FakeResponse(200, full_pdf, "application/pdf")),
             ), patch("paper_downloader.downloader.sleep"):
                 result = download_article(
                     "10.1016/example",
@@ -331,8 +342,8 @@ class OpenAccessValidationTests(unittest.TestCase):
             status_path = Path(temp_dir) / "download_status.jsonl"
 
             with patch(
-                "paper_downloader.downloader.requests.get",
-                return_value=FakeResponse(200, SPRINGER_EMPTY_RESPONSE),
+                "paper_downloader.downloader.get_session",
+                return_value=_fake_session(return_value=FakeResponse(200, SPRINGER_EMPTY_RESPONSE)),
             ):
                 result = download_article(
                     "10.1038/227680a0",
@@ -364,8 +375,8 @@ class OpenAccessValidationTests(unittest.TestCase):
             status_path = Path(temp_dir) / "download_status.jsonl"
 
             with patch(
-                "paper_downloader.downloader.requests.get",
-                return_value=FakeResponse(401, b'{"errors": []}', "application/json"),
+                "paper_downloader.downloader.get_session",
+                return_value=_fake_session(return_value=FakeResponse(401, b'{"errors": []}', "application/json")),
             ):
                 result = download_article(
                     "10.1103/PhysRevB.54.11169",

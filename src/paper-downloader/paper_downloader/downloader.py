@@ -10,6 +10,7 @@ from time import sleep
 import time
 import bs4 as bs
 from paper_downloader import utils, config
+from paper_downloader.http_session import get_session
 from paper_downloader.publisher_access import publisher_access_for
 from datetime import datetime
 import json
@@ -65,7 +66,7 @@ def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=
         output_path.unlink()
 
     try:
-        metadata_response = requests.get(
+        metadata_response = get_session().get(
             f"{OPENALEX_WORKS_ENDPOINT}/doi:{quote(doi, safe='/')}",
             params={
                 "api_key": api_key,
@@ -104,7 +105,7 @@ def _try_openalex_pdf(doi, unstructured_download_directory, logger, timeout_sec=
         if not pdf_url:
             return False
 
-        pdf_response = requests.get(
+        pdf_response = get_session().get(
             pdf_url,
             stream=True,
             params={"api_key": api_key},
@@ -315,7 +316,7 @@ def _download_elsevier_pdf(
     else:
         pdf_url = xml_url
         pdf_params = request_params
-    response = requests.get(
+    response = get_session().get(
         pdf_url,
         stream=True,
         headers=pdf_headers,
@@ -368,7 +369,7 @@ def _resolve_access_plan(plan, doi, timeout_sec, logger):
     if plan.strategy == "direct":
         return plan
 
-    response = requests.get(
+    response = get_session().get(
         plan.url,
         headers=plan.headers,
         params=plan.params,
@@ -603,7 +604,7 @@ def download_article(doi, publisher, title, year, download_directory, db, doc_id
         if extra_headers:
             headers.update(extra_headers)
 
-        html_data = requests.get(
+        html_data = get_session().get(
             html_url,
             stream=True,
             headers=headers,

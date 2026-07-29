@@ -1,5 +1,4 @@
 import os
-import requests
 from requests.utils import quote
 from csv import reader
 from time import sleep
@@ -7,6 +6,7 @@ from random import randint
 #from os import path, remove
 from collections import defaultdict
 from paper_downloader import utils, config
+from paper_downloader.http_session import get_session
 
 class RecordsDownloader:
     '''
@@ -70,7 +70,7 @@ class RecordsDownloader:
 
         if rows <= max_rows: #No multi-query needed
             search_url = f'{base_url}{query}&rows={rows}'
-            response = requests.get(search_url, headers=headers, timeout=self.timeout_sec).json()
+            response = get_session().get(search_url, headers=headers, timeout=self.timeout_sec).json()
 
             for item in response["message"]["items"]:
                 dois.append(item["DOI"])
@@ -83,7 +83,7 @@ class RecordsDownloader:
                 sleep(self.sleep_sec)
                 print(f'Downloading page: {page_count+1}')
                 page_count+=1
-                r = requests.get(base_url + query + "&rows=" + str(max_rows) + "&cursor=" + cursor,
+                r = get_session().get(base_url + query + "&rows=" + str(max_rows) + "&cursor=" + cursor,
                                  headers=headers, timeout=self.timeout_sec)
                 cursor = quote(r.json()['message']['next-cursor'], safe='')
                 for item in r.json()['message']['items']:
@@ -154,7 +154,7 @@ class RecordsDownloader:
             # query url format different depending on whether issn mode or query search is used
             if query is not None: search_url = base_url + query + '&rows=' + str(rows) + "&cursor=" + cursor + "&filter=from-pub-date:" + str(pub_after)
             elif issn is not None: search_url = base_url + 'rows=' + str(rows) + "&cursor=" + cursor  + "&filter=from-pub-date:" + str(pub_after)
-            response = requests.get(search_url, headers=headers, timeout=self.timeout_sec).json()
+            response = get_session().get(search_url, headers=headers, timeout=self.timeout_sec).json()
 
             for item in response["message"]["items"]:
                 try:
@@ -183,7 +183,7 @@ class RecordsDownloader:
                 try:
                     if query is not None: search_url = base_url + query + "&rows=" + str(max_rows) + "&cursor=" + cursor + "&filter=from-pub-date:" + str(pub_after)
                     elif issn is not None: search_url = base_url + "rows=" + str(max_rows) + "&cursor=" + cursor + "&filter=from-pub-date:" + str(pub_after)
-                    r = requests.get(search_url, headers=headers, timeout=self.timeout_sec)
+                    r = get_session().get(search_url, headers=headers, timeout=self.timeout_sec)
                 except Exception as e:
                     self.logger.warning(f'Exception {e} occurred')
                     sleep(30)
@@ -252,7 +252,7 @@ class RecordsDownloader:
             'User-agent': f'mailto:{mailto}'
         }
         try:
-            response = requests.get(url, headers=headers, timeout=self.timeout_sec)
+            response = get_session().get(url, headers=headers, timeout=self.timeout_sec)
             response.raise_for_status()
             item = response.json()["message"]
             # Use your existing _item_checker to process the item if needed
@@ -403,7 +403,7 @@ class RecordsDownloader:
         }
 
         search_url = str(base_url)
-        response = requests.get(search_url, headers=headers, timeout=self.timeout_sec).json()
+        response = get_session().get(search_url, headers=headers, timeout=self.timeout_sec).json()
 
         item = response["message"]
         metadata_record = None
@@ -436,7 +436,7 @@ class RecordsDownloader:
                     'Accept': 'application/json'
                 }
 
-                r = requests.get(url, headers=headers, timeout=self.timeout_sec)
+                r = get_session().get(url, headers=headers, timeout=self.timeout_sec)
                 if r.status_code == 200:
                     title = r.json()['message']['title'][0]
                     return title

@@ -606,12 +606,21 @@ _open_image_safe = open_image_safe
 def doi_to_safe(doi: str) -> str:
     return doi.replace("/", "@").strip()
 
+@st.cache_data(show_spinner=False)
+def _cached_summarise_usage(usage_path_str: str, mtime_ns: int, size: int) -> dict:
+    # mtime_ns/size are part of the cache key purely to invalidate the cache
+    # when usage.jsonl actually changes (e.g. a still-running pipeline appending
+    # to it); summarise_usage itself always reads from usage_path_str.
+    return summarise_usage(usage_path_str)
+
+
 def _render_cost_summary(run_dir: Path):
     """Display cost summary for a run if usage.jsonl exists."""
     usage_path = run_dir / "cost" / "usage.jsonl"
     if not usage_path.exists():
         return
-    summary = summarise_usage(str(usage_path))
+    usage_stat = usage_path.stat()
+    summary = _cached_summarise_usage(str(usage_path), usage_stat.st_mtime_ns, usage_stat.st_size)
     if not summary["models"]:
         return
     with st.expander("Cost Summary", expanded=False):
@@ -1257,6 +1266,7 @@ def _render_run_query(run_dir: Path) -> None:
         st.json(settings)
 
 
+@st.cache_data(show_spinner=False, ttl=30)
 def _admin_run_records(data_root: Path, users: Sequence[Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for user in users:
@@ -1297,6 +1307,7 @@ def _admin_run_records(data_root: Path, users: Sequence[Any]) -> list[dict[str, 
     return records
 
 
+@st.cache_data(show_spinner=False, ttl=30)
 def _admin_user_stats(users: Sequence[Any], run_records: Sequence[dict[str, Any]], data_root: Path) -> list[dict[str, Any]]:
     records_by_user: dict[int, list[dict[str, Any]]] = {}
     for record in run_records:
@@ -1361,8 +1372,11 @@ def _render_admin_page(
 
     pending_users = auth_store.list_pending_users()
     users = auth_store.list_users()
-    run_records = _admin_run_records(data_root, users)
-    stats_rows = _admin_user_stats(users, run_records, data_root)
+    # sqlite3.Row isn't hashable by Streamlit's cache hasher, so pass plain dicts
+    # into the cached admin data functions instead of the Row objects themselves.
+    users_for_cache = [dict(user) for user in users]
+    run_records = _admin_run_records(data_root, users_for_cache)
+    stats_rows = _admin_user_stats(users_for_cache, run_records, data_root)
 
     metric_cols = st.columns(5)
     metric_cols[0].metric("Users", len(users))
@@ -2333,14 +2347,22 @@ def _bootstrap_settings_presets_for_workspaces(workspaces_root: Path) -> None:
         )
 
 
+@st.cache_resource(show_spinner=False)
+def _bootstrap_settings_presets_for_profile_cached(data_root_str: str, profile_slug: str) -> bool:
+    # Cached per (data_root, profile_slug) for the life of the process: bootstrapping
+    # walks/reads/writes that profile's workspace on disk, so without caching this
+    # redid that I/O for every registered user on every Streamlit rerun by anyone.
+    profile_workspaces_root = Path(data_root_str) / "users" / profile_slug / "workspaces"
+    profile_workspaces_root.mkdir(parents=True, exist_ok=True)
+    _bootstrap_settings_presets_for_workspaces(profile_workspaces_root)
+    return True
+
+
 def _bootstrap_settings_presets_for_profiles(data_root: Path, users: Sequence[Any]) -> None:
+    data_root_str = str(data_root)
     for user in users:
         try:
-            profile_workspaces_root = (
-                Path(data_root) / "users" / str(user["profile_slug"]) / "workspaces"
-            )
-            profile_workspaces_root.mkdir(parents=True, exist_ok=True)
-            _bootstrap_settings_presets_for_workspaces(profile_workspaces_root)
+            _bootstrap_settings_presets_for_profile_cached(data_root_str, str(user["profile_slug"]))
         except Exception:
             continue
 
@@ -2788,11 +2810,19 @@ div[data-testid="stExpanderDetails"] {
 </style>
 """, unsafe_allow_html=True)
 
+@st.cache_resource(show_spinner=False)
+def _get_auth_store(db_path_str: str) -> AuthStore:
+    # AuthStore.__init__ opens sqlite and runs the full schema script; cache the
+    # instance per process instead of paying that on every Streamlit rerun.
+    store = AuthStore(Path(db_path_str))
+    store.bootstrap_default_admin()
+    return store
+
+
 scripts_root = (Path(__file__).resolve().parent / "..").resolve()
 salsa_data_root = data_root_from_env(scripts_root / "ui_runs")
 auth_db_path = Path(os.environ.get("SALSA_AUTH_DB", str(salsa_data_root / "auth.sqlite3")))
-auth_store = AuthStore(auth_db_path)
-auth_store.bootstrap_default_admin()
+auth_store = _get_auth_store(str(auth_db_path))
 if _query_param("salsa_session") and not st.session_state.get("_legacy_auth_query_cleared"):
     st.session_state["_legacy_auth_query_cleared"] = True
     _clear_query_param("salsa_session")

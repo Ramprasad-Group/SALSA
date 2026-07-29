@@ -165,8 +165,10 @@ def extract_figure_data_llm(
     image_path: Path,
     doi: str,
     caption: str,
+    client: Optional[Any] = None,
 ) -> tuple[pd.DataFrame, Any]:
-    client = get_llm_client(force_new=True)
+    if client is None:
+        client = get_llm_client(force_new=True)
     figure_name = image_path.stem
     instructions = f"""
 You are an expert at digitizing scientific plots from figure images.
@@ -264,6 +266,7 @@ def run_llm_figure_data_extraction(
     status_path = workdir / "logs" / f"llm_figure_extraction_run_{run_id}.jsonl"
     successes = 0
     failures = 0
+    client = get_llm_client(force_new=True)
     logger.info("Starting direct LLM figure extraction")
     logger.info("figures_root=%s", figures_root)
     logger.info("output_root=%s", output_root)
@@ -311,6 +314,7 @@ def run_llm_figure_data_extraction(
                     image_path=image_path,
                     doi=doi,
                     caption=caption,
+                    client=client,
                 )
                 _log_cost(meta, doi=doi, figure_name=figure_id)
                 df = df.reindex(columns=FIGURE_DATA_COLUMNS, fill_value="").fillna("").astype(str)

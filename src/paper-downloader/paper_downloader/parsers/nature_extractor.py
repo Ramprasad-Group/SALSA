@@ -5,11 +5,12 @@ Handles HTML files from Nature journals
 """
 
 import os
-import requests
 import pandas as pd
 import logging
 import re
 import json
+
+from paper_downloader.http_session import get_session
 
 try:
     from bs4 import BeautifulSoup
@@ -143,7 +144,7 @@ def extract_nature_figures(file_path, output_dir, doi):
                     'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
                 
-                r = requests.get(url, headers=headers, timeout=15)
+                r = get_session().get(url, headers=headers, timeout=15)
                 if r.status_code == 200:
                     content_type = r.headers.get('content-type', '').lower()
                     if 'image' in content_type or r.content.startswith(b'\xff\xd8') or r.content.startswith(b'\x89PNG'):

@@ -6,7 +6,6 @@ Handles XML files from Elsevier journals
 
 import os
 import sys
-import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
 import logging
@@ -15,6 +14,7 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from paper_downloader import config
+from paper_downloader.http_session import get_session
 
 def extract_elsevier_figures(file_path, output_dir, doi):
     """Extract figures using rule-based approach (proven to work)"""
@@ -79,7 +79,7 @@ def extract_elsevier_figures(file_path, output_dir, doi):
                         else:
                             url_with_key = url
 
-                        r = requests.get(url_with_key, headers=headers, timeout=(5,60))
+                        r = get_session().get(url_with_key, headers=headers, timeout=(5,60))
                         if r.status_code == 200:
                             content_type = r.headers.get('content-type', '').lower()
                             if 'image' in content_type or r.content.startswith(b'\xff\xd8') or r.content.startswith(b'\x89PNG'):

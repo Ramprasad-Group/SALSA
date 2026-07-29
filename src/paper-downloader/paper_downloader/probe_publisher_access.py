@@ -5,13 +5,12 @@ import json
 import logging
 from urllib.parse import urlparse
 
-import requests
-
 from paper_downloader.downloader import (
     _elsevier_needs_pdf,
     _resolve_access_plan,
     _validate_response_content,
 )
+from paper_downloader.http_session import get_session
 from paper_downloader.publisher_access import publisher_access_for
 
 
@@ -47,7 +46,7 @@ def _full_text_probe(plan, doi, timeout=30):
             logging.getLogger("publisher_access_probe"),
         )
         request_headers.update(resolved_plan.headers)
-        response = requests.get(
+        response = get_session().get(
             resolved_plan.url,
             headers=request_headers,
             params=resolved_plan.params,

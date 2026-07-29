@@ -5,11 +5,12 @@ Handles HTML files from RSC journals
 """
 
 import os
-import requests
 import pandas as pd
 import logging
 import re
 import json
+
+from paper_downloader.http_session import get_session
 
 try:
     from bs4 import BeautifulSoup
@@ -204,7 +205,7 @@ def extract_rsc_figures(file_path, output_dir, doi):
                 if img_ext == 'gif' and '_hi-res' in url and '.tif' in alt_text.lower():
                     tiff_url = url.replace('_hi-res.gif', '.tif')
                     try:
-                        r = requests.get(tiff_url, headers=headers, timeout=15)
+                        r = get_session().get(tiff_url, headers=headers, timeout=15)
                         if r.status_code == 200:
                             content_type = r.headers.get('content-type', '').lower()
                             if 'image' in content_type or r.content.startswith(b'II*\x00') or r.content.startswith(b'MM\x00*'):
@@ -222,7 +223,7 @@ def extract_rsc_figures(file_path, output_dir, doi):
                 # If TIFF failed, try the original high-res URL
                 if not download_successful:
                     try:
-                        r = requests.get(url, headers=headers, timeout=15)
+                        r = get_session().get(url, headers=headers, timeout=15)
                         if r.status_code == 200:
                             content_type = r.headers.get('content-type', '').lower()
                             if 'image' in content_type or r.content.startswith(b'\xff\xd8') or r.content.startswith(b'\x89PNG') or r.content.startswith(b'GIF87a') or r.content.startswith(b'GIF89a'):

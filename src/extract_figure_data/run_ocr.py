@@ -21,8 +21,7 @@ from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 
 def _auto_device() -> torch.device:
-    # return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    return torch.device("cpu")
+    return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class OCRModel:
@@ -37,7 +36,14 @@ class OCRModel:
         """
         self.device = torch.device(device) if device else _auto_device()
         self.processor = TrOCRProcessor.from_pretrained(model_id)
-        self.model = VisionEncoderDecoderModel.from_pretrained(model_id).to(self.device)
+        model = VisionEncoderDecoderModel.from_pretrained(model_id)
+        try:
+            self.model = model.to(self.device)
+        except RuntimeError as e:
+            # e.g. CUDA OOM alongside ChartDete/LineFormer sharing the same GPU process.
+            print(f"[OCR] WARNING: failed to move model to {self.device} ({e}); falling back to CPU")
+            self.device = torch.device("cpu")
+            self.model = model.to(self.device)
         self.model.eval()
 
     def inference(self, path: Path) -> Tuple[str, str]:

@@ -227,8 +227,8 @@ def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0, skip_linef
                 new_imgs = cd.split_subfigures(img, predictions)
                 print("=====NEW_IMGS=====", new_imgs)
                 if new_imgs:
-                    # og image
-                    cd.inference(img)
+                    # og image - reuse predictions already computed above
+                    cd.inference(img, predictions=predictions)
                     # Copy each subfig from interventions into base_input so that
                     # downstream pipeline steps (LineFormer, OCR) can process it.
                     for new_img in new_imgs:
@@ -236,10 +236,11 @@ def run_pipeline(input_dir: str, workdir: str = ".", run_id: int = 0, skip_linef
                         pipeline_copy = Path(base_input) / Path(new_img).name
                         if not pipeline_copy.exists():
                             shutil.copy2(str(new_img), str(pipeline_copy))
+                        # New crop, not covered by `predictions` - needs its own inference.
                         cd.inference(Path(new_img).name)
                 else:
-                    # get and save predicitons on original image
-                    cd.inference(img)
+                    # get and save predictions on original image - reuse predictions from above
+                    cd.inference(img, predictions=predictions)
 
 
 

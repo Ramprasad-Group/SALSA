@@ -11,6 +11,7 @@ from urllib.parse import quote
 import pandas as pd
 import requests
 
+from paper_downloader.http_session import get_session
 from paper_downloader.jats import (
     descendants,
     first_descendant,
@@ -110,7 +111,7 @@ def _download_figure(url, label, doi, logger):
     )
     for attempt in range(1, FIGURE_DOWNLOAD_ATTEMPTS + 1):
         try:
-            response = requests.get(
+            response = get_session().get(
                 url,
                 headers={"Accept": "image/*", "User-Agent": "SALSA/1.0"},
                 timeout=timeout,

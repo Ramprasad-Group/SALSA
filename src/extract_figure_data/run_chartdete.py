@@ -459,9 +459,16 @@ class ChartDete:
         except Exception as e:
             print(f"[ChartDete] Error splitting subfigures on {img_path}: {e}")
 
-    def inference(self, img: str) -> None:
+    def inference(self, img: str, predictions=None) -> None:
         """
         Run detection on all one image.
+
+        Parameters
+        ----------
+        predictions:
+            Optional detections already computed for `img` (e.g. via
+            `get_chartdete_preds`). Pass these in to avoid rerunning the
+            detector forward pass on the same image.
 
         Returns
         -------
@@ -480,7 +487,8 @@ class ChartDete:
         img_name = Path(img_path).name
         try:
             # 1) Inference
-            predictions = inference_detector(self.model, img_path)
+            if predictions is None:
+                predictions = inference_detector(self.model, img_path)
 
             # 2) Save visualization
             result_path = str(base_output / "predictions.jpg")

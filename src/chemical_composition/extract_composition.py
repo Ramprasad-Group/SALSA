@@ -1178,10 +1178,10 @@ def _get_chemical_composition_client(step_key: str) -> tuple[Any, bool]:
         ),
         default_provider="openai",
     )
-    # Streamlit mutates env vars between runs, while get_llm_client() caches a
-    # global client. Force a fresh client so chemistry extraction follows the
-    # currently selected per-step model instead of a stale cached client.
-    return get_llm_client(force_new=True, override=override), override is not None
+    # get_llm_client() caches one client per distinct override config, so a
+    # changed per-step model/provider naturally yields a fresh client here
+    # while an unchanged config reuses its connection instead of rebuilding.
+    return get_llm_client(override=override), override is not None
 
 
 def _parse_json_object(raw: str) -> Dict[str, Any]:
