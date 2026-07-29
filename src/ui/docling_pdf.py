@@ -521,9 +521,26 @@ def _downloaded_pdf_manifest(run_dir: Path) -> list[dict[str, str]]:
     manifest: list[dict[str, str]] = []
     if not pdf_root.exists():
         return manifest
+    recorded_publishers: dict[str, str] = {}
+    status_path = run_dir / "papers" / "logs" / "download_status.jsonl"
+    if status_path.exists():
+        try:
+            for line in status_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                doi = str(row.get("doi") or "").strip().lower()
+                publisher = str(row.get("publisher") or "").strip()
+                if doi and publisher and publisher.lower() not in {
+                    "unknown", "openalex", "docling_pdf",
+                }:
+                    recorded_publishers[doi] = publisher
+        except Exception:
+            pass
     for pdf_path in sorted(pdf_root.glob("*/*.pdf")):
         safe_doi = pdf_path.stem
-        publisher = {
+        doi = safe_doi.replace("@", "/")
+        publisher = recorded_publishers.get(doi.lower()) or {
             "aps": "APS", "rsc": "RSC", "nature": "Nature",
             "springer": "Springer", "elsevier": "Elsevier", "wiley": "Wiley",
             "acs": "ACS", "iop": "IOP", "ieee": "IEEE",
@@ -531,7 +548,7 @@ def _downloaded_pdf_manifest(run_dir: Path) -> list[dict[str, str]]:
             "pubmed": "PubMed Central",
         }.get(pdf_path.parent.name.lower(), pdf_path.parent.name)
         manifest.append({
-            "doi": safe_doi.replace("@", "/"),
+            "doi": doi,
             "safe_doi": safe_doi,
             "filename": pdf_path.name,
             "pdf_path": str(pdf_path),

@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -28,6 +29,29 @@ class DownloadedPdfManifestTests(unittest.TestCase):
             self.assertEqual(manifest[0]["safe_doi"], "10.1016@example")
             self.assertEqual(manifest[0]["pdf_path"], str(pdf_path))
             self.assertEqual(manifest[0]["publisher"], "Elsevier")
+
+    def test_openalex_pdf_uses_recorded_bibliographic_publisher(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            pdf_dir = run_dir / "papers" / "unstructured_files" / "openalex"
+            logs_dir = run_dir / "papers" / "logs"
+            pdf_dir.mkdir(parents=True)
+            logs_dir.mkdir(parents=True)
+            pdf_path = pdf_dir / "10.1002@example.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4")
+            status = {
+                "doi": "10.1002/example",
+                "publisher": "Wiley",
+                "download_status": 1,
+                "note": {"provider": "openalex"},
+            }
+            (logs_dir / "download_status.jsonl").write_text(
+                json.dumps(status) + "\n", encoding="utf-8"
+            )
+
+            manifest = _downloaded_pdf_manifest(run_dir)
+
+            self.assertEqual(manifest[0]["publisher"], "Wiley")
 
     def test_downloaded_pdf_sidecar_disables_ocr(self):
         with tempfile.TemporaryDirectory() as temp_dir:

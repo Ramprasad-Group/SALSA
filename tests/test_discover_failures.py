@@ -127,6 +127,54 @@ class DiscoverFailuresTests(unittest.TestCase):
                 "IEEE Xplore returned HTTP 403.",
             )
 
+    def test_successful_docling_fallback_removes_stale_reparse_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            reparsed_dir = run_dir / "reparsed"
+            parsed_dir = reparsed_dir / "10.1002@example"
+            parsed_dir.mkdir(parents=True)
+            (parsed_dir / "metadata.json").write_text(json.dumps({
+                "doi": "10.1002/example",
+                "publisher": "openalex",
+            }), encoding="utf-8")
+            (parsed_dir / "parsed.json").write_text("{}", encoding="utf-8")
+            with (reparsed_dir / "index.csv").open(
+                "w", newline="", encoding="utf-8"
+            ) as handle:
+                writer = csv.DictWriter(handle, fieldnames=["doi", "status"])
+                writer.writeheader()
+                writer.writerow({
+                    "doi": "10.1002/example",
+                    "status": "missing_file",
+                })
+
+            result = discover_run(run_dir)
+
+            self.assertEqual(result.failures, [])
+
+    def test_openalex_provider_is_replaced_with_recorded_publisher(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            parsed_dir = run_dir / "reparsed" / "10.1002@example"
+            logs_dir = run_dir / "papers" / "logs"
+            parsed_dir.mkdir(parents=True)
+            logs_dir.mkdir(parents=True)
+            (parsed_dir / "metadata.json").write_text(json.dumps({
+                "doi": "10.1002/example",
+                "publisher": "openalex",
+            }), encoding="utf-8")
+            (parsed_dir / "parsed.json").write_text("{}", encoding="utf-8")
+            (logs_dir / "download_status.jsonl").write_text(json.dumps({
+                "doi": "10.1002/example",
+                "publisher": "Wiley",
+                "download_status": 1,
+                "note": {"provider": "openalex"},
+            }) + "\n", encoding="utf-8")
+
+            result = discover_run(run_dir)
+
+            self.assertEqual(result.dois[0].extra["publisher"], "Wiley")
+
 
 if __name__ == "__main__":
     unittest.main()
