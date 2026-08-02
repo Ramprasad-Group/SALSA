@@ -537,6 +537,7 @@ def _ollama_list_models_via_cli(host: str) -> Optional[List[str]]:
             text=True,
             stderr=subprocess.STDOUT,
             env=cli_env,
+            timeout=5,
         )
         lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
         if not lines:
@@ -949,6 +950,22 @@ def _step_model_key(step_key: str) -> str:
     return f"{step_key}_llm_model"
 
 
+def _step_provider_model_memory_key(step_key: str, provider_label: str) -> str:
+    suffix = "ollama" if provider_label == "Ollama" else "openai"
+    return f"{step_key}_llm_model_remembered_{suffix}"
+
+
+def _remember_step_model_for_provider(step_key: str, provider_label: str) -> None:
+    value = str(st.session_state.get(_step_model_key(step_key), "")).strip()
+    if value:
+        st.session_state[_step_provider_model_memory_key(step_key, provider_label)] = value
+
+
+def _on_step_model_change(step_key: str, provider_label: str) -> None:
+    _keep_create_settings_preset_open()
+    _remember_step_model_for_provider(step_key, provider_label)
+
+
 def _step_provider_label(step_key: str) -> str:
     return st.session_state.get(_step_provider_key(step_key), "Chat GPT")
 
@@ -1062,31 +1079,43 @@ def _render_step_llm_selector(
         models = list(ollama_models)
         if models:
             if st.session_state.get(model_key) not in models:
-                st.session_state.pop(model_key, None)
+                remembered = st.session_state.get(
+                    _step_provider_model_memory_key(step_key, "Ollama")
+                )
+                if remembered in models:
+                    st.session_state[model_key] = remembered
+                else:
+                    st.session_state.pop(model_key, None)
             st.selectbox(
                 "Model",
                 options=models,
                 index=0,
                 key=model_key,
-                on_change=_keep_create_settings_preset_open,
+                on_change=lambda: _on_step_model_change(step_key, "Ollama"),
             )
         else:
             st.text_input(
                 "Model (no models detected)",
                 value="",
                 key=model_key,
-                on_change=_keep_create_settings_preset_open,
+                on_change=lambda: _on_step_model_change(step_key, "Ollama"),
             )
             st.caption("Tip: run `ollama pull <model>` then refresh.")
     else:
         if st.session_state.get(model_key) not in _openai_models:
-            st.session_state.pop(model_key, None)
+            remembered = st.session_state.get(
+                _step_provider_model_memory_key(step_key, "Chat GPT")
+            )
+            if remembered in _openai_models:
+                st.session_state[model_key] = remembered
+            else:
+                st.session_state.pop(model_key, None)
         st.selectbox(
             "Model",
             options=_openai_models,
             index=0,
             key=model_key,
-            on_change=_keep_create_settings_preset_open,
+            on_change=lambda: _on_step_model_change(step_key, "Chat GPT"),
         )
 
 
@@ -2371,6 +2400,10 @@ def _keep_create_settings_preset_open() -> None:
     st.session_state["create_settings_preset_expanded"] = True
 
 
+def _keep_profile_expanded() -> None:
+    st.session_state["profile_expanded"] = True
+
+
 def _keep_load_settings_preset_open() -> None:
     st.session_state["load_settings_preset_expanded"] = True
 
@@ -2853,12 +2886,15 @@ with st.sidebar:
 
     st.divider()
 
-    with st.expander("Profile", expanded=False):
+    with st.expander(
+        "Profile",
+        expanded=bool(st.session_state.get("profile_expanded", False)),
+    ):
         profile_label = current_user["display_name"] or current_user["username"]
         st.write(f"Signed in as **{profile_label}**")
         st.caption(current_user["email"])
         st.caption(f"Role: **{current_user['role']}**")
-        if st.button("Logout"):
+        if st.button("Logout", on_click=_keep_profile_expanded):
             _clear_auth_session(auth_store)
             st.rerun()
 
@@ -2878,7 +2914,9 @@ with st.sidebar:
                 type="password",
                 key="change_pw_new_again",
             )
-            submitted = st.form_submit_button("Update password")
+            submitted = st.form_submit_button(
+                "Update password", on_click=_keep_profile_expanded
+            )
         if submitted:
             try:
                 if new_password != new_password_again:
@@ -2991,361 +3029,370 @@ with st.sidebar:
         expanded=bool(st.session_state.get("create_settings_preset_expanded", False)),
     ):
         _ensure_shared_llm_settings_in_state()
-        st.text_input(
-            "OpenAI API key",
-            key="openai_api_key",
-            type="password",
-            placeholder="sk-...",
-            help="Required for every selected stage that uses Chat GPT.",
-            on_change=_keep_create_settings_preset_open,
-        )
-        st.text_input(
-            "WOS API Expanded key",
-            key="wos_api_key",
-            type="password",
-            placeholder="Clarivate API key",
-            help="Web of Science API.",
-            on_change=_keep_create_settings_preset_open,
-        )
-        # query_key_cols = st.columns(2)
-        # with query_key_cols[0]:
-        st.text_input(
-            "OpenAlex API key",
-            key="openalex_api_key",
-            type="password",
-            help=(
-                "Used for OpenAlex keyword/semantic queries and cached full-text "
-                "downloads. OpenAlex applies its own API usage limits."
-            ),
-            on_change=_keep_create_settings_preset_open,
-        )
-        # with query_key_cols[1]:
-        st.text_input(
-            "Scopus API key",
-            key="scopus_inst_token",
-            type="password",
-            on_change=_keep_create_settings_preset_open,
-        )
-        st.caption(
-            "SALSA tries OpenAlex cached full text first, then documented publisher "
-            "APIs. DOI redirects do not grant full-text access; upload an authorized "
-            "PDF when neither source can provide one."
-        )
-        st.caption(
-            "Sources with no API Key required",
-            help=(
-                "APS Harvest, PubMed Central, and PLOS. An NCBI API key is "
-                "optional for higher PubMed Central request limits."
-            ),
-        )
-        publisher_key_cols = st.columns(2)
-        with publisher_key_cols[0]:
-            st.text_input(
-                "Elsevier API key",
-                key="elsevier_api_key",
-                type="password",
-                placeholder="Elsevier API key",
-                on_change=_keep_create_settings_preset_open,
-            )
-        with publisher_key_cols[1]:
-            st.text_input(
-                "Wiley API Key",
-                key="wiley_tdm_token",
-                type="password",
-                placeholder="Wiley API Key",
-                on_change=_keep_create_settings_preset_open,
-            )
-        publisher_key_cols = st.columns(2)
-        with publisher_key_cols[0]:
-            st.text_input(
-                "Springer API key",
-                key="springer_nature_api_key",
-                type="password",
-                placeholder="Springer API key",
-                on_change=_keep_create_settings_preset_open,
-            )
-        with publisher_key_cols[1]:
-            st.text_input(
-                "IEEE Xplore API key",
-                key="ieee_api_key",
-                type="password",
-                placeholder="IEEE Xplore API key",
-                on_change=_keep_create_settings_preset_open,
-            )
-        publisher_key_cols = st.columns(2)
-        with publisher_key_cols[0]:
-            st.text_input(
-                "RSC API Key",
-                key="rsc_tdm_token",
-                type="password",
-                placeholder="RSC API Key",
-                on_change=_keep_create_settings_preset_open,
-            )
-        with publisher_key_cols[1]:
-            st.text_input(
-                "NCBI API key",
-                key="ncbi_api_key",
-                type="password",
-                placeholder="Optional PubMed/PMC key",
-                on_change=_keep_create_settings_preset_open,
-            )
 
-        if use_figure_uploads:
-            run_extract_figures = True
-            run_extract_tables = False
-            run_pdf_page_ocr = False
-            run_chemical_composition = False
-            run_filter_tables = False
-            exclude_full_text = True
-            st.checkbox("Exclude full text from context", value=True, disabled=True, key="settings_upload_exclude_full_text")
-            st.checkbox("Extract tables", value=False, disabled=True, key="settings_upload_extract_tables")
-            st.checkbox("Extract figures", value=True, disabled=True, key="settings_upload_extract_figures")
-            st.checkbox("Filter tables", value=False, disabled=True, key="settings_upload_filter_tables")
-        else:
-            exclude_full_text = _settings_checkbox(
-                "Exclude full text from context",
-                _STAGE_STATE_KEYS["exclude_full_text"],
-                _DEFAULT_STAGE_SETTINGS["exclude_full_text"],
+        tab_keys, tab_stages, tab_llm = st.tabs(
+            ["API Keys", "Pipeline Stages", "LLM Models & Instructions"]
+        )
+        with tab_keys:
+            st.text_input(
+                "OpenAI API key",
+                key="openai_api_key",
+                type="password",
+                placeholder="sk-...",
+                help="Required for every selected stage that uses Chat GPT.",
+                on_change=_keep_create_settings_preset_open,
             )
-            run_extract_tables = _settings_checkbox(
-                "Extract tables",
-                _STAGE_STATE_KEYS["run_extract_tables"],
-                _DEFAULT_STAGE_SETTINGS["run_extract_tables"],
+            st.text_input(
+                "WOS API Expanded key",
+                key="wos_api_key",
+                type="password",
+                placeholder="Clarivate API key",
+                help="Web of Science API.",
+                on_change=_keep_create_settings_preset_open,
             )
-            run_extract_figures = _settings_checkbox(
-                "Extract figures",
-                _STAGE_STATE_KEYS["run_extract_figures"],
-                _DEFAULT_STAGE_SETTINGS["run_extract_figures"],
+            # query_key_cols = st.columns(2)
+            # with query_key_cols[0]:
+            st.text_input(
+                "OpenAlex API key",
+                key="openalex_api_key",
+                type="password",
+                help=(
+                    "Used for OpenAlex keyword/semantic queries and cached full-text "
+                    "downloads. OpenAlex applies its own API usage limits."
+                ),
+                on_change=_keep_create_settings_preset_open,
             )
-            if use_docling_pdf_uploads:
-                run_pdf_page_ocr = _settings_checkbox(
-                    "OCR scanned PDF pages",
-                    _STAGE_STATE_KEYS["run_pdf_page_ocr"],
-                    _DEFAULT_STAGE_SETTINGS["run_pdf_page_ocr"],
-                    help=(
-                        "Use Docling OCR for scanned/image-only uploaded PDFs. "
-                        "Leave off for normal text PDFs; figure-data OCR is controlled "
-                        "by Extract data from figures."
-                    ),
+            # with query_key_cols[1]:
+            st.text_input(
+                "Scopus API key",
+                key="scopus_inst_token",
+                type="password",
+                on_change=_keep_create_settings_preset_open,
+            )
+            st.caption(
+                "SALSA tries OpenAlex cached full text first, then documented publisher "
+                "APIs. DOI redirects do not grant full-text access; upload an authorized "
+                "PDF when neither source can provide one."
+            )
+            st.caption(
+                "Sources with no API Key required",
+                help=(
+                    "APS Harvest, PubMed Central, and PLOS. An NCBI API key is "
+                    "optional for higher PubMed Central request limits."
+                ),
+            )
+            publisher_key_cols = st.columns(2)
+            with publisher_key_cols[0]:
+                st.text_input(
+                    "Elsevier API key",
+                    key="elsevier_api_key",
+                    type="password",
+                    placeholder="Elsevier API key",
+                    on_change=_keep_create_settings_preset_open,
                 )
-            else:
+            with publisher_key_cols[1]:
+                st.text_input(
+                    "Wiley API Key",
+                    key="wiley_tdm_token",
+                    type="password",
+                    placeholder="Wiley API Key",
+                    on_change=_keep_create_settings_preset_open,
+                )
+            publisher_key_cols = st.columns(2)
+            with publisher_key_cols[0]:
+                st.text_input(
+                    "Springer API key",
+                    key="springer_nature_api_key",
+                    type="password",
+                    placeholder="Springer API key",
+                    on_change=_keep_create_settings_preset_open,
+                )
+            with publisher_key_cols[1]:
+                st.text_input(
+                    "IEEE Xplore API key",
+                    key="ieee_api_key",
+                    type="password",
+                    placeholder="IEEE Xplore API key",
+                    on_change=_keep_create_settings_preset_open,
+                )
+            publisher_key_cols = st.columns(2)
+            with publisher_key_cols[0]:
+                st.text_input(
+                    "RSC API Key",
+                    key="rsc_tdm_token",
+                    type="password",
+                    placeholder="RSC API Key",
+                    on_change=_keep_create_settings_preset_open,
+                )
+            with publisher_key_cols[1]:
+                st.text_input(
+                    "NCBI API key",
+                    key="ncbi_api_key",
+                    type="password",
+                    placeholder="Optional PubMed/PMC key",
+                    on_change=_keep_create_settings_preset_open,
+                )
+
+
+        with tab_stages:
+            if use_figure_uploads:
+                run_extract_figures = True
+                run_extract_tables = False
                 run_pdf_page_ocr = False
-            run_filter_tables = _settings_checkbox(
-                "Filter tables",
-                _STAGE_STATE_KEYS["run_filter_tables"],
-                _DEFAULT_STAGE_SETTINGS["run_filter_tables"],
-            )
-
-        run_filter_figures = _settings_checkbox(
-            "Filter figures",
-            _STAGE_STATE_KEYS["run_filter_figures"],
-            _DEFAULT_STAGE_SETTINGS["run_filter_figures"],
-        )
-        run_plextract = _settings_checkbox(
-            "Extract data from figures",
-            _STAGE_STATE_KEYS["run_plextract"],
-            _DEFAULT_STAGE_SETTINGS["run_plextract"],
-        )
-        _, figure_data_llm_col = st.columns([0.08, 0.92])
-        with figure_data_llm_col:
-            bypass_ocr_with_llm = _settings_checkbox(
-                "Use LLM to extract data from figures",
-                _STAGE_STATE_KEYS["bypass_ocr_with_llm"],
-                _DEFAULT_STAGE_SETTINGS["bypass_ocr_with_llm"],
-                help="Writes an LLM-digitized figure dataset. Cannot crop images or modify series/axes in this mode",
-            )
-        if use_figure_uploads:
-            st.checkbox(
-                "Extract chemical composition",
-                value=False,
-                disabled=True,
-                key="settings_upload_chemical_composition",
-            )
-            run_chemical_composition = False
-        else:
-            run_chemical_composition = _settings_checkbox(
-                "Extract chemical composition",
-                _STAGE_STATE_KEYS["run_chemical_composition"],
-                _DEFAULT_STAGE_SETTINGS["run_chemical_composition"],
-            )
-        run_complete_dataset = _settings_checkbox(
-            "Complete dataset",
-            _STAGE_STATE_KEYS["run_complete_dataset"],
-            _DEFAULT_STAGE_SETTINGS["run_complete_dataset"],
-        )
-        run_aggregation = _settings_checkbox(
-            "Agglomerate run datasets",
-            _STAGE_STATE_KEYS["run_aggregation"],
-            _DEFAULT_STAGE_SETTINGS["run_aggregation"],
-            help="After dataset completion, create one table/figure CSV and one chemical-composition CSV for the run.",
-        )
-
-        ci = st.session_state["custom_instructions"]
-        ollama_host = _normalize_ollama_host(
-            st.session_state.get("ollama_host", default_ollama_host)
-        )
-        ollama_available = _ollama_server_is_available(ollama_host)
-        if not ollama_available:
-            st.info(
-                f"No Ollama server is running at `{ollama_host}`. "
-                "Start Ollama to enable Ollama model selection."
-            )
-
-        llm_steps_to_render = _active_llm_steps(
-            run_extract_tables=run_extract_tables,
-            use_docling_pdf_uploads=use_file_uploads,
-            run_chemical_composition=run_chemical_composition,
-            run_filter_figures=run_filter_figures,
-            run_filter_tables=run_filter_tables and not use_figure_uploads,
-            run_plextract=run_plextract,
-            bypass_ocr_with_llm=bypass_ocr_with_llm,
-            run_complete_dataset=run_complete_dataset,
-        )
-        active_steps_use_ollama = _any_step_uses_ollama(llm_steps_to_render)
-        ollama_models = _ollama_models() if ollama_available and active_steps_use_ollama else []
-        if ollama_available and active_steps_use_ollama:
-            st.number_input(
-                "Ollama context window (num_ctx)",
-                min_value=4096,
-                step=1024,
-                value=int(st.session_state.get("ollama_num_ctx", 16384)),
-                key="ollama_num_ctx",
-                help="Shared across all Ollama-backed steps.",
-                on_change=_keep_create_settings_preset_open,
-            )
-
-        if run_extract_tables and not use_file_uploads:
-            with st.container():
-                _render_step_llm_selector(
-                    LLM_STEP_EXTRACT_TABLES,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_EXTRACT_TABLES),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_EXTRACT_TABLES]} settings",
+                run_chemical_composition = False
+                run_filter_tables = False
+                exclude_full_text = True
+                st.checkbox("Exclude full text from context", value=True, disabled=True, key="settings_upload_exclude_full_text")
+                st.checkbox("Extract tables", value=False, disabled=True, key="settings_upload_extract_tables")
+                st.checkbox("Extract figures", value=True, disabled=True, key="settings_upload_extract_figures")
+                st.checkbox("Filter tables", value=False, disabled=True, key="settings_upload_filter_tables")
+            else:
+                exclude_full_text = _settings_checkbox(
+                    "Exclude full text from context",
+                    _STAGE_STATE_KEYS["exclude_full_text"],
+                    _DEFAULT_STAGE_SETTINGS["exclude_full_text"],
                 )
-                _render_instruction_text_area(
-                    "Table extraction rules",
-                    "ci_table_extraction",
+                run_extract_tables = _settings_checkbox(
+                    "Extract tables",
+                    _STAGE_STATE_KEYS["run_extract_tables"],
+                    _DEFAULT_STAGE_SETTINGS["run_extract_tables"],
                 )
-            st.divider()
+                run_extract_figures = _settings_checkbox(
+                    "Extract figures",
+                    _STAGE_STATE_KEYS["run_extract_figures"],
+                    _DEFAULT_STAGE_SETTINGS["run_extract_figures"],
+                )
+                if use_docling_pdf_uploads:
+                    run_pdf_page_ocr = _settings_checkbox(
+                        "OCR scanned PDF pages",
+                        _STAGE_STATE_KEYS["run_pdf_page_ocr"],
+                        _DEFAULT_STAGE_SETTINGS["run_pdf_page_ocr"],
+                        help=(
+                            "Use Docling OCR for scanned/image-only uploaded PDFs. "
+                            "Leave off for normal text PDFs; figure-data OCR is controlled "
+                            "by Extract data from figures."
+                        ),
+                    )
+                else:
+                    run_pdf_page_ocr = False
+                run_filter_tables = _settings_checkbox(
+                    "Filter tables",
+                    _STAGE_STATE_KEYS["run_filter_tables"],
+                    _DEFAULT_STAGE_SETTINGS["run_filter_tables"],
+                )
 
-        chemical_column_defaults_table = st.session_state.get(
-            _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
-            _column_defaults_table_from_instructions(
-                ci,
-                columns_key="chemical_composition_columns",
-                defaults_key="chemical_composition_defaults",
-            ),
-        )
-        if run_chemical_composition:
-            with st.container():
-                _render_step_llm_selector(
-                    LLM_STEP_CHEM_RELEVANT,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_CHEM_RELEVANT),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_RELEVANT]} settings",
+            run_filter_figures = _settings_checkbox(
+                "Filter figures",
+                _STAGE_STATE_KEYS["run_filter_figures"],
+                _DEFAULT_STAGE_SETTINGS["run_filter_figures"],
+            )
+            run_plextract = _settings_checkbox(
+                "Extract data from figures",
+                _STAGE_STATE_KEYS["run_plextract"],
+                _DEFAULT_STAGE_SETTINGS["run_plextract"],
+            )
+            _, figure_data_llm_col = st.columns([0.08, 0.92])
+            with figure_data_llm_col:
+                bypass_ocr_with_llm = _settings_checkbox(
+                    "Use LLM to extract data from figures",
+                    _STAGE_STATE_KEYS["bypass_ocr_with_llm"],
+                    _DEFAULT_STAGE_SETTINGS["bypass_ocr_with_llm"],
+                    help="Writes an LLM-digitized figure dataset. Cannot crop images or modify series/axes in this mode",
                 )
+            if use_figure_uploads:
+                st.checkbox(
+                    "Extract chemical composition",
+                    value=False,
+                    disabled=True,
+                    key="settings_upload_chemical_composition",
+                )
+                run_chemical_composition = False
+            else:
+                run_chemical_composition = _settings_checkbox(
+                    "Extract chemical composition",
+                    _STAGE_STATE_KEYS["run_chemical_composition"],
+                    _DEFAULT_STAGE_SETTINGS["run_chemical_composition"],
+                )
+            run_complete_dataset = _settings_checkbox(
+                "Complete dataset",
+                _STAGE_STATE_KEYS["run_complete_dataset"],
+                _DEFAULT_STAGE_SETTINGS["run_complete_dataset"],
+            )
+            run_aggregation = _settings_checkbox(
+                "Agglomerate run datasets",
+                _STAGE_STATE_KEYS["run_aggregation"],
+                _DEFAULT_STAGE_SETTINGS["run_aggregation"],
+                help="After dataset completion, create one table/figure CSV and one chemical-composition CSV for the run.",
+            )
+
+
+        with tab_llm:
+            ci = st.session_state["custom_instructions"]
+            ollama_host = _normalize_ollama_host(
+                st.session_state.get("ollama_host", default_ollama_host)
+            )
+            ollama_available = _ollama_server_is_available(ollama_host)
+            if not ollama_available:
+                st.info(
+                    f"No Ollama server is running at `{ollama_host}`. "
+                    "Start Ollama to enable Ollama model selection."
+                )
+
+            llm_steps_to_render = _active_llm_steps(
+                run_extract_tables=run_extract_tables,
+                use_docling_pdf_uploads=use_file_uploads,
+                run_chemical_composition=run_chemical_composition,
+                run_filter_figures=run_filter_figures,
+                run_filter_tables=run_filter_tables and not use_figure_uploads,
+                run_plextract=run_plextract,
+                bypass_ocr_with_llm=bypass_ocr_with_llm,
+                run_complete_dataset=run_complete_dataset,
+            )
+            active_steps_use_ollama = _any_step_uses_ollama(llm_steps_to_render)
+            ollama_models = _ollama_models() if ollama_available and active_steps_use_ollama else []
+            if ollama_available and active_steps_use_ollama:
+                st.number_input(
+                    "Ollama context window (num_ctx)",
+                    min_value=4096,
+                    step=1024,
+                    value=int(st.session_state.get("ollama_num_ctx", 16384)),
+                    key="ollama_num_ctx",
+                    help="Shared across all Ollama-backed steps.",
+                    on_change=_keep_create_settings_preset_open,
+                )
+
+            if run_extract_tables and not use_file_uploads:
+                with st.container():
+                    _render_step_llm_selector(
+                        LLM_STEP_EXTRACT_TABLES,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_EXTRACT_TABLES),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_EXTRACT_TABLES]} settings",
+                    )
+                    _render_instruction_text_area(
+                        "Table extraction rules",
+                        "ci_table_extraction",
+                    )
                 st.divider()
-                _render_step_llm_selector(
-                    LLM_STEP_CHEM_COMPOSITION,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_CHEM_COMPOSITION),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_COMPOSITION]} settings",
-                )
-                _render_instruction_text_area(
-                    "Chemical composition instructions",
-                    "ci_chemical_composition",
-                    height=120,
-                )
-                st.caption("Required chemical composition columns and missing-value defaults")
-                chemical_column_defaults_table = st.data_editor(
-                    chemical_column_defaults_table,
-                    hide_index=True,
-                    num_rows="dynamic",
-                    use_container_width=True,
-                    key=_ci_chemical_column_defaults_widget_key(),
-                    on_change=_keep_create_settings_preset_open,
-                )
-            st.divider()
 
-        if run_filter_figures:
-            with st.container():
-                _render_step_llm_selector(
-                    LLM_STEP_FILTER_FIGURES,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_FILTER_FIGURES),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_FIGURES]} settings",
-                )
-                _render_instruction_text_area(
-                    "Figure filtering criteria",
-                    "ci_figure_filter",
-                    height=150,
-                )
-            st.divider()
+            chemical_column_defaults_table = st.session_state.get(
+                _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
+                _column_defaults_table_from_instructions(
+                    ci,
+                    columns_key="chemical_composition_columns",
+                    defaults_key="chemical_composition_defaults",
+                ),
+            )
+            if run_chemical_composition:
+                with st.container():
+                    _render_step_llm_selector(
+                        LLM_STEP_CHEM_RELEVANT,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_CHEM_RELEVANT),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_RELEVANT]} settings",
+                    )
+                    st.divider()
+                    _render_step_llm_selector(
+                        LLM_STEP_CHEM_COMPOSITION,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_CHEM_COMPOSITION),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_CHEM_COMPOSITION]} settings",
+                    )
+                    _render_instruction_text_area(
+                        "Chemical composition instructions",
+                        "ci_chemical_composition",
+                        height=120,
+                    )
+                    st.caption("Required chemical composition columns and missing-value defaults")
+                    chemical_column_defaults_table = st.data_editor(
+                        chemical_column_defaults_table,
+                        hide_index=True,
+                        num_rows="dynamic",
+                        use_container_width=True,
+                        key=_ci_chemical_column_defaults_widget_key(),
+                        on_change=_keep_create_settings_preset_open,
+                    )
+                st.divider()
 
-        if run_filter_tables and not use_figure_uploads:
-            with st.container():
-                _render_step_llm_selector(
-                    LLM_STEP_FILTER_TABLES,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_FILTER_TABLES),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_TABLES]} settings",
-                )
-                _render_instruction_text_area(
-                    "Table filtering criteria",
-                    "ci_table_filter",
-                    height=150,
-                )
-            st.divider()
+            if run_filter_figures:
+                with st.container():
+                    _render_step_llm_selector(
+                        LLM_STEP_FILTER_FIGURES,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_FILTER_FIGURES),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_FIGURES]} settings",
+                    )
+                    _render_instruction_text_area(
+                        "Figure filtering criteria",
+                        "ci_figure_filter",
+                        height=150,
+                    )
+                st.divider()
 
-        if run_plextract and bypass_ocr_with_llm:
-            with st.container():
-                _render_step_llm_selector(
-                    LLM_STEP_FIGURE_DATA,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_FIGURE_DATA),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_FIGURE_DATA]} settings",
-                )
-                _render_instruction_text_area(
-                    "Figure data extraction instructions",
-                    "ci_figure_data",
-                    height=120,
-                )
-            st.divider()
+            if run_filter_tables and not use_figure_uploads:
+                with st.container():
+                    _render_step_llm_selector(
+                        LLM_STEP_FILTER_TABLES,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_FILTER_TABLES),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_FILTER_TABLES]} settings",
+                    )
+                    _render_instruction_text_area(
+                        "Table filtering criteria",
+                        "ci_table_filter",
+                        height=150,
+                    )
+                st.divider()
 
-        ci_column_defaults_table = st.session_state.get(
-            _CI_COLUMN_DEFAULTS_SOURCE_KEY,
-            _column_defaults_table_from_instructions(ci),
-        )
-        if run_complete_dataset:
-            with st.container():
-                _render_step_llm_selector(
-                    LLM_STEP_COMPLETE_DATASET,
-                    ollama_available=ollama_available,
-                    ollama_models=ollama_models,
-                    caption=_llm_step_caption(LLM_STEP_COMPLETE_DATASET),
-                    title=f"{LLM_STEP_LABELS[LLM_STEP_COMPLETE_DATASET]} settings",
-                )
-                _render_instruction_text_area(
-                    "Data processing rules",
-                    "ci_data_processing",
-                )
-                ci_column_defaults_table = st.data_editor(
-                    st.session_state.get(
-                        _CI_COLUMN_DEFAULTS_SOURCE_KEY,
-                        _column_defaults_table_from_instructions(ci),
-                    ),
-                    hide_index=True,
-                    num_rows="dynamic",
-                    use_container_width=True,
-                    key=_ci_column_defaults_widget_key(),
-                    on_change=_keep_create_settings_preset_open,
-                )
+            if run_plextract and bypass_ocr_with_llm:
+                with st.container():
+                    _render_step_llm_selector(
+                        LLM_STEP_FIGURE_DATA,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_FIGURE_DATA),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_FIGURE_DATA]} settings",
+                    )
+                    _render_instruction_text_area(
+                        "Figure data extraction instructions",
+                        "ci_figure_data",
+                        height=120,
+                    )
+                st.divider()
+
+            ci_column_defaults_table = st.session_state.get(
+                _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+                _column_defaults_table_from_instructions(ci),
+            )
+            if run_complete_dataset:
+                with st.container():
+                    _render_step_llm_selector(
+                        LLM_STEP_COMPLETE_DATASET,
+                        ollama_available=ollama_available,
+                        ollama_models=ollama_models,
+                        caption=_llm_step_caption(LLM_STEP_COMPLETE_DATASET),
+                        title=f"{LLM_STEP_LABELS[LLM_STEP_COMPLETE_DATASET]} settings",
+                    )
+                    _render_instruction_text_area(
+                        "Data processing rules",
+                        "ci_data_processing",
+                    )
+                    ci_column_defaults_table = st.data_editor(
+                        st.session_state.get(
+                            _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+                            _column_defaults_table_from_instructions(ci),
+                        ),
+                        hide_index=True,
+                        num_rows="dynamic",
+                        use_container_width=True,
+                        key=_ci_column_defaults_widget_key(),
+                        on_change=_keep_create_settings_preset_open,
+                    )
 
         current_ci = _custom_instructions_from_editor_state(
             ci_column_defaults_table,
