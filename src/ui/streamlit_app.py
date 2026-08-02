@@ -873,7 +873,16 @@ def _ollama_models() -> List[str]:
     cli_models = _ollama_list_models_via_cli(host)
     if cli_models is not None:
         return cli_models
-    return []
+    models_dir = Path(
+        st.session_state.get("ollama_models_dir", str(default_ollama_dir))
+    )
+    manifest_models = _ollama_list_models_from_dir(models_dir)
+    models = []
+    for manifest_model in manifest_models:
+        parts = manifest_model.split("/")
+        if len(parts) >= 2:
+            models.append(f"{parts[-2]}:{parts[-1]}")
+    return sorted(set(models))
 
 _STEP_LLM_RENDER_ORDER = [
     LLM_STEP_EXTRACT_TABLES,
@@ -963,7 +972,39 @@ def _remember_step_model_for_provider(step_key: str, provider_label: str) -> Non
 
 def _on_step_model_change(step_key: str, provider_label: str) -> None:
     _keep_create_settings_preset_open()
-    _remember_step_model_for_provider(step_key, provider_label)
+    provider_model_key = _step_provider_model_memory_key(step_key, provider_label)
+    st.session_state[_step_model_key(step_key)] = str(
+        st.session_state.get(provider_model_key, "")
+    ).strip()
+
+
+def _on_manual_ollama_model_change(step_key: str) -> None:
+    _keep_create_settings_preset_open()
+    provider_model_key = _step_provider_model_memory_key(step_key, "Ollama")
+    manual_model_key = f"{provider_model_key}_manual"
+    value = str(st.session_state.get(manual_model_key, "")).strip()
+    st.session_state[provider_model_key] = value
+    st.session_state[_step_model_key(step_key)] = value
+
+
+def _on_step_provider_change(step_key: str) -> None:
+    """Swap the shared model widget state when a step changes provider."""
+    _keep_create_settings_preset_open()
+    provider_key = _step_provider_key(step_key)
+    model_key = _step_model_key(step_key)
+    new_provider = st.session_state.get(provider_key, "Chat GPT")
+    previous_provider_key = f"{provider_key}_previous"
+    previous_provider = st.session_state.get(previous_provider_key, "Chat GPT")
+
+    _remember_step_model_for_provider(step_key, previous_provider)
+    remembered = st.session_state.get(
+        _step_provider_model_memory_key(step_key, new_provider)
+    )
+    if remembered:
+        st.session_state[model_key] = remembered
+    else:
+        st.session_state.pop(model_key, None)
+    st.session_state[previous_provider_key] = new_provider
 
 
 def _step_provider_label(step_key: str) -> str:
@@ -1060,10 +1101,11 @@ def _render_step_llm_selector(
 
     provider_key = _step_provider_key(step_key)
     model_key = _step_model_key(step_key)
-    if not ollama_available and st.session_state.get(provider_key) == "Ollama":
-        st.session_state[provider_key] = "Chat GPT"
-        st.session_state.pop(model_key, None)
-    provider_options = ["Chat GPT"] + (["Ollama"] if ollama_available else [])
+    previous_provider_key = f"{provider_key}_previous"
+    current_provider = st.session_state.get(provider_key, "Chat GPT")
+    if previous_provider_key not in st.session_state:
+        st.session_state[previous_provider_key] = current_provider
+    provider_options = ["Chat GPT", "Ollama"]
     provider = st.radio(
         "Provider",
         options=provider_options,
@@ -1072,51 +1114,59 @@ def _render_step_llm_selector(
         else 0,
         key=provider_key,
         horizontal=True,
-        on_change=_keep_create_settings_preset_open,
+        on_change=_on_step_provider_change,
+        args=(step_key,),
     )
 
     if provider == "Ollama":
         models = list(ollama_models)
+        provider_model_key = _step_provider_model_memory_key(step_key, "Ollama")
+        remembered_model = str(
+            st.session_state.get(provider_model_key, "")
+        ).strip()
+        if remembered_model and remembered_model not in models:
+            models.insert(0, remembered_model)
+        if provider_model_key not in st.session_state:
+            current_model = str(st.session_state.get(model_key, "")).strip()
+            if current_model in models:
+                st.session_state[provider_model_key] = current_model
         if models:
-            if st.session_state.get(model_key) not in models:
-                remembered = st.session_state.get(
-                    _step_provider_model_memory_key(step_key, "Ollama")
-                )
-                if remembered in models:
-                    st.session_state[model_key] = remembered
-                else:
-                    st.session_state.pop(model_key, None)
-            st.selectbox(
+            selected_model = st.selectbox(
                 "Model",
                 options=models,
                 index=0,
-                key=model_key,
+                key=provider_model_key,
                 on_change=lambda: _on_step_model_change(step_key, "Ollama"),
             )
         else:
-            st.text_input(
+            manual_model_key = f"{provider_model_key}_manual"
+            if manual_model_key not in st.session_state:
+                st.session_state[manual_model_key] = str(
+                    st.session_state.get(provider_model_key, "")
+                )
+            selected_model = st.text_input(
                 "Model (no models detected)",
-                value="",
-                key=model_key,
-                on_change=lambda: _on_step_model_change(step_key, "Ollama"),
+                key=manual_model_key,
+                on_change=lambda: _on_manual_ollama_model_change(step_key),
             )
+            st.session_state[provider_model_key] = str(selected_model).strip()
             st.caption("Tip: run `ollama pull <model>` then refresh.")
     else:
-        if st.session_state.get(model_key) not in _openai_models:
-            remembered = st.session_state.get(
-                _step_provider_model_memory_key(step_key, "Chat GPT")
-            )
-            if remembered in _openai_models:
-                st.session_state[model_key] = remembered
-            else:
-                st.session_state.pop(model_key, None)
-        st.selectbox(
+        provider_model_key = _step_provider_model_memory_key(step_key, "Chat GPT")
+        if provider_model_key not in st.session_state:
+            current_model = str(st.session_state.get(model_key, "")).strip()
+            if current_model in _openai_models:
+                st.session_state[provider_model_key] = current_model
+        if st.session_state.get(provider_model_key) not in _openai_models:
+            st.session_state.pop(provider_model_key, None)
+        selected_model = st.selectbox(
             "Model",
             options=_openai_models,
             index=0,
-            key=model_key,
+            key=provider_model_key,
             on_change=lambda: _on_step_model_change(step_key, "Chat GPT"),
         )
+    st.session_state[model_key] = str(selected_model).strip()
 
 
 def _active_llm_steps(
@@ -2238,6 +2288,42 @@ def _current_stage_settings_from_state() -> dict[str, bool]:
     }
 
 
+def _preserve_settings_editor_state() -> None:
+    """Keep conditionally rendered settings widgets from being garbage-collected."""
+    keys = {
+        *_STAGE_STATE_KEYS.values(),
+        *_CI_EDITOR_KEYS,
+        "openai_api_key",
+        "wos_api_key",
+        "openalex_api_key",
+        "scopus_inst_token",
+        "elsevier_api_key",
+        "wiley_tdm_token",
+        "springer_nature_api_key",
+        "rsc_tdm_token",
+        "ncbi_api_key",
+        "ieee_api_key",
+        "settings_editor_section",
+    }
+    for step_key in _STEP_LLM_RENDER_ORDER:
+        provider_key = _step_provider_key(step_key)
+        keys.update(
+            {
+                provider_key,
+                f"{provider_key}_previous",
+                _step_model_key(step_key),
+                _step_provider_model_memory_key(step_key, "Chat GPT"),
+                _step_provider_model_memory_key(step_key, "Ollama"),
+                f"{_step_provider_model_memory_key(step_key, 'Ollama')}_manual",
+            }
+        )
+    for key in keys:
+        if key in st.session_state:
+            # Reassigning a widget-backed key detaches it from Streamlit's
+            # end-of-run widget cleanup when its settings section is hidden.
+            st.session_state[key] = st.session_state[key]
+
+
 def _current_settings_preset_from_state(current_ci: dict[str, Any]) -> dict[str, Any]:
     _ensure_shared_llm_settings_in_state()
     return _make_settings_preset(
@@ -2289,12 +2375,22 @@ def _apply_settings_preset_state(settings: dict[str, Any], *, preset_name: Optio
     for step_key, config in settings.get("llm_steps", {}).items():
         if step_key not in _STEP_LLM_RENDER_ORDER or not isinstance(config, dict):
             continue
-        st.session_state[_step_provider_key(step_key)] = str(config.get("provider") or "Chat GPT")
+        provider = str(config.get("provider") or "Chat GPT")
+        provider_key = _step_provider_key(step_key)
+        st.session_state[provider_key] = provider
+        st.session_state[f"{provider_key}_previous"] = provider
         model = str(config.get("model") or "").strip()
+        provider_model_key = _step_provider_model_memory_key(step_key, provider)
         if model:
             st.session_state[_step_model_key(step_key)] = model
+            st.session_state[provider_model_key] = model
+            if provider == "Ollama":
+                st.session_state[f"{provider_model_key}_manual"] = model
         else:
             st.session_state.pop(_step_model_key(step_key), None)
+            st.session_state.pop(provider_model_key, None)
+            if provider == "Ollama":
+                st.session_state.pop(f"{provider_model_key}_manual", None)
 
     _apply_custom_instruction_state(
         settings.get("custom_instructions", _default_settings_instructions()),
@@ -3019,21 +3115,62 @@ with st.sidebar:
             st.session_state["custom_instructions"],
             preset_name=st.session_state.get("current_preset_name"),
         )
+    _preserve_settings_editor_state()
     if settings_flash_message:
         st.success(settings_flash_message)
 
     existing_settings_presets = _list_settings_presets(workspaces_root)
 
-    with st.expander(
+    show_settings_editor = st.toggle(
         "Create/Modify Settings Preset",
-        expanded=bool(st.session_state.get("create_settings_preset_expanded", False)),
-    ):
+        key="create_settings_preset_expanded",
+    )
+    if show_settings_editor:
         _ensure_shared_llm_settings_in_state()
 
-        tab_keys, tab_stages, tab_llm = st.tabs(
-            ["API Keys", "Pipeline Stages", "LLM Models & Instructions"]
+        settings_section_options = [
+            "API Keys",
+            "Pipeline Stages",
+            "LLM Models & Instructions",
+        ]
+        if st.session_state.get("settings_editor_section") not in settings_section_options:
+            st.session_state["settings_editor_section"] = settings_section_options[0]
+        settings_editor_section = st.radio(
+            "Settings section",
+            options=settings_section_options,
+            key="settings_editor_section",
+            horizontal=True,
+            label_visibility="collapsed",
+            on_change=_keep_create_settings_preset_open,
         )
-        with tab_keys:
+        stage_settings = _current_stage_settings_from_state()
+        exclude_full_text = stage_settings["exclude_full_text"]
+        run_extract_tables = stage_settings["run_extract_tables"] and not use_figure_uploads
+        run_extract_figures = stage_settings["run_extract_figures"] or use_figure_uploads
+        run_pdf_page_ocr = stage_settings["run_pdf_page_ocr"] if use_docling_pdf_uploads else False
+        run_filter_tables = stage_settings["run_filter_tables"] and not use_figure_uploads
+        run_filter_figures = stage_settings["run_filter_figures"]
+        run_plextract = stage_settings["run_plextract"]
+        bypass_ocr_with_llm = stage_settings["bypass_ocr_with_llm"]
+        run_chemical_composition = (
+            stage_settings["run_chemical_composition"] and not use_figure_uploads
+        )
+        run_complete_dataset = stage_settings["run_complete_dataset"]
+        run_aggregation = stage_settings["run_aggregation"]
+        ci = st.session_state["custom_instructions"]
+        ci_column_defaults_table = st.session_state.get(
+            _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+            _column_defaults_table_from_instructions(ci),
+        )
+        chemical_column_defaults_table = st.session_state.get(
+            _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
+            _column_defaults_table_from_instructions(
+                ci,
+                columns_key="chemical_composition_columns",
+                defaults_key="chemical_composition_defaults",
+            ),
+        )
+        if settings_editor_section == "API Keys":
             st.text_input(
                 "OpenAI API key",
                 key="openai_api_key",
@@ -3134,7 +3271,7 @@ with st.sidebar:
                 )
 
 
-        with tab_stages:
+        if settings_editor_section == "Pipeline Stages":
             if use_figure_uploads:
                 run_extract_figures = True
                 run_extract_tables = False
@@ -3226,8 +3363,7 @@ with st.sidebar:
             )
 
 
-        with tab_llm:
-            ci = st.session_state["custom_instructions"]
+        if settings_editor_section == "LLM Models & Instructions":
             ollama_host = _normalize_ollama_host(
                 st.session_state.get("ollama_host", default_ollama_host)
             )
@@ -3249,7 +3385,7 @@ with st.sidebar:
                 run_complete_dataset=run_complete_dataset,
             )
             active_steps_use_ollama = _any_step_uses_ollama(llm_steps_to_render)
-            ollama_models = _ollama_models() if ollama_available and active_steps_use_ollama else []
+            ollama_models = _ollama_models()
             if ollama_available and active_steps_use_ollama:
                 st.number_input(
                     "Ollama context window (num_ctx)",
@@ -3451,8 +3587,6 @@ with st.sidebar:
                     flash_message=f"Saved settings preset: {clean_preset_name}",
                 )
                 st.rerun()
-
-        st.session_state["create_settings_preset_expanded"] = False
 
     with st.expander(
         "Load Settings Preset",
