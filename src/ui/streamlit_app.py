@@ -2512,12 +2512,14 @@ def _settings_checkbox(label: str, state_key: str, default: bool, **kwargs: Any)
 
 
 def _render_instruction_text_area(label: str, state_key: str, height: int = 120) -> None:
-    st.text_area(
-        label,
-        height=height,
-        key=state_key,
-        on_change=_keep_create_settings_preset_open,
-    )
+    with st.expander(label, expanded=False):
+        st.text_area(
+            label,
+            height=height,
+            key=state_key,
+            label_visibility="collapsed",
+            on_change=_keep_create_settings_preset_open,
+        )
 
 
 # SET OLLAMA DIR AND HOST (computed outside expander for reuse)
@@ -3442,15 +3444,18 @@ with st.sidebar:
                         "ci_chemical_composition",
                         height=120,
                     )
-                    st.caption("Required chemical composition columns and missing-value defaults")
-                    chemical_column_defaults_table = st.data_editor(
-                        chemical_column_defaults_table,
-                        hide_index=True,
-                        num_rows="dynamic",
-                        use_container_width=True,
-                        key=_ci_chemical_column_defaults_widget_key(),
-                        on_change=_keep_create_settings_preset_open,
-                    )
+                    with st.expander(
+                        "Required chemical composition columns and missing-value defaults",
+                        expanded=False,
+                    ):
+                        chemical_column_defaults_table = st.data_editor(
+                            chemical_column_defaults_table,
+                            hide_index=True,
+                            num_rows="dynamic",
+                            use_container_width=True,
+                            key=_ci_chemical_column_defaults_widget_key(),
+                            on_change=_keep_create_settings_preset_open,
+                        )
                 st.divider()
 
             if run_filter_figures:
@@ -3518,17 +3523,21 @@ with st.sidebar:
                         "Data processing rules",
                         "ci_data_processing",
                     )
-                    ci_column_defaults_table = st.data_editor(
-                        st.session_state.get(
-                            _CI_COLUMN_DEFAULTS_SOURCE_KEY,
-                            _column_defaults_table_from_instructions(ci),
-                        ),
-                        hide_index=True,
-                        num_rows="dynamic",
-                        use_container_width=True,
-                        key=_ci_column_defaults_widget_key(),
-                        on_change=_keep_create_settings_preset_open,
-                    )
+                    with st.expander(
+                        "Output columns and missing-value defaults",
+                        expanded=False,
+                    ):
+                        ci_column_defaults_table = st.data_editor(
+                            st.session_state.get(
+                                _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+                                _column_defaults_table_from_instructions(ci),
+                            ),
+                            hide_index=True,
+                            num_rows="dynamic",
+                            use_container_width=True,
+                            key=_ci_column_defaults_widget_key(),
+                            on_change=_keep_create_settings_preset_open,
+                        )
 
         current_ci = _custom_instructions_from_editor_state(
             ci_column_defaults_table,
