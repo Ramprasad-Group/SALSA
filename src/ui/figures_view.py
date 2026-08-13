@@ -3,8 +3,7 @@
 Extracted from `streamlit_app.py`, which had grown a ~1,400-line inline block for
 this view. Figures and subfigures are rendered by one code path (`FigureTarget` +
 `render_figure_panel`) instead of the two near-duplicate blocks that existed
-before, and the interventions are laid out as tabs so only one drawable canvas is
-mounted at a time.
+before, and the interventions render one drawable canvas section at a time.
 
 The view needs a handful of callables that still live in `streamlit_app.py`
 (LLM step configuration, emit-row lookup, the plextract runner). Those arrive via
@@ -1421,6 +1420,45 @@ def _crop_lineformer_dir(run_dir: Path, safe_doi: str, crop: Path, fallback_work
     return None
 
 
+def _latest_ocr_dataset(
+    *, workdir: Path, safe_doi: str, image_name: str
+) -> Optional[Path]:
+    """Return a completed OCR dataset from the newest plextract run."""
+    latest = latest_plextract_run_dir(workdir)
+    if latest is None:
+        return None
+    output_dir = latest / "output" / safe_doi
+    if not output_dir.exists():
+        return None
+    expected_stem = Path(image_name).stem
+    for candidate in output_dir.iterdir():
+        if candidate.is_dir() and Path(candidate.name).stem == expected_stem:
+            final_csv = candidate / "final" / "final_dataset.csv"
+            if final_csv.is_file():
+                return final_csv
+    return None
+
+
+def _require_completed_ocr_output(
+    *, deps: FiguresViewDeps, figure_id: str, image_name: str
+) -> None:
+    """Reject a nominally successful subprocess that did not finish its image."""
+    workdir = (
+        deps.run_dir
+        / "interventions"
+        / deps.safe_doi
+        / figure_id
+        / "plextract_interventions"
+    )
+    if _latest_ocr_dataset(
+        workdir=workdir, safe_doi=deps.safe_doi, image_name=image_name
+    ) is None:
+        raise RuntimeError(
+            f"OCR extraction did not produce a final dataset for {image_name}. "
+            "Review the plextract log for the failed crop or processing stage."
+        )
+
+
 def _rerun_ocr_extraction(*, target: FigureTarget, deps: FiguresViewDeps) -> None:
     """Apply mask/axis overrides, then re-run plextract for this target."""
     run_dir = deps.run_dir
@@ -1461,6 +1499,11 @@ def _rerun_ocr_extraction(*, target: FigureTarget, deps: FiguresViewDeps) -> Non
                 figure_id=target.fig_id,
                 intervention=True,
             )
+            _require_completed_ocr_output(
+                deps=deps,
+                figure_id=target.fig_id,
+                image_name=target.source_img.name,
+            )
         elif crops:
             # Each crop is an independent image with its own coordinate space.
             fallback_workdirs = [
@@ -1492,6 +1535,9 @@ def _rerun_ocr_extraction(*, target: FigureTarget, deps: FiguresViewDeps) -> Non
                         figure_id=crop.stem,
                         intervention=False,
                     )
+                _require_completed_ocr_output(
+                    deps=deps, figure_id=crop.stem, image_name=crop.name
+                )
         elif _is_valid_image_path(target.source_img):
             lf_map = (
                 {target.source_img.name: lf_override_dir} if lf_override_dir.exists() else {}
@@ -1504,6 +1550,11 @@ def _rerun_ocr_extraction(*, target: FigureTarget, deps: FiguresViewDeps) -> Non
                 override_lineformer_dirs=lf_map,
                 figure_id=target.fig_id,
                 intervention=True,
+            )
+            _require_completed_ocr_output(
+                deps=deps,
+                figure_id=target.fig_id,
+                image_name=target.source_img.name,
             )
         else:
             st.error("Could not locate a source image for rerun.")
@@ -1525,13 +1576,20 @@ def _llm_rerun_options(*, target: FigureTarget, deps: FiguresViewDeps) -> list:
 
     if not target.is_subfigure and target.crops_dir and target.crops_dir.exists():
         for crop in sorted(target.crops_dir.glob(f"{target.fig_stem}_subfig_*.png")):
-            crop_wd = run_dir / "interventions" / safe_doi / crop.name / "plextract_interventions"
+            crop_wd = run_dir / "interventions" / safe_doi / crop.stem / "plextract_interventions"
             if not crop_wd.exists():
                 continue
             latest = latest_plextract_run_dir(crop_wd)
             if not latest:
                 continue
-            if (latest / "output" / safe_doi / crop.name).is_dir():
+            if (
+                latest
+                / "output"
+                / safe_doi
+                / crop.name
+                / "final"
+                / "final_dataset.csv"
+            ).is_file():
                 options.append((crop.name, latest / "output"))
 
     if not options and target.plextract_dir and target.plextract_dir.is_dir():
@@ -1541,8 +1599,8 @@ def _llm_rerun_options(*, target: FigureTarget, deps: FiguresViewDeps) -> list:
     return options
 
 
-def _render_rerun_tab(*, target: FigureTarget, deps: FiguresViewDeps) -> None:
-    """Re-run OCR extraction and LLM dataset generation for this target."""
+def _render_rerun_actions(*, target: FigureTarget, deps: FiguresViewDeps) -> None:
+    """Render direct OCR and LLM rerun actions for this target."""
     st.markdown("**Re-run OCR data extraction**")
     crops = (
         sorted(target.crops_dir.glob(f"{target.fig_stem}_subfig_*.png"))
@@ -1650,6 +1708,8 @@ def render_figure_panel(*, target: FigureTarget, deps: FiguresViewDeps, image_ex
         file_name_prefix=target.emit_source_name,
     )
 
+    _render_rerun_actions(target=target, deps=deps)
+
     show_key = f"{target.key_prefix}_show_interventions"
     if show_key not in st.session_state:
         st.session_state[show_key] = False
@@ -1671,7 +1731,7 @@ def render_figure_panel(*, target: FigureTarget, deps: FiguresViewDeps, image_ex
         # "fixed" it. Rendering only the selected section means at most one
         # canvas exists at a time, and it always mounts into a visible
         # container because selecting it is a real widget interaction.
-        section_options = ["Crop", "Axes", "Series", "Re-run"]
+        section_options = ["Crop", "Axes", "Series"]
         section_key = f"{target.key_prefix}_intervention_section"
         if st.session_state.get(section_key) not in section_options:
             st.session_state[section_key] = section_options[0]
@@ -1711,8 +1771,6 @@ def render_figure_panel(*, target: FigureTarget, deps: FiguresViewDeps, image_ex
                 key_prefix=f"{target.key_prefix}_sm",
                 wrap=False,
             )
-        else:
-            _render_rerun_tab(target=target, deps=deps)
 
     _render_intervention_results(target=target, deps=deps)
 

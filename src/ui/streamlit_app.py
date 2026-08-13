@@ -115,6 +115,7 @@ from llm_step_config import (
 )
 
 SALSA_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "salsa_icon.png"
+PUBLIC_DOCS_DIR = Path(__file__).resolve().parents[2] / "docs" / "public"
 PUBLISHER_TDM_ENV_NAMES = {
     "openalex_api_key": ("OPENALEX_API_KEY",),
     "elsevier_api_key": ("ELSEVIER_API_KEY", "ELS_API_KEY"),
@@ -1668,24 +1669,21 @@ def _render_guide_page() -> None:
         st.markdown(
             """
 1. Choose or create a workspace in the sidebar.
-2. In **Input Source**, choose **DOI(s)**, **Query**, **PDF(s)**, or **Figure(s)**.
+2. In **Input Source**, choose **DOI(s)**, **PDF(s)**, or **Figure(s)**.
 3. Provide the inputs:
-   - **DOI(s):** paste one DOI per line, up to 10 for standard accounts or 100 for administrators.
-   - **Query:** select OpenAlex, Web of Science, or Elsevier Scopus, save the corresponding API credential in the settings preset, and enter a provider-compatible query. SALSA retrieves matching DOIs before starting the run.
-   - **PDF(s):** upload up to 10 PDFs for standard accounts or 100 for administrators. Optionally add one document ID per PDF so outputs use a readable identifier instead of the filename.
-   - **Figure(s):** upload up to 10 image files for standard accounts or 100 for administrators. Optionally add a figure set ID and one caption per uploaded figure.
+   - **DOI(s):** paste one DOI per line.
+   - **PDF(s):** upload PDF files. Optionally add one document ID per PDF so outputs use a readable identifier instead of the filename.
+   - **Figure(s):** upload image files. Optionally add a figure set ID and one caption per uploaded figure.
 4. In **Run configuration**, enter a **Run Name** if you want a stable name. Leave it blank to use a timestamp.
 5. Click **Run pipeline**.
 
 Run names may contain letters, numbers, underscores, periods, and dashes. A named run is easiest to find later from **Load an existing run**.
             """
         )
-
         st.subheader("Input choice tips")
         st.markdown(
             """
 - Use **DOI(s)** when SALSA should download and parse papers for you.
-- Use **Query** to create the run's DOI list from OpenAlex, Web of Science, or Elsevier Scopus.
 - Use **PDF(s)** when you already have the papers locally or want to process documents that are not easy to fetch by DOI.
 - Use **Figure(s)** when you only need figure data extraction from uploaded images. In this mode, table extraction and chemical composition extraction are disabled because there is no full paper context.
             """
@@ -1809,6 +1807,45 @@ Open **Series Management** to correct which plotted marks belong to each data se
 If the LLM rerun is unavailable, check that **Complete dataset** has an LLM model configured in the sidebar and that an API key is present for Chat GPT-backed steps.
             """
         )
+
+
+def _render_public_setup_page() -> None:
+    st.header("Setup instructions")
+    setup_path = PUBLIC_DOCS_DIR / "setup.md"
+    try:
+        setup_markdown = setup_path.read_text(encoding="utf-8")
+    except OSError:
+        st.error("The setup instructions are temporarily unavailable.")
+        return
+    st.markdown(setup_markdown)
+
+
+def _render_public_docs_navigation(active_page: str) -> None:
+    with st.sidebar:
+        st.header("SALSA documentation")
+        st.caption("Public documentation — no account required")
+        if active_page != "guide" and st.button(
+            "User guide", use_container_width=True, key="public_nav_guide"
+        ):
+            _set_query_param("page", "guide")
+            st.rerun()
+        if active_page != "setup" and st.button(
+            "Setup instructions", use_container_width=True, key="public_nav_setup"
+        ):
+            _set_query_param("page", "setup")
+            st.rerun()
+        st.divider()
+        if st.button("Sign in / Open SALSA", type="primary", use_container_width=True):
+            _clear_query_param("page")
+            st.rerun()
+
+
+def _render_public_page(page: str) -> None:
+    _render_public_docs_navigation(page)
+    if page == "guide":
+        _render_guide_page()
+    else:
+        _render_public_setup_page()
 
 
 def clear_processing_llm_env_if_disabled() -> None:
@@ -2739,6 +2776,15 @@ def _render_auth_gate(auth_store: AuthStore):
         "At this time, SALSA is available only to members of the Ramprasad Group. "
         "For access inquiries, contact wschertzer3@gatech.edu."
     )
+    guide_col, setup_col = st.columns(2)
+    with guide_col:
+        if st.button("Read the user guide", use_container_width=True):
+            _set_query_param("page", "guide")
+            st.rerun()
+    with setup_col:
+        if st.button("View setup instructions", use_container_width=True):
+            _set_query_param("page", "setup")
+            st.rerun()
     login_tab, create_tab, forgot_tab, reset_tab = st.tabs(
         ["Login", "Create Account", "Forgot Password", "Reset Password"]
     )
@@ -2940,6 +2986,11 @@ div[data-testid="stExpanderDetails"] {
 }
 </style>
 """, unsafe_allow_html=True)
+
+public_page = _query_param("page").strip().lower()
+if public_page in {"guide", "setup"}:
+    _render_public_page(public_page)
+    st.stop()
 
 @st.cache_resource(show_spinner=False)
 def _get_auth_store(db_path_str: str) -> AuthStore:
