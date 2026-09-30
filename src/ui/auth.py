@@ -187,18 +187,25 @@ class AuthStore:
         with self.connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
 
+    @staticmethod
+    def _admin_count(conn: sqlite3.Connection) -> int:
+        return int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM users
+                WHERE is_active = 1
+                  AND account_status = 'approved'
+                  AND role = 'admin'
+                """
+            ).fetchone()[0]
+        )
+
     def admin_count(self) -> int:
         with self.connect() as conn:
-            return int(
-                conn.execute(
-                    """
-                    SELECT COUNT(*) FROM users
-                    WHERE is_active = 1
-                      AND account_status = 'approved'
-                      AND role = 'admin'
-                    """
-                ).fetchone()[0]
-            )
+            return self._admin_count(conn)
+
+    def needs_initial_admin(self) -> bool:
+        return self.admin_count() == 0
 
     def _unique_profile_slug(self, conn: sqlite3.Connection, username: str) -> str:
         base = _profile_slug(username)
@@ -218,6 +225,7 @@ class AuthStore:
         institution: str = "",
         display_name: str = "",
         account_status: str = "approved",
+        initial_admin: bool = False,
     ) -> sqlite3.Row:
         username = validate_username(username)
         email = validate_email(email)
@@ -250,11 +258,18 @@ class AuthStore:
                 f"DELETE FROM users WHERE id IN ({rejected_user_ids})",
                 (username, email),
             )
-            role = (
-                "admin"
-                if account_status == "approved" and self.user_count() == 0
-                else "user"
-            )
+            # The DELETEs above opened this connection's write transaction, so
+            # the admin check below cannot race another first-run setup.
+            if initial_admin:
+                if self._admin_count(conn) > 0:
+                    raise ValueError("A SALSA administrator account already exists.")
+                role = "admin"
+            else:
+                role = (
+                    "admin"
+                    if account_status == "approved" and self.user_count() == 0
+                    else "user"
+                )
             slug = self._unique_profile_slug(conn, username)
             try:
                 cur = conn.execute(
@@ -289,6 +304,10 @@ class AuthStore:
                 "SELECT * FROM users WHERE id = ? AND is_active = 1",
                 (cur.lastrowid,),
             ).fetchone()
+
+    def create_initial_admin(self, **profile: Any) -> sqlite3.Row:
+        """Create the first administrator on a SALSA install that has none."""
+        return self.create_user(account_status="approved", initial_admin=True, **profile)
 
     def request_account(self, **profile: Any) -> sqlite3.Row:
         if self.admin_count() == 0:

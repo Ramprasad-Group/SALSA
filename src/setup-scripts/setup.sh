@@ -29,7 +29,14 @@ git -C "$REPO_ROOT" lfs pull
 # 3. Install MMDetection 2.x stack (mmcv-full + mmdet)
 #    Must come before ChartDete, whose setup.py imports torch + mmdet.
 # ------------------------------------------------------------------
-CUDA_TAG="${CUDA_TAG:-cu117}"
+# macOS has no CUDA; OpenMMLab publishes no macOS wheels, so pip builds
+# mmcv-full from source against the CPU index there.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    DEFAULT_CUDA_TAG="cpu"
+else
+    DEFAULT_CUDA_TAG="cu117"
+fi
+CUDA_TAG="${CUDA_TAG:-$DEFAULT_CUDA_TAG}"
 MMCV_PIN="${MMCV_PIN:-mmcv-full==1.7.2}"
 MMDET_PIN="${MMDET_PIN:-mmdet==2.28.2}"
 MMENGINE_PIN="${MMENGINE_PIN:-}"

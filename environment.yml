@@ -6,7 +6,6 @@ channels:
   - defaults
 dependencies:
   - python=3.8
-  - opencv
   - tesseract=5.2.0
   - pillow
   - numpy=1.24.3

@@ -6,6 +6,20 @@ SHELL       := /bin/bash
 TORCH_VER ?= 1.13.1
 TV_VER    ?= 0.14.1
 CUDA_VER  ?= 11.7
+# First port `make ui` tries; it moves up to the next free one if taken.
+UI_PORT   ?= 8501
+UNAME_S   := $(shell uname -s)
+
+# macOS has no CUDA builds: install CPU/MPS PyTorch without the NVIDIA and
+# Intel MKL packages.
+ifeq ($(UNAME_S),Darwin)
+TORCH_INSTALL = conda install -y -c pytorch \
+	  pytorch=$(TORCH_VER) torchvision=$(TV_VER)
+else
+TORCH_INSTALL = conda install -y -c pytorch -c nvidia \
+	  pytorch=$(TORCH_VER) torchvision=$(TV_VER) pytorch-cuda=$(CUDA_VER) \
+	  intel-openmp mkl mkl-service
+endif
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -30,9 +44,7 @@ torch:
 	conda config --env --set channel_priority strict && \
 	conda remove -y pytorch torchvision torchaudio pytorch-cuda \
 	  intel-openmp llvm-openmp mkl mkl-service libgomp || true && \
-	conda install -y -c pytorch -c nvidia \
-	  pytorch=$(TORCH_VER) torchvision=$(TV_VER) pytorch-cuda=$(CUDA_VER) \
-	  intel-openmp mkl mkl-service && \
+	$(TORCH_INSTALL) && \
 	python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 
 install:
@@ -43,7 +55,11 @@ install:
 ui:
 	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
 	conda activate $(CONDA_ENV) && \
-	python -m streamlit run src/ui/streamlit_app.py
+	port="$$(python src/setup-scripts/find_free_port.py $(UI_PORT))" && \
+	if [[ "$$port" != "$(strip $(UI_PORT))" ]]; then \
+	  echo "Port $(strip $(UI_PORT)) is in use; using $$port instead."; \
+	fi && \
+	python -m streamlit run src/ui/streamlit_app.py --server.port "$$port"
 
 clean: ## Remove Python caches and egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

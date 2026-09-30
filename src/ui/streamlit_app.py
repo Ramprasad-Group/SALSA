@@ -2766,10 +2766,53 @@ def _current_user(auth_store: AuthStore):
     return user
 
 
+def _render_initial_admin_setup(auth_store: AuthStore) -> None:
+    st.subheader("Create administrator account")
+    st.info(
+        "Welcome to SALSA. No administrator account exists yet. Create one to "
+        "finish setting up this installation. The administrator approves new "
+        "account requests and manages users."
+    )
+    with st.form("initial_admin_form"):
+        username = st.text_input("Username", key="initial_admin_username")
+        email = st.text_input("Email", key="initial_admin_email")
+        first_name = st.text_input("First name", key="initial_admin_first_name")
+        last_name = st.text_input("Last name", key="initial_admin_last_name")
+        institution = st.text_input("Institution", key="initial_admin_institution")
+        password = st.text_input("Password", type="password", key="initial_admin_pw")
+        password_again = st.text_input(
+            "Confirm password",
+            type="password",
+            key="initial_admin_pw_again",
+        )
+        submitted = st.form_submit_button("Create administrator account", type="primary")
+    if submitted:
+        try:
+            if password != password_again:
+                raise ValueError("Passwords do not match.")
+            user = auth_store.create_initial_admin(
+                username=username,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                institution=institution,
+                password=password,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            _set_auth_session(auth_store, user)
+            st.rerun()
+
+
 def _render_auth_gate(auth_store: AuthStore):
     user = _current_user(auth_store)
     if user is not None:
         return user
+
+    if auth_store.needs_initial_admin():
+        _render_initial_admin_setup(auth_store)
+        st.stop()
 
     st.subheader("Sign in")
     st.info(

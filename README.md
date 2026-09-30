@@ -36,7 +36,7 @@ Prerequisites:
 
 - Conda or Miniconda
 - Git submodule support
-- CUDA 11.7 for GPU acceleration, or CPU-only execution for slower local runs
+- CUDA 11.7 for GPU acceleration, or CPU-only execution for slower local runs (macOS is supported CPU-only; `make setup` detects it automatically)
 - LLM provider credentials or an Ollama server for model-backed steps
 
 Install from source:

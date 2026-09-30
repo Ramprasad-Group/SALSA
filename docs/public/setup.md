@@ -18,7 +18,7 @@ run data, settings, API credentials, or administration controls.
 
 - Conda or Miniconda
 - Git with submodule support
-- CUDA 11.7 for GPU acceleration, or CPU execution for slower local runs
+- CUDA 11.7 for GPU acceleration, or CPU execution for slower local runs (macOS is supported CPU-only; `make setup` detects it automatically)
 - Credentials for the model and literature providers you intend to use, or an
   accessible Ollama server
 

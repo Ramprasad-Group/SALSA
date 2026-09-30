@@ -411,6 +411,56 @@ class TestUiAuth(unittest.TestCase):
         self.assertIn("Applicant University", body)
         self.assertNotIn("correct-password", body)
 
+    def test_initial_admin_setup_only_when_no_admin_exists(self):
+        profile = {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "institution": "Example University",
+            "password": "correct-password",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AuthStore(Path(tmp) / "auth.sqlite3")
+            self.assertTrue(store.needs_initial_admin())
+
+            admin = store.create_initial_admin(
+                username="admin", email="admin@example.edu", **profile
+            )
+            self.assertEqual(admin["role"], "admin")
+            self.assertEqual(admin["account_status"], "approved")
+            self.assertFalse(store.needs_initial_admin())
+            self.assertIsNotNone(store.authenticate("admin", "correct-password"))
+
+            with self.assertRaises(ValueError):
+                store.create_initial_admin(
+                    username="second", email="second@example.edu", **profile
+                )
+            self.assertIsNone(store.find_user("second"))
+
+    def test_initial_admin_setup_when_only_non_admin_users_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AuthStore(Path(tmp) / "auth.sqlite3")
+            store.create_user(
+                username="pending",
+                email="pending@example.edu",
+                first_name="Pat",
+                last_name="Pending",
+                institution="Example University",
+                password="correct-password",
+                account_status="pending",
+            )
+            self.assertTrue(store.needs_initial_admin())
+
+            admin = store.create_initial_admin(
+                username="admin",
+                email="admin@example.edu",
+                first_name="Ada",
+                last_name="Admin",
+                institution="Example University",
+                password="correct-password",
+            )
+            self.assertEqual(admin["role"], "admin")
+            self.assertFalse(store.needs_initial_admin())
+
     def test_account_request_email_surfaces_relay_data_rejection(self):
         requested = {
             "username": "alice",
