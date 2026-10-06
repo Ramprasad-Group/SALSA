@@ -98,6 +98,32 @@ def _numeric(text: str) -> Optional[float]:
     return None
 
 
+def _vn(name: str) -> str:
+    """View-file-safe name (no NBSP/whitespace, which some readers cannot open)."""
+    return re.sub(r"[\s\u00a0\u202f]+", "_", name)
+
+
+def _norm_id(name: str) -> str:
+    return re.sub(r"[\s\u00a0\u202f_]+", "_", name).lower()
+
+
+def _canonical_fig_id(run: Path, doi: str, fig_id: str) -> str:
+    """Map an id typed with normal spaces/underscores onto the on-disk name (which may use NBSP)."""
+    dirs = [run / "plextract" / "results" / "0" / "input" / doi, run / "figures_tables" / "figures" / doi,
+            run / "interventions" / doi]
+    want = _norm_id(fig_id)
+    for d in dirs:
+        if not d.exists():
+            continue
+        for p in d.rglob("*"):
+            stem = p.stem if p.suffix.lower() in IMG_EXTS else p.name
+            if stem == fig_id:
+                return fig_id
+            if _norm_id(stem) == want:
+                return stem
+    return fig_id
+
+
 class Target:
     """Resolves all paths for one figure or subfigure image of a paper."""
 
@@ -105,6 +131,7 @@ class Target:
         self.run = run
         self.doi = safe(doi)
         self.fig_id = Path(fig_id).stem if Path(fig_id).suffix.lower() in IMG_EXTS else fig_id
+        self.fig_id = _canonical_fig_id(run, self.doi, self.fig_id)
         self.parent_fig = self.fig_id.split("_subfig_")[0]
         self.is_subfig = "_subfig_" in self.fig_id
         self.iv_dir = intervention_dir(run, self.doi, self.fig_id)
@@ -152,10 +179,15 @@ class Target:
                 out.append(o)
         return out
 
+    def light_base(self) -> Path:
+        return self.iv_dir / "light_base" / self.image.name
+
     def _first_full_run_output(self) -> Optional[Path]:
         for o in self._results():
             if (o / "chartdete" / "bounding_boxes.json").exists() and (o / "lineformer").exists():
                 return o
+        if (self.light_base() / "chartdete" / "bounding_boxes.json").exists():
+            return self.light_base()
         return None
 
     def latest_out(self) -> Optional[Path]:
@@ -508,7 +540,7 @@ def cmd_inspect(a) -> None:
         sys.exit(f"image not found for {a.fig}")
     ad = agent_dir(run, a.doi)
     img = Image.open(t.image).convert("RGB")
-    grid_path = ad / "views" / f"{t.fig_id}_grid.png"
+    grid_path = ad / "views" / f"{_vn(t.fig_id)}_grid.png"
     ruler(_grid_overlay(img), a.scale).save(grid_path)
     out = t.latest_out()
     info: Dict[str, Any] = {"figure_id": t.fig_id, "image": str(t.image), "size_px": list(img.size),
@@ -541,7 +573,7 @@ def cmd_inspect(a) -> None:
                 pass
             series.append(entry)
         info["lineformer_series"] = series
-        check = render_check(t, out, ad / "views" / f"{t.fig_id}_check.png", a.scale)
+        check = render_check(t, out, ad / "views" / f"{_vn(t.fig_id)}_check.png", a.scale)
         info.update(check)
     mp = load_mapping(run, t.doi, t.fig_id)
     if mp:
@@ -556,7 +588,7 @@ def cmd_zoom(a) -> None:
     x1, y1, x2, y2 = [int(v) for v in a.box.split(",")]
     x1, y1, x2, y2 = max(0, x1), max(0, y1), min(img.width, x2), min(img.height, y2)
     crop = _grid_overlay(img).crop((x1, y1, x2, y2)) if a.grid else img.crop((x1, y1, x2, y2))
-    dest = agent_dir(run, a.doi) / "views" / f"{t.fig_id}_zoom_{x1}_{y1}_{x2}_{y2}.png"
+    dest = agent_dir(run, a.doi) / "views" / f"{_vn(t.fig_id)}_zoom_{x1}_{y1}_{x2}_{y2}.png"
     ruler(crop, a.scale, origin=(x1, y1)).save(dest)
     _out({"zoom_image": str(dest), "note": "ruler numbers are ORIGINAL image pixel coordinates"})
 
@@ -609,7 +641,7 @@ def cmd_calibrate(a) -> None:
     (t.cd_override / "axis_type_override.json").write_text(
         json.dumps({"x_axis_type": a.xtype, "y_axis_type": a.ytype}, indent=2))
     ledger(run, t.doi, {"action": "calibrate", "figure": t.fig_id, "x": xs, "y": ys, "reason": a.reason})
-    dest = agent_dir(run, a.doi) / "views" / f"{t.fig_id}_check.png"
+    dest = agent_dir(run, a.doi) / "views" / f"{_vn(t.fig_id)}_check.png"
     _out(render_check(t, t.latest_out(), dest))
 
 
@@ -619,7 +651,7 @@ def cmd_titles(a) -> None:
     t.cd_override.mkdir(parents=True, exist_ok=True)
     (t.cd_override / "axis_title_override.json").write_text(
         json.dumps({"x_title": a.x or "none", "y_title": a.y or "none"}, indent=2))
-    ledger(run, t.doi, {"action": "axis_titles", "figure": t.fig_id, "x": a.x, "y": a.y})
+    ledger(run, t.doi, {"action": "axis_titles", "figure": t.fig_id, "x": a.x, "y": a.y, "reason": a.reason})
     _out({"written": str(t.cd_override / "axis_title_override.json")})
 
 
@@ -638,7 +670,7 @@ def cmd_markers(a) -> None:
     img = np.array(Image.open(t.image).convert("RGB")).astype(int)
     H, W = img.shape[:2]
     if a.at:
-        x, y = [int(v) for v in a.at.split(",")]
+        x, y = [int(round(float(v))) for v in a.at.split(",")]
         rgb = tuple(int(v) for v in img[y, x])
     else:
         rgb = _hex_or_rgb(a.rgb)
@@ -684,7 +716,7 @@ def cmd_markers(a) -> None:
         od.text((p["x"] + 4, p["y"] - 14), str(k), fill=(255, 0, 0, 255), font=f)
     od.rectangle(region, outline=(255, 140, 0, 200))
     vis = Image.alpha_composite(vis.convert("RGBA"), over).convert("RGB")
-    dest = ad / "views" / f"{t.fig_id}_markers_{'%02x%02x%02x' % tuple(rgb)}.png"
+    dest = ad / "views" / f"{_vn(t.fig_id)}_markers_{'%02x%02x%02x' % tuple(rgb)}.png"
     ruler(vis, a.scale).save(dest)
     (ad / "last_markers.json").write_text(json.dumps({"fig": t.fig_id, "points": found}))
     _out({"rgb": list(rgb), "tol": a.tol, "region": region, "n_found": len(found), "points": found,
@@ -759,10 +791,31 @@ def cmd_rerun(a) -> None:
         os.dup2(lf.fileno(), 1)
         os.dup2(lf.fileno(), 2)
         try:
+            if t.base_out is None and a.light:
+                # brand-new crop, light mode: no ChartDete/LineFormer. The agent's calibration
+                # override and clicked points drive SALSA's intervention pipeline directly.
+                if not (t.cd_override / "pix2val_override.json").exists():
+                    sys.exit("--light needs a calibration override first (`calibrate`)")
+                W, H = Image.open(t.image).size
+                cd, lf = t.light_base() / "chartdete", t.light_base() / "lineformer"
+                cd.mkdir(parents=True, exist_ok=True)
+                lf.mkdir(parents=True, exist_ok=True)
+                (cd / "bounding_boxes.json").write_text("{}")
+                (cd / "label_coordinates.json").write_text(json.dumps({"plot_area": [0, 0, W, H, 1.0]}))
+                for fn in ("axis_label_texts.json", "axis_title_texts.json"):
+                    (cd / fn).write_text("{}")
+                (cd / "legend_entries.json").write_text("[]")
+                (lf / "series_catalog.json").write_text("[]")
+                t = Target(run, a.doi, a.fig)
             if t.base_out is None:
-                # brand-new crop: full pipeline (ChartDete + OCR + LineFormer) on the crop
-                run_plextract_on_crops(scripts_root=SRC, run_dir=run, safe_doi=t.doi, image_paths=[t.image],
-                                       figure_id=t.fig_id, intervention=False)
+                # brand-new crop: full pipeline (ChartDete + OCR + LineFormer) on the crop.
+                # Serialize these across agents: several concurrent model loads exhaust RAM.
+                import fcntl
+                lock_path = run / "agent_curation" / ".full_pipeline.lock"
+                with lock_path.open("w") as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX)
+                    run_plextract_on_crops(scripts_root=SRC, run_dir=run, safe_doi=t.doi, image_paths=[t.image],
+                                           figure_id=t.fig_id, intervention=False)
                 t = Target(run, a.doi, a.fig)
             if t.lf_override.exists() or t.cd_override.exists() or load_mapping(run, t.doi, t.fig_id):
                 apply_overrides_to_plextract(t.base_out, run, t.doi, t.fig_id)
@@ -776,7 +829,7 @@ def cmd_rerun(a) -> None:
             os.dup2(sys_stdout[1], 2)
     out = t.latest_out()
     ledger(run, t.doi, {"action": "rerun", "figure": t.fig_id, "output": str(out)})
-    info = render_check(t, out, agent_dir(run, a.doi) / "views" / f"{t.fig_id}_check.png", a.scale)
+    info = render_check(t, out, agent_dir(run, a.doi) / "views" / f"{_vn(t.fig_id)}_check.png", a.scale)
     info["final_dataset_csv"] = str(out / "final" / "final_dataset.csv") if out else None
     info["log"] = str(log)
     _out(info)
@@ -927,6 +980,11 @@ def cmd_chem_apply(a) -> None:
     doi = safe(a.doi)
     d = run / "chemical_composition" / doi
     d.mkdir(parents=True, exist_ok=True)
+    rows = list(csv.reader(open(a.csv, encoding="utf-8-sig")))
+    ragged = [i + 1 for i, r in enumerate(rows[1:], start=1) if len(r) != len(rows[0])]
+    if ragged:
+        sys.exit(f"CSV rows {ragged} have a different number of fields than the header ({len(rows[0])}); "
+                 "fix the column alignment (empty cells still need their commas) before applying")
     cur = d / "samples.csv"
     backup = d / "samples.salsa.csv"
     if cur.exists() and not backup.exists():
@@ -985,6 +1043,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     s = p("titles", cmd_titles, "override axis titles")
     s.add_argument("--x")
     s.add_argument("--y")
+    s.add_argument("--reason", default="")
     s = p("markers", cmd_markers, "detect marker centroids of one colour")
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--rgb", help="R,G,B or #rrggbb")
@@ -1006,6 +1065,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     s.add_argument("--clear-points", help="remove agent points/mask for this series index")
     s.add_argument("--reason", default="")
     s = p("rerun", cmd_rerun, "apply overrides and re-run extraction (like 'Rerun OCR data extraction')")
+    s.add_argument("--light", action="store_true",
+                   help="new crops only: skip ChartDete/LineFormer; needs `calibrate` + `series --points` first")
+    s.add_argument("--reason", default="")
     s.add_argument("--scale", type=int, default=2)
     s = p("draft-rows", cmd_draft_rows, "draft output-schema rows from the latest extraction")
     s.add_argument("--x-col", help="output column that receives the x value, e.g. 'time(h)' or 'prop test temp (C)'")

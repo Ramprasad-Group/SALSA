@@ -27,11 +27,20 @@ columns, missing-value defaults and processing rules. Read it first.
 
 ## Practicalities
 
+- The shell is zsh, which does not word-split `$VAR`. Put shared CLI args in a
+  small function or pass literal strings, not a single variable.
 - Subagents cannot use the Write tool for new files; write `summary.md` and CSVs with a
   shell heredoc or Python.
 - `zoom` on a small box: pass `--scale 8` (or more) for a useful enlargement.
-- `rerun` on a brand-new crop runs ChartDete + LineFormer on CPU (1–3 min). Run it
-  in the foreground and wait.
+- **New crops: use `rerun --light`.** The order is `crop`, then `calibrate`, then
+  `series --points/--name`, then `rerun --light`. It skips ChartDete/LineFormer and
+  runs SALSA's intervention pipeline on your calibration and points (seconds).
+  A plain `rerun` on a new crop runs the full models on CPU in a shared queue
+  (can take 30+ min). Use it only when automatic line tracing would really help
+  (e.g. dense continuous curves), and run it in the background. Do **not** bypass
+  the CLI with your own pixel analysis: the figure fixes must be recorded as SALSA
+  interventions. (`inspect` on a new crop before any rerun shows the grid image
+  only; use it plus `zoom` to read tick and marker pixels.)
 - `markers` struggles with markers under ~5 px. Use zooms and place points by
   hand, as a human would.
 - Data stated only in the text cannot be emitted yet. List it under "Needs human review".
@@ -103,7 +112,7 @@ For each relevant panel:
    Confirm with the returned check image. Log axes: use `--ytype log10` and actual values.
 4. **Series.** Match legend entries to series by colour and marker shape.
    - Marker plots (the usual case): run `markers` per series colour (sample the
-     colour with `--at` on a marker, exclude the legend box). Compare the count
+     colour with `--at` on a marker; pass the legend's pixel box as `--exclude x1,y1,x2,y2`, taking the numbers from `inspect`'s legend_entries bboxes; there is no `legend_box` keyword). Compare the count
      with the visible markers. Overlapping or occluded markers must be added by
      hand at the visible position (e.g. the shared t=0 point). Drop false hits
      (text, legend, other series). Then `series --index K --points ...`.
@@ -116,6 +125,8 @@ For each relevant panel:
    - Before/after bar charts (e.g. WU/SR before and after the stability test) are
      relevant: emit the "before" bars at `time(h)` = 0 and the "after" bars at the
      test duration.
+   - When a paper reports the same membrane in several counter-ion forms (Cl⁻,
+     Br⁻, OH⁻ …), keep only the **OH⁻ form** rows (drop the others with a reason).
    - Name each series with the **exact sample name** used in the paper (the
      same name you will use in chemistry).
 5. **`rerun`** and Read the check image. Every circle must sit on its marker, with
@@ -166,8 +177,8 @@ Write a verified CSV with SALSA's samples.csv columns plus `confidence` and
   Drop samples with no data rows.
 - `smiles1..n`: repeat units with exactly two `[*]` attachment points, in the
   **final** (functionalized, cationic) form, without counter-ions.
-  Copolymer/crosslinker units are separate smiles with mole fractions `c1..cn`
-  summing to 1. Derive fractions from the sample naming/feed ratios and say how.
+  Copolymer units are separate smiles with mole fractions `c1..cn` summing to 1
+  (crosslinked samples: see below). Derive fractions from the sample naming/feed ratios and say how.
 - Additives/fillers (COFs, inorganic particles, small molecules) are not in the
   repeat units: set `contains_add=1` and fill additive columns when known.
   Crosslinked samples: `contains_crosslink=1`.
@@ -175,6 +186,19 @@ Write a verified CSV with SALSA's samples.csv columns plus `confidence` and
   **0.5** = partly (e.g. crosslinker structure or ratio inferred, random
   copolymer placement); **0** = cannot be represented (e.g. filler-dominated
   composites, unknown functionalization).
+- **c1..cn always sum to 1.** Crosslinking is recorded in one of two ways, and
+  `contains_crosslink=1` either way:
+  - **Explicitly added crosslinker** (a separate reagent reacted with the
+    polymer, e.g. glutaraldehyde, EGDE, a diamine or dual-piperidinium
+    crosslinker): the backbone units' c1..cn sum to 1. Put the crosslinker in
+    the additive columns (`additive_name_k`, `additive_smiles_k`, `additive_c_k`
+    as its amount relative to the polymer, stating the basis in `curation_notes`).
+  - **Crosslinking during the main polymerization** (a crosslinking monomer
+    copolymerized with the others, e.g. a divinyl/multifunctional comonomer):
+    the crosslinking unit is one of the `smiles` units, with its mole fraction,
+    and all c1..cn sum to 1.
+- Write the neutral/cationic polymer as synthesized: no deprotonated `[n-]`/`[O-]`
+  forms for OH⁻-exchanged membranes.
 - Fix every SMILES that does not match the scheme (cation type, substitution
   position, linker length, backbone). RDKit validity is necessary, not sufficient.
 
