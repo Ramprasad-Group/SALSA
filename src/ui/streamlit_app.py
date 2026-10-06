@@ -3217,6 +3217,36 @@ with st.sidebar:
 
     existing_settings_presets = _list_settings_presets(workspaces_root)
 
+    # Stage settings come from session state (or defaults) so a run can start
+    # with the preset editor closed; the editor below overrides them when open.
+    stage_settings = _current_stage_settings_from_state()
+    exclude_full_text = stage_settings["exclude_full_text"]
+    run_extract_tables = stage_settings["run_extract_tables"] and not use_figure_uploads
+    run_extract_figures = stage_settings["run_extract_figures"] or use_figure_uploads
+    run_pdf_page_ocr = stage_settings["run_pdf_page_ocr"] if use_docling_pdf_uploads else False
+    run_filter_tables = stage_settings["run_filter_tables"] and not use_figure_uploads
+    run_filter_figures = stage_settings["run_filter_figures"]
+    run_plextract = stage_settings["run_plextract"]
+    bypass_ocr_with_llm = stage_settings["bypass_ocr_with_llm"]
+    run_chemical_composition = (
+        stage_settings["run_chemical_composition"] and not use_figure_uploads
+    )
+    run_complete_dataset = stage_settings["run_complete_dataset"]
+    run_aggregation = stage_settings["run_aggregation"]
+    ci = st.session_state["custom_instructions"]
+    ci_column_defaults_table = st.session_state.get(
+        _CI_COLUMN_DEFAULTS_SOURCE_KEY,
+        _column_defaults_table_from_instructions(ci),
+    )
+    chemical_column_defaults_table = st.session_state.get(
+        _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
+        _column_defaults_table_from_instructions(
+            ci,
+            columns_key="chemical_composition_columns",
+            defaults_key="chemical_composition_defaults",
+        ),
+    )
+
     show_settings_editor = st.toggle(
         "Create/Modify Settings Preset",
         key="create_settings_preset_expanded",
@@ -3238,33 +3268,6 @@ with st.sidebar:
             horizontal=True,
             label_visibility="collapsed",
             on_change=_keep_create_settings_preset_open,
-        )
-        stage_settings = _current_stage_settings_from_state()
-        exclude_full_text = stage_settings["exclude_full_text"]
-        run_extract_tables = stage_settings["run_extract_tables"] and not use_figure_uploads
-        run_extract_figures = stage_settings["run_extract_figures"] or use_figure_uploads
-        run_pdf_page_ocr = stage_settings["run_pdf_page_ocr"] if use_docling_pdf_uploads else False
-        run_filter_tables = stage_settings["run_filter_tables"] and not use_figure_uploads
-        run_filter_figures = stage_settings["run_filter_figures"]
-        run_plextract = stage_settings["run_plextract"]
-        bypass_ocr_with_llm = stage_settings["bypass_ocr_with_llm"]
-        run_chemical_composition = (
-            stage_settings["run_chemical_composition"] and not use_figure_uploads
-        )
-        run_complete_dataset = stage_settings["run_complete_dataset"]
-        run_aggregation = stage_settings["run_aggregation"]
-        ci = st.session_state["custom_instructions"]
-        ci_column_defaults_table = st.session_state.get(
-            _CI_COLUMN_DEFAULTS_SOURCE_KEY,
-            _column_defaults_table_from_instructions(ci),
-        )
-        chemical_column_defaults_table = st.session_state.get(
-            _CI_CHEM_COLUMN_DEFAULTS_SOURCE_KEY,
-            _column_defaults_table_from_instructions(
-                ci,
-                columns_key="chemical_composition_columns",
-                defaults_key="chemical_composition_defaults",
-            ),
         )
         if settings_editor_section == "API Keys":
             st.text_input(

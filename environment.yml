@@ -25,6 +25,11 @@ dependencies:
   - pip:
       - bresenham==0.2.1
       - openmim>=0.3.9
+      # Optional Phoenix tracing (src/observability.py). OTel 1.27 is the last
+      # line that allows protobuf<5, which streamlit 1.31 requires.
+      - opentelemetry-sdk==1.27.0
+      - opentelemetry-exporter-otlp-proto-http==1.27.0
+      - openinference-instrumentation-openai==0.1.18
       # streamlit-drawable-canvas is NOT installed from PyPI: SALSA ships a
       # patched build of the component at src/ui/vendor/. See its README.
       - -e .
