@@ -183,11 +183,7 @@ class LLMClient:
     """
     def __init__(self, cfg: LLMConfig):
         self.cfg = cfg
-        from observability import setup_tracing
         from openai import OpenAI
-
-        # No-op unless PHOENIX_COLLECTOR_ENDPOINT is set.
-        setup_tracing()
 
         # Works for:
         # - OpenAI (base_url=https://api.openai.com/v1)

@@ -171,26 +171,6 @@ the production app while runs are active. Use `salsa-dev.service` on a separate
 port and development data root to test changes, then restart production
 deliberately after validation.
 
-## LLM Tracing
-
-Every LLM call made through `src/llm_client.py` (OpenAI or Ollama) can be
-traced to [Arize Phoenix](https://arize.com/docs/phoenix): prompts, outputs,
-latency, and token counts per call. Tracing is off unless
-`PHOENIX_COLLECTOR_ENDPOINT` is set.
-
-Start a Phoenix server outside the SALSA env (it needs Python 3.10+), e.g.
-`docker run -p 6006:6006 arizephoenix/phoenix` or `pip install arize-phoenix && phoenix serve`,
-then export these before `make ui` (or add them to the `.env` file used by
-the systemd units in [`deploy/env/`](./deploy/env/)):
-
-```bash
-PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006
-PHOENIX_PROJECT_NAME=SALSA        # optional
-PHOENIX_API_KEY=...               # only if Phoenix auth is enabled
-```
-
-Traces appear at <http://localhost:6006> under the project name.
-
 ## Acknowledgements
 
 - Built upon [tdsone/extract-line-chart-data](https://github.com/tdsone/extract-line-chart-data)
