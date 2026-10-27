@@ -48,8 +48,21 @@ Return "YES" if the table  contains data related to:
 Return "NO" otherwise."
 """
 
+DEFAULT_CHEMICAL_COMPOSITION_RULES = """\
+These are the columns that should be present:
+DOI, Sample Name, smiles1, smiles2, smiles3, smiles4, c1, c2, c3, c4, additive_name_1, additive_name_2, additive_smiles1, additive_smiles2, additive_smiles3, additivec1, additivec2, additivec3, cont_add, cont_cl, llm notes, confidence
+
+For each column, leave the value blank if there is no relevant value for that sample
+
+the values in c1 through cn should add up to 1
+
+include columns called "contains_add" and "contains_crosslink" whose value should be 1 if the sample contains an additive or crosslinking, respectively, or 0 otherwise.
+
+include a column called "confidence" whose value should be 0 if there is low confidence in the chemical structure based on the context, 0.5 if there is medium confidence, and 1 if there is high confidence. """
+
 DEFAULT_DATA_PROCESSING_RULES = """\
-- Measurements taken before or at the beginning of stability tests MUST have time(h) = 0"""
+- Measurements taken before or at the beginning of stability tests MUST have time(h) = 0
+- rows not related to experimental ion exchange capacity (IEC), water uptake, swelling, ion conductivity, or mechanical properties MUST be removed"""
 
 DEFAULT_OUTPUT_COLUMNS = [
     "Sample Name",
@@ -59,9 +72,8 @@ DEFAULT_OUTPUT_COLUMNS = [
     "solvent molarity (M)",
     "degradation test temp (C)",
     "prop test temp (C)",
-    "dependant variable",
-    "dependent value",
-    "dependent unit",
+    "property",
+    "value",
     "DOI",
     "source_kind",
     "source_name",
@@ -84,22 +96,29 @@ DEFAULT_MISSING_VALUE_DEFAULTS = {
     "solvent molarity (M)": "None Not Found",
     "degradation test temp (C)": "None Not Found",
     "prop test temp (C)": "25 Not Found",
-    "dependant variable": "None Not Found"
+    "property": "None Not Found"
 }
 
 
-def _fallback_default_instructions() -> Dict[str, Any]:
-    """Return the built-in fallback instructions dict."""
+def aem_degradation_instructions() -> Dict[str, Any]:
+    """Return the built-in AEM degradation instructions, ignoring any aem_all.json."""
     return {
         "table_extraction_rules": DEFAULT_TABLE_EXTRACTION_RULES,
         "figure_filter_criteria": DEFAULT_FIGURE_FILTER_CRITERIA,
         "table_filter_criteria": DEFAULT_TABLE_FILTER_CRITERIA,
-        "data_processing_rules": DEFAULT_DATA_PROCESSING_RULES,
-        "output_columns": list(DEFAULT_OUTPUT_COLUMNS),
+        "chemical_composition_rules": DEFAULT_CHEMICAL_COMPOSITION_RULES,
         "chemical_composition_columns": list(DEFAULT_CHEMICAL_COMPOSITION_COLUMNS),
         "chemical_composition_defaults": {},
+        "figure_data_extraction_rules": "",
+        "data_processing_rules": DEFAULT_DATA_PROCESSING_RULES,
+        "output_columns": list(DEFAULT_OUTPUT_COLUMNS),
         "missing_value_defaults": dict(DEFAULT_MISSING_VALUE_DEFAULTS),
     }
+
+
+def _fallback_default_instructions() -> Dict[str, Any]:
+    """Return the built-in fallback instructions dict."""
+    return aem_degradation_instructions()
 
 
 def _bundled_default_preset_path() -> Path:

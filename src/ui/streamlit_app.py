@@ -54,6 +54,7 @@ from intervention import (
 from run_plextract_manual import run_plextract_on_crops as _run_plextract_on_crops
 from custom_instructions import (
     DEFAULT_TABLE_EXTRACTION_RULES,
+    aem_degradation_instructions,
     default_instructions,
 )
 from canvas_geometry import fabric_circle_center
@@ -2503,7 +2504,7 @@ def _bootstrap_settings_presets_for_workspaces(workspaces_root: Path) -> None:
             EXAMPLE_AEM_SETTINGS_PRESET_NAME,
             _make_settings_preset(
                 stages=_AEM_EXAMPLE_STAGE_SETTINGS,
-                custom_instructions=default_instructions(),
+                custom_instructions=aem_degradation_instructions(),
                 llm_steps=_aem_example_llm_steps(),
             ),
         )
